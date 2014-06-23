@@ -8,7 +8,6 @@
 ###################################################################################################
 
 import re
-import time
 import urllib
 
 # Config
@@ -18,26 +17,10 @@ artifactTypes = ["url", "url (archived)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20120928"
+version = "20140623"
 
 
-def friendly_date(timestamp):
-    timestamp = int(timestamp)
-    if timestamp > 99999999999999:
-        # Webkit
-        # print(timestamp)
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp)/1000000)-11644473600))
-    elif timestamp > 99999999999:
-        # Epoch milliseconds
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp/1000))
-    elif timestamp > 1:
-        # Epoch
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
-    else:
-        return "error"
-
-
-def plugin(items):
+def plugin(target_browser):
     google_re = re.compile(r'^http(s)?://www\.google\.com/(search\?|webhp\?|#q)(.*)$')
     extract_parameters_re = re.compile(r'(.+?)=(.+)')
     qdr_re = re.compile(r'(s|n|h|d|w|m|y)(\d{0,9})')
@@ -47,7 +30,7 @@ def plugin(items):
 
     time_abbr = {"s": "second", "n": "minute", "h": "hour", "d": "day", "w": "week", "m": "month", "y": "year"}
 
-    for item in items:
+    for item in target_browser.parsed_artifacts:
         if item.row_type in artifactTypes:
             m = re.search(google_re, item.url)
             if m:
@@ -157,5 +140,3 @@ def plugin(items):
                         derived = derived[:-3] + ']'
 
                     item.interpretation = derived
-
-    return items

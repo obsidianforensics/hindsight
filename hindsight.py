@@ -29,11 +29,12 @@ def dict_factory(cursor, row):
 
 
 class Chrome(object):
-    def __init__(self, profile_path, version=[], structure={}, parsed_artifacts=[]):
+    def __init__(self, profile_path, version=[], structure={}, parsed_artifacts=[], installed_extensions=[]):
         self.profile_path = profile_path
         self.version = version
         self.structure = structure
         self.parsed_artifacts = parsed_artifacts
+        self.installed_extensions = installed_extensions
 
     def build_structure(self, path, database):
 
@@ -75,6 +76,20 @@ class Chrome(object):
         elif timestamp > 1:
             # Epoch
             return timestamp
+        else:
+            return "error"
+
+    def friendly_date(self, timestamp):
+        timestamp = int(timestamp)
+        if timestamp > 99999999999999:
+            # Webkit
+            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp)/1000000)-11644473600))
+        elif timestamp > 99999999999:
+            # Epoch milliseconds
+            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp/1000))
+        elif timestamp > 1:
+            # Epoch
+            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
         else:
             return "error"
 
@@ -456,6 +471,46 @@ class Chrome(object):
 
         self.parsed_artifacts.extend(results)
 
+    def get_extensions(self, path, dir_name):
+        results = []
+
+        # Grab listing of 'Extensions' directory
+        ext_path = os.path.join(path, dir_name)
+        ext_listing = os.listdir(ext_path)
+        # print ext_listing
+        for app_id in ext_listing:
+            # print(app_id)
+            ext_vers_listing = os.path.join(ext_path, app_id)
+            ext_vers = os.listdir(ext_vers_listing)
+            # print ext_vers
+            # Select lastest version folder
+
+            # Connect to manifest.json
+            try:
+                manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
+                manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
+            except IOError:
+                print "Error opening manifest file"
+                return
+
+            decoded_manifest = json.loads(manifest_file.read())
+            if decoded_manifest["name"][:2] == '__':
+                if decoded_manifest["default_locale"]:
+                    locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
+                    locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
+                    decoded_locale_messages = json.loads(locale_messages_file.read())
+                    name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
+                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
+            else:
+                name = decoded_manifest["name"]
+                # print type(name)
+                # print name.encode('ascii','replace')
+                # name = unicode(decoded_manifest["name"], 'utf-8', 'replace')
+                description = decoded_manifest["description"]
+                # print decoded_manifest["name"]
+
+            results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
+        self.installed_extensions = results
 
 class HistoryItem(object):
     def __init__(self, item_type, timestamp, url=None, name=None, value=None, interpretation=None):
@@ -760,6 +815,14 @@ class LocalStorageItem(HistoryItem):
         self.value = value
 
 
+class BrowserExtension(object):
+    def __init__(self, app_id, name, description, version):
+        self.app_id = app_id
+        self.name = name
+        self.description = description
+        self.version = version
+
+
 def friendly_date(timestamp):
     if timestamp > 99999999999999:
         # Webkit
@@ -1016,14 +1079,15 @@ The Chrome data folder default locations are:
 
     supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies']
     supported_jsons = ['Bookmarks']  #, 'Preferences']
-    supported_subdirs = ['Local Storage']
+    supported_subdirs = ['Local Storage', 'Extensions']
 
-    # print input_listing
     for input_file in input_listing:
         if input_file in supported_databases:
+            # Process structure from Chrome database files
             target_browser.build_structure(args.input, input_file)
             print(" - %s" % input_file)
 
+    # Use the structure of the input files to determine possible Chrome versions
     target_browser.determine_version()
 
     if len(target_browser.version) > 1:
@@ -1033,6 +1097,7 @@ The Chrome data folder default locations are:
 
     print("\nDetected Chrome version %s" % display_version)
 
+    # Process History files
     print "\nProcessing files..."
     if 'History' in input_listing:
         target_browser.get_history(args.input, 'History', target_browser.version)
@@ -1047,6 +1112,11 @@ The Chrome data folder default locations are:
         target_browser.get_bookmarks(args.input, 'Bookmarks', target_browser.version)
     if 'Local Storage' in input_listing:
         target_browser.get_local_storage(args.input, 'Local Storage')
+    if 'Extensions' in input_listing:
+        target_browser.get_extensions(args.input, 'Extensions')
+
+
+
 
     target_browser.parsed_artifacts.sort()
     sys.path.insert(0, 'plugins')
@@ -1060,7 +1130,8 @@ The Chrome data folder default locations are:
             plugin = plugin.replace(".py", "")
             module = __import__(plugin)
             print " - " + module.friendlyName + " [v" + module.version + "]"
-            target_browser.parsed_artifacts = module.plugin(target_browser.parsed_artifacts)
+            # target_browser.parsed_artifacts = module.plugin(target_browser.parsed_artifacts)
+            module.plugin(target_browser)
 
     if args.format == 'xlsx':
         write_excel(target_browser.parsed_artifacts)

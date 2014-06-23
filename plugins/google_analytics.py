@@ -11,7 +11,6 @@
 ###################################################################################################
 
 import re
-import time
 import urllib
 
 # Config
@@ -21,26 +20,10 @@ artifactTypes = ["cookie (created)", "cookie (accessed)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20130718"
+version = "20140623"
 
 
-def friendly_date(timestamp):
-    timestamp = int(timestamp)
-    if timestamp > 99999999999999:
-        # Webkit
-        print(timestamp)
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp)/1000000)-11644473600))
-    elif timestamp > 99999999999:
-        # Epoch milliseconds
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp/1000))
-    elif timestamp > 1:
-        # Epoch
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
-    else:
-        return "error"
-
-
-def plugin(items):
+def plugin(target_browser):
     utma_re = re.compile(r'(\d+)\.(\d+)\.(\d{10})\.(\d{10})\.(\d{10})\.(\d+)')  #
     utmb_re = re.compile(r'(\d+)\.(\d+)\.\d+\.(\d{10})')
     utmc_re = re.compile(r'(\d+)')
@@ -49,7 +32,7 @@ def plugin(items):
     utmz_parameters_re = re.compile(r'(\d+)\.(\d{10})\.(\d+)\.(\d+)\.(.*)')
     utmz_extract_parameters_re = re.compile(r'(.+?)=(.+)')
 
-    for item in items:
+    for item in target_browser.parsed_artifacts:
         if item.row_type in artifactTypes:
             if item.name == '__utma':
                 # TODO: consider adding in extra rows for each timestamp in cookie?
@@ -58,14 +41,15 @@ def plugin(items):
                     item.interpretation = "Domain Hash: %s | Unique Visitor ID: %s | First Visit: %s | " \
                                           "Previous Visit: %s | Last Visit: %s | Number of Sessions: %s | " \
                                           "[Google Analytics Cookie]"\
-                                          % (m.group(1), m.group(2), friendly_date(m.group(3)),
-                                             friendly_date(m.group(4)), friendly_date(m.group(5)), m.group(6))
+                                          % (m.group(1), m.group(2), target_browser.friendly_date(m.group(3)),
+                                             target_browser.friendly_date(m.group(4)),
+                                             target_browser.friendly_date(m.group(5)), m.group(6))
             if item.name == '__utmb':
                 m = re.search(utmb_re, item.value)
                 if m:
                     item.interpretation = "Domain Hash: %s | Pages Viewed: %s | Last Visit: %s | " \
                                           "[Google Analytics Cookie]" \
-                                          % (m.group(1), m.group(2), friendly_date(m.group(3)))
+                                          % (m.group(1), m.group(2), target_browser.friendly_date(m.group(3)))
             if item.name == '__utmc':
                 m = re.search(utmc_re, item.value)
                 if m:
@@ -79,7 +63,7 @@ def plugin(items):
                 m = re.search(utmz_re, item.value)
                 if m:
                     derived = "Domain Hash: %s | Last Visit: %s | Sessions: %s | Sources: %s | " \
-                              % (m.group(1), friendly_date(m.group(2)), m.group(3), m.group(4))
+                              % (m.group(1), target_browser.friendly_date(m.group(2)), m.group(3), m.group(4))
 
                     p = re.search(utmz_parameters_re, item.value)
 
@@ -92,7 +76,7 @@ def plugin(items):
                         # print pair
                         rp = re.search(utmz_extract_parameters_re, pair)    # Split each parameter on the first '='
                         try:
-                            parameters[rp.group(1)] = rp.group(2)               # Put the parameter name and value in hash
+                            parameters[rp.group(1)] = rp.group(2)           # Put the parameter name and value in hash
                         except AttributeError:
                             pass
 
@@ -131,6 +115,4 @@ def plugin(items):
                             derived += "Path to the page on the site of the referring link: %s | " % (parameters['cct'])
 
                     derived += "[Google Analytics Cookie] "
-                    # print derived
                     item.interpretation = derived
-    return items
