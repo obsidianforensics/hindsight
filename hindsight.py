@@ -9,6 +9,7 @@ import sqlite3
 import os
 import sys
 import json
+import re
 import codecs
 import unicodecsv
 import time
@@ -477,40 +478,75 @@ class Chrome(object):
         # Grab listing of 'Extensions' directory
         ext_path = os.path.join(path, dir_name)
         ext_listing = os.listdir(ext_path)
-        # print ext_listing
+
+        # Only process directories with the expected naming convention
+        app_id_re = re.compile(r'^([a-z]{32})$')
+        ext_listing = [x for x in ext_listing if app_id_re.match(x)]
+
+        # Process each directory with an app_id name
         for app_id in ext_listing:
-            # print(app_id)
+            # Get listing of the contents of app_id directory; should contain subdirs for each version of the extention.
             ext_vers_listing = os.path.join(ext_path, app_id)
             ext_vers = os.listdir(ext_vers_listing)
-            # print ext_vers
-            # Select lastest version folder
 
-            # Connect to manifest.json
+            # Connect to manifest.json in latest version directory
             try:
                 manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
                 manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
             except IOError:
                 print "Error opening manifest file"
-                return
 
-            decoded_manifest = json.loads(manifest_file.read())
-            if decoded_manifest["name"][:2] == '__':
-                if decoded_manifest["default_locale"]:
-                    locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
-                    locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
-                    decoded_locale_messages = json.loads(locale_messages_file.read())
-                    name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
-                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
-            else:
-                name = decoded_manifest["name"]
-                # print type(name)
-                # print name.encode('ascii','replace')
-                # name = unicode(decoded_manifest["name"], 'utf-8', 'replace')
-                description = decoded_manifest["description"]
-                # print decoded_manifest["name"]
+            name = None
+            description = None
 
-            results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
+            if manifest_file:
+                decoded_manifest = json.loads(manifest_file.read())
+                if decoded_manifest["name"][:2] == '__':
+                    if decoded_manifest["default_locale"]:
+                        locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
+                        locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
+                        decoded_locale_messages = json.loads(locale_messages_file.read())
+                        try:
+                            name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
+                        except KeyError:
+                            try:
+                                name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
+                            except:
+                                name = "<error>"
+                else:
+                    try:
+                        name = decoded_manifest["name"]
+                    except KeyError:
+                        name = None
+
+                if "description" in decoded_manifest.keys():
+                    if decoded_manifest["description"][:2] == '__':
+                        if decoded_manifest["default_locale"]:
+                            locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
+                            locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
+                            decoded_locale_messages = json.loads(locale_messages_file.read())
+                            try:
+                                description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
+                            except KeyError:
+                                try:
+                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
+                                except:
+                                    description = "<error>"
+                    else:
+                        try:
+                            description = decoded_manifest["description"]
+                        except KeyError:
+                            description = None
+
+                results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
+
         self.installed_extensions = results
+
+
+class MyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        return obj.__dict__
+
 
 class HistoryItem(object):
     def __init__(self, item_type, timestamp, url=None, name=None, value=None, interpretation=None):
@@ -870,8 +906,7 @@ The Chrome data folder default locations are:
 
     parser.add_argument('-i', '--input', help='Path to the Chrome(ium) "Default" directory', required=True)
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
-    parser.add_argument('-f', '--format', choices=['xlsx'], default='xlsx', help='Output format')
-    # parser.add_argument('-f', '--format', choices=['xlsx', 'csv'], default='xlsx', help='Output format')
+    parser.add_argument('-f', '--format', choices=['xlsx', 'json'], default='xlsx', help='Output format')
 
     args = parser.parse_args()
 
@@ -1115,9 +1150,6 @@ The Chrome data folder default locations are:
     if 'Extensions' in input_listing:
         target_browser.get_extensions(args.input, 'Extensions')
 
-
-
-
     target_browser.parsed_artifacts.sort()
     sys.path.insert(0, 'plugins')
     print("\nRunning plugins...")
@@ -1134,7 +1166,14 @@ The Chrome data folder default locations are:
             module.plugin(target_browser)
 
     if args.format == 'xlsx':
-        write_excel(target_browser.parsed_artifacts)
+        try:
+            write_excel(target_browser.parsed_artifacts)
+        except IOError:
+            type, value, traceback = sys.exc_info()
+            print value, "- is the file open?  If so, please close it and try again."
+    elif args.format == 'json':
+        output = open(args.output, 'wb')
+        output.write(json.dumps(target_browser, cls=MyEncoder, indent=4))
     # elif args.format == 'csv':
     #    write_csv(target_browser.parsed_artifacts, target_browser.version)
 
