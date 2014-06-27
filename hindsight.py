@@ -445,14 +445,6 @@ class Chrome(object):
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
 
-                # Connect to Local Storage file sqlite db
-                db_file = sqlite3.connect(ls_file_path)
-
-                # Use a dictionary cursor
-                db_file.row_factory = dict_factory
-                cursor = db_file.cursor()
-                cursor.execute('SELECT key,value FROM ItemTable')
-
                 def to_unicode(raw_data):
                     if type(raw_data) in (int, long, float):
                         return unicode(raw_data, 'utf-8', 'replace')
@@ -466,9 +458,22 @@ class Chrome(object):
                     else:
                         return "<unknown type decode error>"
 
-                for row in cursor:
-                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    results.append(LocalStorageItem(ls_file, ls_created, row.get('key'), to_unicode(row.get('value'))))
+                # Connect to Local Storage file sqlite db
+                db_file = sqlite3.connect(ls_file_path)
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                try:
+                    cursor.execute('SELECT key,value FROM ItemTable')
+
+                    for row in cursor:
+                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
+                        results.append(LocalStorageItem(ls_file, ls_created, row.get('key'), to_unicode(row.get('value'))))
+
+                except:
+                    pass
 
         self.parsed_artifacts.extend(results)
 
@@ -907,6 +912,7 @@ The Chrome data folder default locations are:
     parser.add_argument('-i', '--input', help='Path to the Chrome(ium) "Default" directory', required=True)
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
     parser.add_argument('-f', '--format', choices=['xlsx', 'json'], default='xlsx', help='Output format')
+    # parser.add_argument('-f', '--format', choices=['xlsx', 'json', 'sqlite'], default='xlsx', help='Output format')
 
     args = parser.parse_args()
 
@@ -1102,6 +1108,112 @@ The Chrome data folder default locations are:
 
         workbook.close()
 
+    def write_sqlite(target_browser):
+        output_file = None
+
+        output_file = sqlite3.connect(args.output + '.sqlite')
+
+        with output_file:
+            c = output_file.cursor()
+            c.execute('SELECT SQLITE_VERSION()')
+            c.execute("CREATE TABLE timeline(type TEXT, timestamp INT, url TEXT, title TEXT, value TEXT, "
+                      "interpretation TEXT, safe TEXT, visit_count INT, typed_count INT, url_hidden INT, "
+                      "transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
+                      "last_modified TEXT)")
+            data = c.fetchone()
+            print "SQLite version: %s" % data
+
+
+            # # Write column headers
+            # worksheet.write( 1, 0, "Type",                                                         header_format)
+            # worksheet.write( 1, 1, "Timestamp",                                                    header_format)
+            # worksheet.write( 1, 2, "URL",                                                          header_format)
+            # worksheet.write_rich_string( 1, 3, "Title / Name / Status",                            header_format)
+            # worksheet.write_rich_string( 1, 4, "Data / Value / Path",                              header_format)
+            # worksheet.write( 1, 5, "Interpretation",                                               header_format)
+            # worksheet.write( 1, 6, "Safe?",                                                        header_format)
+            # worksheet.write( 1, 7, "Visit Count",                                                  header_format)
+            # worksheet.write( 1, 8, "Typed Count",                                                  header_format)
+            # worksheet.write( 1, 9, "URL Hidden",                                                   header_format)
+            # worksheet.write( 1, 10, "Transition",                                                  header_format)
+            # worksheet.write( 1, 11, "Interrupt Reason",                                            header_format)
+            # worksheet.write( 1, 12, "Danger Type",                                                 header_format)
+            # worksheet.write( 1, 13, "Opened?",                                                     header_format)
+            # worksheet.write( 1, 14, "ETag",                                                        header_format)
+            # worksheet.write( 1, 15, "Last Modified",                                               header_format)
+            #
+            print("\nWriting \"%s.sqlite\"..." % args.output)
+
+            for item in target_browser.parsed_artifacts:
+                if item.row_type == "url" or item.row_type == "url (archived)":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, visit_count, "
+                              "typed_count, url_hidden, transition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
+                               item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+
+                if item.row_type == "autofill":
+                    c.execute("INSERT INTO timeline (type, timestamp, title, value) VALUES (?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.name, item.value))
+            #         worksheet.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
+            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
+            #         worksheet.write_string(row_number, 3, item.name,                     red_field_format)    # autofill field
+            #         worksheet.write_string(row_number, 4, item.value,                    red_value_format)    # autofill value
+            #         worksheet.write_string(row_number, 6, " ",                           red_type_format)     # blank
+            #
+            #     if item.row_type == "download":
+            #         worksheet.write_string(row_number, 0, item.row_type,                 green_type_format)   # record_type
+            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), green_date_format)   # date
+            #         worksheet.write_string(row_number, 2, item.url,                      green_url_format)    # download URL
+            #         worksheet.write_string(row_number, 3, item.status_friendly,          green_field_format)  # % complete
+            #         worksheet.write_string(row_number, 4, item.value,                    green_value_format)  # download path
+            #         worksheet.write_string(row_number, 5, "",                            green_field_format)  # Interpretation (chain?)
+            #         worksheet.write(       row_number, 6, "",                            green_type_format)   # Safe Browsing
+            #         worksheet.write(       row_number, 11, item.interrupt_reason_friendly, green_value_format)  # download path
+            #         worksheet.write(       row_number, 12, item.danger_type_friendly,    green_value_format)  # download path
+            #         open_friendly = ""
+            #         if item.opened == 1:
+            #             open_friendly = "Yes"
+            #         elif item.opened == 0:
+            #             open_friendly = "No"
+            #         worksheet.write_string(row_number, 13, open_friendly, green_value_format)    # opened
+            #         worksheet.write(row_number, 14, item.etag,            green_value_format)    # ETag
+            #         worksheet.write(row_number, 15, item.last_modified,   green_value_format)    # Last Modified
+            #
+            #     if item.row_type == "bookmark":
+            #         worksheet.write_string(row_number, 0, item.row_type,  red_type_format  )    # record_type
+            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)    # date
+            #         worksheet.write_string(row_number, 2, item.url,       red_url_format   )    # URL
+            #         worksheet.write_string(row_number, 3, item.name,      red_value_format )    # bookmark name
+            #         worksheet.write_string(row_number, 4, item.value,     red_value_format )    # bookmark folder
+            #
+            #     if item.row_type == "bookmark folder":
+            #         worksheet.write_string(row_number, 0, item.row_type,  red_type_format  )    # record_type
+            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format  )    # date
+            #         worksheet.write_string(row_number, 3, item.name,      red_value_format )    # bookmark name
+            #         worksheet.write_string(row_number, 4, item.value,     red_value_format )    # bookmark folder
+            #
+            #     if item.row_type == "cookie (created)" or item.row_type == "cookie (accessed)":
+            #         worksheet.write_string(row_number, 0, item.row_type,  gray_type_format  )    # record_type
+            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format  )    # date
+            #         worksheet.write_string(row_number, 2, item.url,       gray_url_format   )    # URL
+            #         worksheet.write_string(row_number, 3, item.name,      gray_field_format )    # cookie name
+            #         worksheet.write_string(row_number, 4, item.value,     gray_value_format )    # cookie value
+            #         worksheet.write(       row_number, 5, item.interpretation, gray_value_format)    # cookie interpretation
+            #         # worksheet.write_string(row_number, 6, " ",          gray_type_format  )    # blank
+            #
+            #     if item.row_type == "local storage":
+            #         worksheet.write_string(row_number, 0, item.row_type,  gray_type_format  )    # record_type
+            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
+            #         worksheet.write_string(row_number, 2, item.url,       gray_url_format   )    # URL
+            #         worksheet.write_string(row_number, 3, item.name,      gray_field_format )    # cookie name
+            #         worksheet.write_string(row_number, 4, item.value,     gray_value_format )    # cookie value
+            #         worksheet.write_string(row_number, 6, " ",            gray_type_format  )    # blank
+            #
+
+            #
+            # workbook.close()
+
+
     print "\nHindsight v%s\n" % __version__
 
     print "Start time: ", datetime.datetime.now()
@@ -1162,7 +1274,6 @@ The Chrome data folder default locations are:
             plugin = plugin.replace(".py", "")
             module = __import__(plugin)
             print " - " + module.friendlyName + " [v" + module.version + "]"
-            # target_browser.parsed_artifacts = module.plugin(target_browser.parsed_artifacts)
             module.plugin(target_browser)
 
     if args.format == 'xlsx':
@@ -1171,9 +1282,13 @@ The Chrome data folder default locations are:
         except IOError:
             type, value, traceback = sys.exc_info()
             print value, "- is the file open?  If so, please close it and try again."
+
     elif args.format == 'json':
         output = open(args.output, 'wb')
         output.write(json.dumps(target_browser, cls=MyEncoder, indent=4))
+
+    elif args.format == 'sqlite':
+        write_sqlite(target_browser)
     # elif args.format == 'csv':
     #    write_csv(target_browser.parsed_artifacts, target_browser.version)
 
