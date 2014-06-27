@@ -505,45 +505,49 @@ class Chrome(object):
             description = None
 
             if manifest_file:
-                decoded_manifest = json.loads(manifest_file.read())
-                if decoded_manifest["name"][:2] == '__':
-                    if decoded_manifest["default_locale"]:
-                        locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
-                        locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
-                        decoded_locale_messages = json.loads(locale_messages_file.read())
-                        try:
-                            name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
-                        except KeyError:
-                            try:
-                                name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
-                            except:
-                                name = "<error>"
-                else:
-                    try:
-                        name = decoded_manifest["name"]
-                    except KeyError:
-                        name = None
-
-                if "description" in decoded_manifest.keys():
-                    if decoded_manifest["description"][:2] == '__':
+                try:
+                    decoded_manifest = json.loads(manifest_file.read())
+                    if decoded_manifest["name"][:2] == '__':
                         if decoded_manifest["default_locale"]:
                             locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
                             locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
                             decoded_locale_messages = json.loads(locale_messages_file.read())
                             try:
-                                description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
+                                name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
                             except KeyError:
                                 try:
-                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
+                                    name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
                                 except:
-                                    description = "<error>"
+                                    name = "<error>"
                     else:
                         try:
-                            description = decoded_manifest["description"]
+                            name = decoded_manifest["name"]
                         except KeyError:
-                            description = None
+                            name = None
 
-                results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
+                    if "description" in decoded_manifest.keys():
+                        if decoded_manifest["description"][:2] == '__':
+                            if decoded_manifest["default_locale"]:
+                                locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
+                                locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
+                                decoded_locale_messages = json.loads(locale_messages_file.read())
+                                try:
+                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
+                                except KeyError:
+                                    try:
+                                        description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
+                                    except:
+                                        description = "<error>"
+                        else:
+                            try:
+                                description = decoded_manifest["description"]
+                            except KeyError:
+                                description = None
+
+                    results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
+
+                except ValueError:
+                    pass
 
         self.installed_extensions = results
 
