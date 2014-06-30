@@ -18,7 +18,7 @@ import xlsxwriter
 import argparse
 
 __author__ = "Ryan Benson"
-__version__ = "1.0"
+__version__ = "1.1.0"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -796,7 +796,9 @@ class DownloadItem(HistoryItem):
 
     def create_friendly_status(self):
         try:
-            status = "%s -  %i%% [%i/%i]" % (self.state_friendly, (float(self.received_bytes)/float(self.total_bytes))*100, self.received_bytes, self.total_bytes)
+            status = "%s -  %i%% [%i/%i]" % \
+                     (self.state_friendly, (float(self.received_bytes)/float(self.total_bytes))*100,
+                      self.received_bytes, self.total_bytes)
         except ZeroDivisionError:
             status = "%s -  %i bytes" % (self.state_friendly, self.received_bytes)
         except:
@@ -871,7 +873,6 @@ class BrowserExtension(object):
 def friendly_date(timestamp):
     if timestamp > 99999999999999:
         # Webkit
-        print(timestamp)
         return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp)/1000000)-11644473600))
     elif timestamp > 99999999999:
         # Epoch milliseconds
@@ -915,8 +916,9 @@ The Chrome data folder default locations are:
 
     parser.add_argument('-i', '--input', help='Path to the Chrome(ium) "Default" directory', required=True)
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
-    parser.add_argument('-f', '--format', choices=['xlsx', 'json'], default='xlsx', help='Output format')
-    # parser.add_argument('-f', '--format', choices=['xlsx', 'json', 'sqlite'], default='xlsx', help='Output format')
+    parser.add_argument('-f', '--format', choices=['xlsx', 'json', 'sqlite'], default='xlsx', help='Output format')
+    parser.add_argument('-m', '--mode', choices=['add', 'overwrite', 'exit'],
+                        help='Output mode (what to do if output file already exists)')
 
     args = parser.parse_args()
 
@@ -960,19 +962,19 @@ The Chrome data folder default locations are:
             if item.row_type == "local storage":
                 writer.writerow([item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value, "", "", "", "", "", ""])
 
-    def write_excel(items):
+    def write_excel(browser):
         workbook = xlsxwriter.Workbook(args.output + '.xlsx')
-        worksheet = workbook.add_worksheet('Activity')
+        w = workbook.add_worksheet('Timeline')
 
         # Define cell formats
         title_header_format  = workbook.add_format({'font_color': 'white', 'bg_color': 'gray', 'bold': 'true'})
         center_header_format = workbook.add_format({'font_color': 'black', 'align': 'center',  'bg_color': 'gray', 'bold': 'true'})
         header_format        = workbook.add_format({'font_color': 'black', 'bg_color': 'gray', 'bold': 'true'})
         black_type_format    = workbook.add_format({'font_color': 'black', 'align': 'left'})
-        black_date_format    = workbook.add_format({'font_color': 'black', 'num_format': 'mm/dd/yyyy hh:mm:ss'})
+        black_date_format    = workbook.add_format({'font_color': 'black', 'num_format': 'mm/dd/yyyy hh:mm:ss.000'})
         black_url_format     = workbook.add_format({'font_color': 'black', 'align': 'left'})
         black_field_format   = workbook.add_format({'font_color': 'black', 'align': 'left'})
-        black_value_format   = workbook.add_format({'font_color': 'black', 'align': 'left',   'num_format' : '0'})
+        black_value_format   = workbook.add_format({'font_color': 'black', 'align': 'left',   'num_format': '0'})
         black_flag_format    = workbook.add_format({'font_color': 'black', 'align': 'center'})
         black_trans_format   = workbook.add_format({'font_color': 'black', 'align': 'left'})
         gray_type_format     = workbook.add_format({'font_color': 'gray',  'align': 'left'})
@@ -992,251 +994,233 @@ The Chrome data folder default locations are:
         green_value_format   = workbook.add_format({'font_color': 'green', 'align': 'left'})
 
         # Title bar
-        worksheet.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
-        worksheet.merge_range('H1:K1', 'URL Specific',                                         center_header_format)
-        worksheet.merge_range('L1:P1', 'Download Specific',                                    center_header_format)
+        w.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
+        w.merge_range('H1:K1', 'URL Specific',                                        center_header_format)
+        w.merge_range('L1:P1', 'Download Specific',                                   center_header_format)
 
         # Write column headers
-        worksheet.write( 1, 0, "Type",                                                         header_format)
-        worksheet.write( 1, 1, "Timestamp",                                                    header_format)
-        worksheet.write( 1, 2, "URL",                                                          header_format)
-        worksheet.write_rich_string( 1, 3, "Title / Name / Status",                            header_format)
-        worksheet.write_rich_string( 1, 4, "Data / Value / Path",                              header_format)
-        worksheet.write( 1, 5, "Interpretation",                                               header_format)
-        worksheet.write( 1, 6, "Safe?",                                                        header_format)
-        worksheet.write( 1, 7, "Visit Count",                                                  header_format)
-        worksheet.write( 1, 8, "Typed Count",                                                  header_format)
-        worksheet.write( 1, 9, "URL Hidden",                                                   header_format)
-        worksheet.write( 1, 10, "Transition",                                                  header_format)
-        worksheet.write( 1, 11, "Interrupt Reason",                                            header_format)
-        worksheet.write( 1, 12, "Danger Type",                                                 header_format)
-        worksheet.write( 1, 13, "Opened?",                                                     header_format)
-        worksheet.write( 1, 14, "ETag",                                                        header_format)
-        worksheet.write( 1, 15, "Last Modified",                                               header_format)
+        w.write(1, 0, "Type",                                                         header_format)
+        w.write(1, 1, "Timestamp",                                                    header_format)
+        w.write(1, 2, "URL",                                                          header_format)
+        w.write_rich_string(1, 3, "Title / Name / Status",                            header_format)
+        w.write_rich_string(1, 4, "Data / Value / Path",                              header_format)
+        w.write(1, 5, "Interpretation",                                               header_format)
+        w.write(1, 6, "Safe?",                                                        header_format)
+        w.write(1, 7, "Visit Count",                                                  header_format)
+        w.write(1, 8, "Typed Count",                                                  header_format)
+        w.write(1, 9, "URL Hidden",                                                   header_format)
+        w.write(1, 10, "Transition",                                                  header_format)
+        w.write(1, 11, "Interrupt Reason",                                            header_format)
+        w.write(1, 12, "Danger Type",                                                 header_format)
+        w.write(1, 13, "Opened?",                                                     header_format)
+        w.write(1, 14, "ETag",                                                        header_format)
+        w.write(1, 15, "Last Modified",                                               header_format)
 
         #Set column widths
-        worksheet.set_column('A:A', 16)         # Type
-        worksheet.set_column('B:B', 18)         # Date
-        worksheet.set_column('C:C', 60)         # URL
-        worksheet.set_column('D:D', 25)         # Title / Name / Status
-        worksheet.set_column('E:E', 80)         # Data / Value / Path
-        worksheet.set_column('F:F', 60)         # Interpretation
-        worksheet.set_column('G:G', 12)         # Safe Browsing
+        w.set_column('A:A', 16)         # Type
+        w.set_column('B:B', 18)         # Date
+        w.set_column('C:C', 60)         # URL
+        w.set_column('D:D', 25)         # Title / Name / Status
+        w.set_column('E:E', 80)         # Data / Value / Path
+        w.set_column('F:F', 60)         # Interpretation
+        w.set_column('G:G', 12)         # Safe Browsing
         # URL Specific
-        worksheet.set_column('H:J', 6)          # Visit Count, Typed Count, Hidden
-        worksheet.set_column('K:K', 12)         # Transition
+        w.set_column('H:J', 6)          # Visit Count, Typed Count, Hidden
+        w.set_column('K:K', 12)         # Transition
         # Download Specific
-        worksheet.set_column('L:L', 12)         # Interrupt Reason
-        worksheet.set_column('M:M', 24)         # Danger Type
-        worksheet.set_column('N:N', 12)         # Opened
-        worksheet.set_column('O:O', 12)         # ETag
-        worksheet.set_column('P:P', 27)         # Last Modified
+        w.set_column('L:L', 12)         # Interrupt Reason
+        w.set_column('M:M', 24)         # Danger Type
+        w.set_column('N:N', 12)         # Opened
+        w.set_column('O:O', 12)         # ETag
+        w.set_column('P:P', 27)         # Last Modified
 
         print("\nWriting \"%s.xlsx\"..." % args.output)
         row_number = 2
-        for item in items:
+        for item in browser.parsed_artifacts:
             if item.row_type == "url" or item.row_type == "url (archived)":
-                worksheet.write_string(row_number, 0, item.row_type,                 black_type_format)   # record_type
-                worksheet.write(       row_number, 1, friendly_date(item.timestamp), black_date_format)   # date
-                worksheet.write_string(row_number, 2, item.url,                      black_url_format)    # URL
-                worksheet.write_string(row_number, 3, item.name,                     black_field_format)  # Title
-                worksheet.write(       row_number, 4, "",                            black_value_format)  # Indexed Content
-                worksheet.write(       row_number, 5, item.interpretation,           black_value_format)  # Interpretation
-                worksheet.write(       row_number, 6, "",                            black_type_format)   # Safe Browsing
-                worksheet.write(       row_number, 7, item.visit_count,              black_flag_format)   # Visit Count
-                worksheet.write(       row_number, 8, item.typed_count,              black_flag_format)   # Typed Count
-                worksheet.write(       row_number, 9, item.hidden,                   black_flag_format)   # Hidden
-                worksheet.write_string(row_number, 10, item.transition_friendly,     black_trans_format)  # Transition
+                w.write_string(row_number, 0, item.row_type,                 black_type_format)   # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), black_date_format)   # date
+                w.write_string(row_number, 2, item.url,                      black_url_format)    # URL
+                w.write_string(row_number, 3, item.name,                     black_field_format)  # Title
+                w.write(       row_number, 4, "",                            black_value_format)  # Indexed Content
+                w.write(       row_number, 5, item.interpretation,           black_value_format)  # Interpretation
+                w.write(       row_number, 6, "",                            black_type_format)   # Safe Browsing
+                w.write(       row_number, 7, item.visit_count,              black_flag_format)   # Visit Count
+                w.write(       row_number, 8, item.typed_count,              black_flag_format)   # Typed Count
+                w.write(       row_number, 9, item.hidden,                   black_flag_format)   # Hidden
+                w.write_string(row_number, 10, item.transition_friendly,     black_trans_format)  # Transition
 
             if item.row_type == "autofill":
-                worksheet.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
-                worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
-                worksheet.write_string(row_number, 3, item.name,                     red_field_format)    # autofill field
-                worksheet.write_string(row_number, 4, item.value,                    red_value_format)    # autofill value
-                worksheet.write_string(row_number, 6, " ",                           red_type_format)     # blank
+                w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
+                w.write_string(row_number, 3, item.name,                     red_field_format)    # autofill field
+                w.write_string(row_number, 4, item.value,                    red_value_format)    # autofill value
+                w.write_string(row_number, 6, " ",                           red_type_format)     # blank
 
             if item.row_type == "download":
-                worksheet.write_string(row_number, 0, item.row_type,                 green_type_format)   # record_type
-                worksheet.write(       row_number, 1, friendly_date(item.timestamp), green_date_format)   # date
-                worksheet.write_string(row_number, 2, item.url,                      green_url_format)    # download URL
-                worksheet.write_string(row_number, 3, item.status_friendly,          green_field_format)  # % complete
-                worksheet.write_string(row_number, 4, item.value,                    green_value_format)  # download path
-                worksheet.write_string(row_number, 5, "",                            green_field_format)  # Interpretation (chain?)
-                worksheet.write(       row_number, 6, "",                            green_type_format)   # Safe Browsing
-                worksheet.write(       row_number, 11, item.interrupt_reason_friendly, green_value_format)  # download path
-                worksheet.write(       row_number, 12, item.danger_type_friendly,    green_value_format)  # download path
+                w.write_string(row_number, 0, item.row_type,                 green_type_format)   # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), green_date_format)   # date
+                w.write_string(row_number, 2, item.url,                      green_url_format)    # download URL
+                w.write_string(row_number, 3, item.status_friendly,          green_field_format)  # % complete
+                w.write_string(row_number, 4, item.value,                    green_value_format)  # download path
+                w.write_string(row_number, 5, "",                            green_field_format)  # Interpretation (chain?)
+                w.write(       row_number, 6, "",                            green_type_format)   # Safe Browsing
+                w.write(       row_number, 11, item.interrupt_reason_friendly,green_value_format) # download path
+                w.write(       row_number, 12, item.danger_type_friendly,    green_value_format)  # download path
                 open_friendly = ""
                 if item.opened == 1:
                     open_friendly = "Yes"
                 elif item.opened == 0:
                     open_friendly = "No"
-                worksheet.write_string(row_number, 13, open_friendly, green_value_format)    # opened
-                worksheet.write(row_number, 14, item.etag,            green_value_format)    # ETag
-                worksheet.write(row_number, 15, item.last_modified,   green_value_format)    # Last Modified
+                w.write_string(row_number, 13, open_friendly, green_value_format)                 # opened
+                w.write(row_number, 14, item.etag,            green_value_format)                 # ETag
+                w.write(row_number, 15, item.last_modified,   green_value_format)                 # Last Modified
 
             if item.row_type == "bookmark":
-                worksheet.write_string(row_number, 0, item.row_type,  red_type_format  )    # record_type
-                worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)    # date
-                worksheet.write_string(row_number, 2, item.url,       red_url_format   )    # URL
-                worksheet.write_string(row_number, 3, item.name,      red_value_format )    # bookmark name
-                worksheet.write_string(row_number, 4, item.value,     red_value_format )    # bookmark folder
+                w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
+                w.write_string(row_number, 2, item.url,       red_url_format)                     # URL
+                w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
+                w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
 
             if item.row_type == "bookmark folder":
-                worksheet.write_string(row_number, 0, item.row_type,  red_type_format  )    # record_type
-                worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format  )    # date
-                worksheet.write_string(row_number, 3, item.name,      red_value_format )    # bookmark name
-                worksheet.write_string(row_number, 4, item.value,     red_value_format )    # bookmark folder
+                w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
+                w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
+                w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
 
             if item.row_type == "cookie (created)" or item.row_type == "cookie (accessed)":
-                worksheet.write_string(row_number, 0, item.row_type,  gray_type_format  )    # record_type
-                worksheet.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format  )    # date
-                worksheet.write_string(row_number, 2, item.url,       gray_url_format   )    # URL
-                worksheet.write_string(row_number, 3, item.name,      gray_field_format )    # cookie name
-                worksheet.write_string(row_number, 4, item.value,     gray_value_format )    # cookie value
-                worksheet.write(       row_number, 5, item.interpretation, gray_value_format)    # cookie interpretation
-                # worksheet.write_string(row_number, 6, " ",          gray_type_format  )    # blank
+                w.write_string(row_number, 0, item.row_type,  gray_type_format)                   # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
+                w.write_string(row_number, 2, item.url,       gray_url_format)                    # URL
+                w.write_string(row_number, 3, item.name,      gray_field_format)                  # cookie name
+                w.write_string(row_number, 4, item.value,     gray_value_format)                  # cookie value
+                w.write(       row_number, 5, item.interpretation, gray_value_format)             # cookie interpretation
 
             if item.row_type == "local storage":
-                worksheet.write_string(row_number, 0, item.row_type,  gray_type_format  )    # record_type
-                worksheet.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
-                worksheet.write_string(row_number, 2, item.url,       gray_url_format   )    # URL
-                worksheet.write_string(row_number, 3, item.name,      gray_field_format )    # cookie name
-                worksheet.write_string(row_number, 4, item.value,     gray_value_format )    # cookie value
-                worksheet.write_string(row_number, 6, " ",            gray_type_format  )    # blank
+                w.write_string(row_number, 0, item.row_type,  gray_type_format)                   # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
+                w.write_string(row_number, 2, item.url,       gray_url_format)                    # URL
+                w.write_string(row_number, 3, item.name,      gray_field_format)                  # cookie name
+                w.write_string(row_number, 4, item.value,     gray_value_format)                  # cookie value
+                w.write(       row_number, 5, item.interpretation, gray_value_format)             # cookie interpretation
+                w.write_string(row_number, 6, " ",            gray_type_format)                   # blank
 
             row_number += 1
 
         # Formatting
-        worksheet.freeze_panes(2, 0)                # Freeze top row
-        worksheet.autofilter(1, 0, row_number, 15)  # Add autofilter
+        w.freeze_panes(2, 0)                # Freeze top row
+        w.autofilter(1, 0, row_number, 15)  # Add autofilter
 
         workbook.close()
 
-    def write_sqlite(target_browser):
-        output_file = None
+    def write_sqlite(browser):
+        output_file = args.output + '.sqlite'
 
-        output_file = sqlite3.connect(args.output + '.sqlite')
+        if os.path.exists(output_file):
+            if os.path.getsize(output_file) > 0:
+                print "\nDatabase file \"%s\" already exists.\n" % output_file
+                if not args.mode:
+                    args.mode = raw_input('Would you like to (A)dd to it, (O)verwrite it, or (E)xit? ')
+                add_re = re.compile(r'(^a$|add)', re.IGNORECASE)
+                over_re = re.compile(r'(^o$|overwrite)', re.IGNORECASE)
+                exit_re = re.compile(r'(^e$|exit)', re.IGNORECASE)
+                if re.search(exit_re, args.mode):
+                    print "Exiting... "
+                    sys.exit()
+                elif re.search(over_re, args.mode):
+                    os.remove(output_file)
+                    print "Deleted old \"%s\"" % output_file
+                elif re.search(add_re, args.mode):
+                    args.mode = 'add'
+                    print "Adding more records to existing \"%s\"" % output_file
+                else:
+                    print "Did not understand response.  Exiting... "
+                    sys.exit()
 
-        with output_file:
-            c = output_file.cursor()
-            c.execute('SELECT SQLITE_VERSION()')
-            c.execute("CREATE TABLE timeline(type TEXT, timestamp INT, url TEXT, title TEXT, value TEXT, "
-                      "interpretation TEXT, safe TEXT, visit_count INT, typed_count INT, url_hidden INT, "
-                      "transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
-                      "last_modified TEXT)")
-            data = c.fetchone()
-            print "SQLite version: %s" % data
+        output_db = sqlite3.connect(output_file)
 
+        with output_db:
+            c = output_db.cursor()
+            if args.mode != 'add':
+                c.execute("CREATE TABLE timeline(type TEXT, timestamp INT, url TEXT, title TEXT, value TEXT, "
+                          "interpretation TEXT, safe TEXT, visit_count INT, typed_count INT, url_hidden INT, "
+                          "transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
+                          "last_modified TEXT)")
 
-            # # Write column headers
-            # worksheet.write( 1, 0, "Type",                                                         header_format)
-            # worksheet.write( 1, 1, "Timestamp",                                                    header_format)
-            # worksheet.write( 1, 2, "URL",                                                          header_format)
-            # worksheet.write_rich_string( 1, 3, "Title / Name / Status",                            header_format)
-            # worksheet.write_rich_string( 1, 4, "Data / Value / Path",                              header_format)
-            # worksheet.write( 1, 5, "Interpretation",                                               header_format)
-            # worksheet.write( 1, 6, "Safe?",                                                        header_format)
-            # worksheet.write( 1, 7, "Visit Count",                                                  header_format)
-            # worksheet.write( 1, 8, "Typed Count",                                                  header_format)
-            # worksheet.write( 1, 9, "URL Hidden",                                                   header_format)
-            # worksheet.write( 1, 10, "Transition",                                                  header_format)
-            # worksheet.write( 1, 11, "Interrupt Reason",                                            header_format)
-            # worksheet.write( 1, 12, "Danger Type",                                                 header_format)
-            # worksheet.write( 1, 13, "Opened?",                                                     header_format)
-            # worksheet.write( 1, 14, "ETag",                                                        header_format)
-            # worksheet.write( 1, 15, "Last Modified",                                               header_format)
-            #
+                c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT)")
+
             print("\nWriting \"%s.sqlite\"..." % args.output)
 
-            for item in target_browser.parsed_artifacts:
+            for item in browser.parsed_artifacts:
                 if item.row_type == "url" or item.row_type == "url (archived)":
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, visit_count, "
-                              "typed_count, url_hidden, transition) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
-                               item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+                              "typed_count, url_hidden, transition) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
+                              item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
 
                 if item.row_type == "autofill":
-                    c.execute("INSERT INTO timeline (type, timestamp, title, value) VALUES (?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.name, item.value))
-            #         worksheet.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
-            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
-            #         worksheet.write_string(row_number, 3, item.name,                     red_field_format)    # autofill field
-            #         worksheet.write_string(row_number, 4, item.value,                    red_value_format)    # autofill value
-            #         worksheet.write_string(row_number, 6, " ",                           red_type_format)     # blank
-            #
-            #     if item.row_type == "download":
-            #         worksheet.write_string(row_number, 0, item.row_type,                 green_type_format)   # record_type
-            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), green_date_format)   # date
-            #         worksheet.write_string(row_number, 2, item.url,                      green_url_format)    # download URL
-            #         worksheet.write_string(row_number, 3, item.status_friendly,          green_field_format)  # % complete
-            #         worksheet.write_string(row_number, 4, item.value,                    green_value_format)  # download path
-            #         worksheet.write_string(row_number, 5, "",                            green_field_format)  # Interpretation (chain?)
-            #         worksheet.write(       row_number, 6, "",                            green_type_format)   # Safe Browsing
-            #         worksheet.write(       row_number, 11, item.interrupt_reason_friendly, green_value_format)  # download path
-            #         worksheet.write(       row_number, 12, item.danger_type_friendly,    green_value_format)  # download path
-            #         open_friendly = ""
-            #         if item.opened == 1:
-            #             open_friendly = "Yes"
-            #         elif item.opened == 0:
-            #             open_friendly = "No"
-            #         worksheet.write_string(row_number, 13, open_friendly, green_value_format)    # opened
-            #         worksheet.write(row_number, 14, item.etag,            green_value_format)    # ETag
-            #         worksheet.write(row_number, 15, item.last_modified,   green_value_format)    # Last Modified
-            #
-            #     if item.row_type == "bookmark":
-            #         worksheet.write_string(row_number, 0, item.row_type,  red_type_format  )    # record_type
-            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)    # date
-            #         worksheet.write_string(row_number, 2, item.url,       red_url_format   )    # URL
-            #         worksheet.write_string(row_number, 3, item.name,      red_value_format )    # bookmark name
-            #         worksheet.write_string(row_number, 4, item.value,     red_value_format )    # bookmark folder
-            #
-            #     if item.row_type == "bookmark folder":
-            #         worksheet.write_string(row_number, 0, item.row_type,  red_type_format  )    # record_type
-            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), red_date_format  )    # date
-            #         worksheet.write_string(row_number, 3, item.name,      red_value_format )    # bookmark name
-            #         worksheet.write_string(row_number, 4, item.value,     red_value_format )    # bookmark folder
-            #
-            #     if item.row_type == "cookie (created)" or item.row_type == "cookie (accessed)":
-            #         worksheet.write_string(row_number, 0, item.row_type,  gray_type_format  )    # record_type
-            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format  )    # date
-            #         worksheet.write_string(row_number, 2, item.url,       gray_url_format   )    # URL
-            #         worksheet.write_string(row_number, 3, item.name,      gray_field_format )    # cookie name
-            #         worksheet.write_string(row_number, 4, item.value,     gray_value_format )    # cookie value
-            #         worksheet.write(       row_number, 5, item.interpretation, gray_value_format)    # cookie interpretation
-            #         # worksheet.write_string(row_number, 6, " ",          gray_type_format  )    # blank
-            #
-            #     if item.row_type == "local storage":
-            #         worksheet.write_string(row_number, 0, item.row_type,  gray_type_format  )    # record_type
-            #         worksheet.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
-            #         worksheet.write_string(row_number, 2, item.url,       gray_url_format   )    # URL
-            #         worksheet.write_string(row_number, 3, item.name,      gray_field_format )    # cookie name
-            #         worksheet.write_string(row_number, 4, item.value,     gray_value_format )    # cookie value
-            #         worksheet.write_string(row_number, 6, " ",            gray_type_format  )    # blank
-            #
+                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?)",
+                             (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation))
 
-            #
-            # workbook.close()
+                if item.row_type == "download":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, "
+                              "interrupt_reason, danger_type, opened, etag, last_modified) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                             (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
+                              item.interpretation, item.interrupt_reason_friendly, item.danger_type_friendly,
+                              item.opened, item.etag, item.last_modified))
 
+                if item.row_type == "bookmark":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+                if item.row_type == "bookmark folder":
+                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.name, item.value,
+                               item.interpretation))
+
+                if item.row_type == "cookie (created)" or item.row_type == "cookie (accessed)":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+                if item.row_type == "local storage":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+            for extension in browser.installed_extensions:
+                c.execute("INSERT INTO installed_extensions (name, description, version, app_id) "
+                          "VALUES (?, ?, ?, ?)",
+                          (extension.name, extension.description, extension.version, extension.app_id))
 
     print "\nHindsight v%s\n" % __version__
 
     print "Start time: ", datetime.datetime.now()
     target_browser = Chrome(args.input)
-    print("\nReading files from %s:" % (args.input))
+    print("\nReading files from %s..." % (args.input))
 
     input_listing = os.listdir(args.input)
 
     target_browser.structure = {}
 
     supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies']
-    supported_jsons = ['Bookmarks']  #, 'Preferences']
     supported_subdirs = ['Local Storage', 'Extensions']
+    supported_jsons = ['Bookmarks']  #, 'Preferences']
+    supported_items = supported_databases + supported_subdirs + supported_jsons
 
     for input_file in input_listing:
         if input_file in supported_databases:
             # Process structure from Chrome database files
             target_browser.build_structure(args.input, input_file)
-            print(" - %s" % input_file)
 
     # Use the structure of the input files to determine possible Chrome versions
     target_browser.determine_version()
@@ -1246,7 +1230,12 @@ The Chrome data folder default locations are:
     else:
         display_version = target_browser.version[0]
 
-    print("\nDetected Chrome version %s" % display_version)
+    print("\nDetected Chrome version %s\n" % display_version)
+
+    print("Found the following supported files or directories:")
+    for input_file in input_listing:
+        if input_file in supported_items:
+            print(" - %s" % input_file)
 
     # Process History files
     print "\nProcessing files..."
@@ -1282,7 +1271,7 @@ The Chrome data folder default locations are:
 
     if args.format == 'xlsx':
         try:
-            write_excel(target_browser.parsed_artifacts)
+            write_excel(target_browser)
         except IOError:
             type, value, traceback = sys.exc_info()
             print value, "- is the file open?  If so, please close it and try again."
@@ -1293,10 +1282,11 @@ The Chrome data folder default locations are:
 
     elif args.format == 'sqlite':
         write_sqlite(target_browser)
+
     # elif args.format == 'csv':
     #    write_csv(target_browser.parsed_artifacts, target_browser.version)
 
-    print "Finish time: ", datetime.datetime.now()
+    print "\nFinish time: ", datetime.datetime.now()
 
 if __name__ == "__main__":
     main()
