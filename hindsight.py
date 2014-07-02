@@ -1116,9 +1116,11 @@ The Chrome data folder default locations are:
 
     def write_sqlite(browser):
         output_file = args.output + '.sqlite'
+        output_exists = None
 
         if os.path.exists(output_file):
             if os.path.getsize(output_file) > 0:
+                output_exists = 1
                 print "\nDatabase file \"%s\" already exists.\n" % output_file
                 if not args.mode:
                     args.mode = raw_input('Would you like to (A)dd to it, (O)verwrite it, or (E)xit? ')
@@ -1131,6 +1133,7 @@ The Chrome data folder default locations are:
                 elif re.search(over_re, args.mode):
                     os.remove(output_file)
                     print "Deleted old \"%s\"" % output_file
+                    args.mode = 'overwrite'
                 elif re.search(add_re, args.mode):
                     args.mode = 'add'
                     print "Adding more records to existing \"%s\"" % output_file
@@ -1142,7 +1145,7 @@ The Chrome data folder default locations are:
 
         with output_db:
             c = output_db.cursor()
-            if args.mode != 'add':
+            if args.mode == 'overwrite' or not output_exists:
                 c.execute("CREATE TABLE timeline(type TEXT, timestamp INT, url TEXT, title TEXT, value TEXT, "
                           "interpretation TEXT, safe TEXT, visit_count INT, typed_count INT, url_hidden INT, "
                           "transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
