@@ -459,7 +459,11 @@ class Chrome(object):
                         return "<unknown type decode error>"
 
                 # Connect to Local Storage file sqlite db
-                db_file = sqlite3.connect(ls_file_path)
+                try:
+                    db_file = sqlite3.connect(ls_file_path)
+
+                except:
+                    break
 
                 # Use a dictionary cursor
                 db_file.row_factory = dict_factory
