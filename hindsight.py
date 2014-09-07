@@ -3,22 +3,74 @@
 """Hindsight - Internet history forensics for Google Chrome/Chromium.
 
 This script parses the files in the Chrome data folder, runs various plugins
-against the data, and then outputs the results in a spreadsheet. """
+against the data, and then outputs the results in a spreadsheet. 
+"""
 
-import sqlite3
 import os
 import sys
-import json
 import re
 import codecs
-# import unicodecsv
 import time
 import datetime
-import xlsxwriter
 import argparse
+import logging
 
+# Try to import modules for different output formats, adding to output_formats array if successful
+output_formats = []
+try:
+    import xlsxwriter
+    output_formats.append('xlsx')
+except ImportError:
+    print "Couldn't import module 'xlsxwriter'; XLSX output disabled.\n"
+    # logging.warning("Couldn't import module 'xlsxwriter'; XLSX output disabled")
+try:
+    import sqlite3
+    output_formats.append('sqlite')
+except ImportError:
+    print "Couldn't import module 'sqlite3'; SQLite output disabled.\n"
+try:
+    import json
+    output_formats.append('json')
+except ImportError:
+    print "Couldn't import module 'json'; JSON output disabled.\n"
+try:
+    import unicodecsv
+    output_formats.append('csv')
+except ImportError:
+    print "Couldn't import module 'unicodecsv'; CSV output disabled.\n"
+
+# Try to import modules for cookie decryption on different OSes.  
+cookie_decryption = {'windows': 0, 'mac': 0, 'linux': 0}
+# Windows
+try:
+    import win32crypt
+    cookie_decryption['windows'] = 1
+except ImportError:
+    print "Couldn't import module 'win32crypt'; cookie decryption on Windows disabled.\n"
+# Mac OS
+try:
+    import keyring
+    cookie_decryption['mac'] = 1
+except ImportError:
+    print "Couldn't import module 'keyring'; cookie decryption on Mac OS disabled.\n"
+# Linux / Mac OS
+try:
+    from Crypto.Cipher import AES
+    cookie_decryption['linux'] = 1
+except ImportError:
+    print "Couldn't import module 'AES from Crypto.Cipher'; cookie decryption on Mac OS / Linux disabled.\n"
+    cookie_decryption['linux'] = 0
+    cookie_decryption['mac'] = 0
+try:
+    from Crypto.Protocol.KDF import PBKDF2
+except ImportError:
+    print "Couldn't import module 'PBKDF2 from Crypto.Protocol.KDF'; cookie decryption on Mac OS / Linux disabled.\n"
+    cookie_decryption['linux'] = 0
+    cookie_decryption['mac'] = 0
+
+# print cookie_decryption
 __author__ = "Ryan Benson"
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -30,12 +82,14 @@ def dict_factory(cursor, row):
 
 
 class Chrome(object):
-    def __init__(self, profile_path, version=[], structure={}, parsed_artifacts=[], installed_extensions=[]):
+    def __init__(self, profile_path, version=[], structure={}, parsed_artifacts=[], installed_extensions=[],
+                 artifacts_counts={}):
         self.profile_path = profile_path
         self.version = version
         self.structure = structure
         self.parsed_artifacts = parsed_artifacts
         self.installed_extensions = installed_extensions
+        self.artifacts_counts = artifacts_counts
 
     def build_structure(self, path, database):
 
@@ -70,10 +124,10 @@ class Chrome(object):
     def to_epoch(self, timestamp):
         if timestamp > 99999999999999:
             # Webkit
-            return (int(timestamp)/1000000)-11644473600
+            return (int(timestamp) / 1000000) - 11644473600
         elif timestamp > 99999999999:
             # Epoch milliseconds
-            return int(timestamp)/1000
+            return int(timestamp) / 1000
         elif timestamp > 1:
             # Epoch
             return timestamp
@@ -84,10 +138,10 @@ class Chrome(object):
         timestamp = int(timestamp)
         if timestamp > 99999999999999:
             # Webkit
-            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp)/1000000)-11644473600))
+            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
         elif timestamp > 99999999999:
             # Epoch milliseconds
-            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp/1000))
+            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp / 1000))
         elif timestamp > 1:
             # Epoch
             return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
@@ -100,9 +154,12 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 36)
+        possible_versions = range(1, 37)
 
-        def remove_versions(column, table, version):
+        def trim_versions_if(column, table, version):
+            """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
+            versions >= 'version' if 'column' is in 'table'.
+            """
             if table:
                 if column in table:
                     possible_versions[:] = [x for x in possible_versions if x >= version]
@@ -111,34 +168,37 @@ class Chrome(object):
 
         if 'History' in self.structure.keys():
             if 'visits' in self.structure['History'].keys():
-                remove_versions('visit_duration', self.structure['History']['visits'], 20)
+                trim_versions_if('visit_duration', self.structure['History']['visits'], 20)
             if 'visit_source' in self.structure['History'].keys():
-                remove_versions('source', self.structure['History']['visit_source'], 7)
+                trim_versions_if('source', self.structure['History']['visit_source'], 7)
             if 'downloads' in self.structure['History'].keys():
-                remove_versions('target_path', self.structure['History']['downloads'], 26)
-                remove_versions('opened', self.structure['History']['downloads'], 16)
-                remove_versions('etag', self.structure['History']['downloads'], 30)
+                trim_versions_if('target_path', self.structure['History']['downloads'], 26)
+                trim_versions_if('opened', self.structure['History']['downloads'], 16)
+                trim_versions_if('etag', self.structure['History']['downloads'], 30)
 
         if 'Cookies' in self.structure.keys():
             if 'cookies' in self.structure['Cookies'].keys():
-                remove_versions('persistent', self.structure['Cookies']['cookies'], 17)
-                remove_versions('priority', self.structure['Cookies']['cookies'], 28)
-                remove_versions('encrypted_value', self.structure['Cookies']['cookies'], 33)
+                trim_versions_if('persistent', self.structure['Cookies']['cookies'], 17)
+                trim_versions_if('priority', self.structure['Cookies']['cookies'], 28)
+                trim_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
 
         if 'Web Data' in self.structure.keys():
             if 'autofill' in self.structure['Web Data'].keys():
-                remove_versions('name', self.structure['Web Data']['autofill'], 2)
-                remove_versions('date_created', self.structure['Web Data']['autofill'], 35)
-
+                trim_versions_if('name', self.structure['Web Data']['autofill'], 2)
+                trim_versions_if('date_created', self.structure['Web Data']['autofill'], 35)
+            if 'autofill_profiles' in self.structure['Web Data'].keys():
+                trim_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
         self.version = possible_versions
 
     def get_history(self, path, history_file, version):
         # Set up empty return array
         results = []
 
+        logging.info("History items from {}:".format(history_file))
+
         # TODO: visit_source table?  don't have good sample data
         # TODO: visits where visit_count = 0; means it should be in Archived History but could be helpful to have if
-              # that file is missing.  Changing the first JOIN to a LEFT JOIN adds these in.
+        # that file is missing.  Changing the first JOIN to a LEFT JOIN adds these in.
 
         # Queries for different versions
         query = {30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
@@ -159,8 +219,7 @@ class Chrome(object):
                           FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  1:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                              urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
-                          FROM urls, visits WHERE urls.id = visits.url'''
-        }
+                          FROM urls, visits WHERE urls.id = visits.url'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -168,10 +227,12 @@ class Chrome(object):
             compatible_version -= 1
 
         if compatible_version is not 0:
+            logging.info(" - Using SQL query for History items for Chrome v{}".format(compatible_version))
             try:
                 # Connect to 'History' sqlite db
                 history_path = os.path.join(path, history_file)
                 db_file = sqlite3.connect(history_path)
+                logging.info(" - Reading from file '{}'".format(history_path))
 
                 # Use a dictionary cursor
                 db_file.row_factory = dict_factory
@@ -195,22 +256,19 @@ class Chrome(object):
                     results.append(new_row)
 
                 db_file.close()
+                self.artifacts_counts[history_file] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
             except IOError:
                 print("Couldn't open file")
+                logging.error(" - Couldn't open {}".format(os.path.join(path, history_file)))
 
     def get_downloads(self, path, database, version):
         # Set up empty return array
         results = []
 
-        # Connect to 'History' sqlite db
-        history_path = os.path.join(path, database)
-        db_file = sqlite3.connect(history_path)
-
-        # Use a dictionary cursor
-        db_file.row_factory = dict_factory
-        cursor = db_file.cursor()
+        logging.info("Download items from {}:".format(database))
 
         # Queries for different versions
         query = {30: '''SELECT downloads.id, downloads_url_chains.url, downloads.received_bytes, downloads.total_bytes,
@@ -229,8 +287,7 @@ class Chrome(object):
                         FROM downloads''',
                  1:  '''SELECT downloads.id, downloads.url, downloads.received_bytes, downloads.total_bytes,
                             downloads.state, downloads.full_path, downloads.start_time
-                        FROM downloads'''
-        }
+                        FROM downloads'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -238,7 +295,17 @@ class Chrome(object):
             compatible_version -= 1
 
         if compatible_version is not 0:
+            logging.info(" - Using SQL query for Download items for Chrome v{}".format(compatible_version))
             try:
+                # Connect to 'History' sqlite db
+                history_path = os.path.join(path, database)
+                db_file = sqlite3.connect(history_path)
+                logging.info(" - Reading from file '{}'".format(history_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
 
@@ -254,7 +321,6 @@ class Chrome(object):
                     new_row.decode_danger_type()
                     new_row.decode_download_state()
                     new_row.timestamp = new_row.start_time
-                    # new_row.timestamp = self.to_epoch(new_row.start_time)
 
                     new_row.create_friendly_status()
 
@@ -266,26 +332,84 @@ class Chrome(object):
                         new_row.value = new_row.target_path
                     else:
                         new_row.value = 'Error retrieving download location'
+                        logging.error(" - Error retrieving download location for download '{}'".format(new_row.url))
 
                     results.append(new_row)
 
                 db_file.close()
+                self.artifacts_counts['Downloads'] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
             except IOError:
                 print("Couldn't open file")
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_cookies(self, path, database, version):
+        def decrypt_cookie(encrypted_value):
+            """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
+             - Mac/Linux: http://n8henrie.com/2014/05/decrypt-chrome-cookies-with-python/
+             - Windows: https://gist.github.com/jordan-wright/5770442#file-chrome_extract-py
+             - Relevant Chromium source code: http://src.chromium.org/viewvc/chrome/trunk/src/components/os_crypt/
+             """
+            salt = b'saltysalt'
+            iv = b' ' * 16
+            length = 16
+
+            def chrome_decrypt(encrypted, key=None):
+                # Encrypted cookies should be prefixed with 'v10' according to the
+                # Chromium code. Strip it off.
+                encrypted = encrypted[3:]
+
+                # Strip padding by taking off number indicated by padding
+                # eg if last is '\x0e' then ord('\x0e') == 14, so take off 14.
+                def clean(x):
+                    return x[:-ord(x[-1])]
+
+                cipher = AES.new(key, AES.MODE_CBC, IV=iv)
+                decrypted = cipher.decrypt(encrypted)
+
+                return clean(decrypted)
+
+            decrypted_value = "<error>"
+            if encrypted_value is not None:
+                if len(encrypted_value) >= 2:
+                    # If running Chrome on Windows
+                    if sys.platform == 'win32' and cookie_decryption['windows'] is 1:
+                        try:
+                            decrypted_value = win32crypt.CryptUnprotectData(encrypted_value, None, None, None, 0)[1]
+                        except:
+                            decrypted_value = "<encrypted>"
+                    # If running Chrome on OSX
+                    elif sys.platform == 'darwin' and cookie_decryption['mac'] is 1:
+                        try:
+                            my_pass = keyring.get_password('Chrome Safe Storage', 'Chrome')
+                            my_pass = my_pass.encode('utf8')
+                            iterations = 1003
+                            key = PBKDF2(my_pass, salt, length, iterations)
+                            decrypted_value = chrome_decrypt(encrypted_value, key=key)
+                        except:
+                            pass
+                    else:
+                        decrypted_value = "<encrypted>"
+
+                    # If running Chromium on Linux.
+                    # Unlike Win/Mac, we can decrypt Linux cookies without the user's pw
+                    if decrypted_value is "<encrypted>" and cookie_decryption['linux'] is 1:
+                        try:
+                            my_pass = 'peanuts'.encode('utf8')
+                            iterations = 1
+                            key = PBKDF2(my_pass, salt, length, iterations)
+                            decrypted_value = chrome_decrypt(encrypted_value, key=key)
+                        except:
+                            pass
+
+            return decrypted_value
+
         # Set up empty return array
         results = []
 
-        # Connect to 'Cookies' sqlite db
-        db_path = os.path.join(path, database)
-        db_file = sqlite3.connect(db_path)
-
-        # Use a dictionary cursor
-        db_file.row_factory = dict_factory
-        cursor = db_file.cursor()
+        logging.info("Cookie items from {}:".format(database))
 
         # Queries for different versions
         query = {33: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
@@ -302,8 +426,7 @@ class Chrome(object):
                         FROM cookies''',
                  1:  '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly
-                        FROM cookies'''
-        }
+                        FROM cookies'''}
 
         # Get the lowest possible versionr from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -311,14 +434,24 @@ class Chrome(object):
             compatible_version -= 1
 
         if compatible_version is not 0:
+            logging.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
             try:
+                # Connect to 'Cookies' sqlite db
+                db_path = os.path.join(path, database)
+                db_file = sqlite3.connect(db_path)
+                logging.info(" - Reading from file '{}'".format(db_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = "<encrypted>"
+                            cookie_value = decrypt_cookie(row.get('encrypted_value'))
                         else:
                             cookie_value = row.get('value')
                     else:
@@ -328,14 +461,16 @@ class Chrome(object):
                     new_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
                                          self.to_epoch(row.get('creation_utc')), self.to_epoch(row.get('last_access_utc')),
                                          self.to_epoch(row.get('expires_utc')), row.get('secure'), row.get('httponly'),
-                                         row.get('persistent'), row.get('has_expires'), row.get('priority'))
+                                         row.get('encrypted_value'), row.get('persistent'), row.get('has_expires'),
+                                         row.get('priority'))
 
                     accessed_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                              self.to_epoch(row.get('creation_utc')), self.to_epoch(row.get('last_access_utc')),
-                                              self.to_epoch(row.get('expires_utc')), row.get('secure'), row.get('httponly'),
-                                              row.get('persistent'), row.get('has_expires'), row.get('priority'))
+                                              self.to_epoch(row.get('creation_utc')),
+                                              self.to_epoch(row.get('last_access_utc')),
+                                              self.to_epoch(row.get('expires_utc')), row.get('secure'),
+                                              row.get('httponly'), row.get('encrypted_value'), row.get('persistent'),
+                                              row.get('has_expires'), row.get('priority'))
 
-                    # new_row.url = new_row.host_key
                     new_row.url = (new_row.host_key + new_row.path)
                     accessed_row.url = (accessed_row.host_key + accessed_row.path)
 
@@ -351,30 +486,26 @@ class Chrome(object):
                         results.append(accessed_row)
 
                 db_file.close()
+                self.artifacts_counts['Cookies'] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
             except IOError:
                 print("Couldn't open file")
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_autofill(self, path, database, version):
         # Set up empty return array
         results = []
 
-        # Connect to 'Web Data' sqlite db
-        db_path = os.path.join(path, database)
-        db_file = sqlite3.connect(db_path)
-
-        # Use a dictionary cursor
-        db_file.row_factory = dict_factory
-        cursor = db_file.cursor()
+        logging.info("Autofill items from {}:".format(database))
 
         # TODO: add in autofill.last_used value, new in v35
         # Queries for different versions
         query = {35: '''SELECT autofill.date_created, autofill.name, autofill.value, autofill.count
                         FROM autofill''',
-                 2:  '''SELECT autofill_dates.date_created, autofill.name, autofill.value, autofill.count
-                        FROM autofill, autofill_dates WHERE autofill.pair_id = autofill_dates.pair_id'''
-        }
+                 2: '''SELECT autofill_dates.date_created, autofill.name, autofill.value, autofill.count
+                        FROM autofill, autofill_dates WHERE autofill.pair_id = autofill_dates.pair_id'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -382,30 +513,48 @@ class Chrome(object):
             compatible_version -= 1
 
         if compatible_version is not 0:
+            logging.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
             try:
+                # Connect to 'Web Data' SQLite db
+                db_path = os.path.join(path, database)
+                db_file = sqlite3.connect(db_path)
+                logging.info(" - Reading from file '{}'".format(db_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    results.append(AutofillItem(self.to_epoch(row.get('date_created')), row.get('name'), row.get('value'), row.get('count')))
+                    results.append(AutofillItem(self.to_epoch(row.get('date_created')), row.get('name'),
+                                                row.get('value'), row.get('count')))
 
                 db_file.close()
+                self.artifacts_counts['Autofill'] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
             except IOError:
                 print("Couldn't open file")
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
         results = []
 
+        logging.info("Bookmark items from {}:".format(file))
+
         # Connect to 'Bookmarks' JSON file
+        bookmarks_path = os.path.join(path, file)
+
         try:
-            bookmarks_path = os.path.join(path, file)
             bookmarks_file = codecs.open(bookmarks_path, 'rb', encoding='utf-8')
-        except IOError:
-            print "No bookmarks file"
+            logging.info(" - Reading from file '{}'".format(bookmarks_path))
+        except:
+            logging.error(" - Error opening '{}'".format(bookmarks_path))
             return
 
         decoded_json = json.loads(bookmarks_file.read())
@@ -428,6 +577,8 @@ class Chrome(object):
                                               decoded_json["roots"][top_level_folder]["children"])
 
         bookmarks_file.close()
+        self.artifacts_counts['Bookmarks'] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
         self.parsed_artifacts.extend(results)
 
     def get_local_storage(self, path, dir_name):
@@ -435,8 +586,11 @@ class Chrome(object):
 
         # Grab file list of 'Local Storage' directory
         ls_path = os.path.join(path, dir_name)
-        local_storage_listing = os.listdir(ls_path)
+        logging.info("Local Storage:")
+        logging.info(" - Reading from {}".format(ls_path))
 
+        local_storage_listing = os.listdir(ls_path)
+        logging.debug(" - All {} files in Local Storage directory: {}".format(len(local_storage_listing), str(local_storage_listing)))
         filtered_listing = []
 
         for ls_file in local_storage_listing:
@@ -459,7 +613,11 @@ class Chrome(object):
                         return "<unknown type decode error>"
 
                 # Connect to Local Storage file sqlite db
-                db_file = sqlite3.connect(ls_file_path)
+                try:
+                    db_file = sqlite3.connect(ls_file_path)
+                except:
+                    logging.warning(" - Error opening {}".format(ls_file_path))
+                    break
 
                 # Use a dictionary cursor
                 db_file.row_factory = dict_factory
@@ -467,39 +625,47 @@ class Chrome(object):
 
                 try:
                     cursor.execute('SELECT key,value FROM ItemTable')
-
                     for row in cursor:
                         # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(LocalStorageItem(ls_file, ls_created, row.get('key'), to_unicode(row.get('value'))))
-
+                        results.append(LocalStorageItem(ls_file, ls_created, row.get('key'),
+                                                        to_unicode(row.get('value'))))
                 except:
+                    logging.warning(" - Error reading key/values from {}".format(ls_file_path))
                     pass
 
+        self.artifacts_counts['Local Storage'] = len(results)
+        logging.info(" - Parsed {} items from {} files".format(len(results), len(filtered_listing)))
         self.parsed_artifacts.extend(results)
 
     def get_extensions(self, path, dir_name):
         results = []
+        logging.info("Extensions:")
 
         # Grab listing of 'Extensions' directory
         ext_path = os.path.join(path, dir_name)
+        logging.info(" - Reading from {}".format(ext_path))
         ext_listing = os.listdir(ext_path)
+        logging.debug(" - {count} files in Extensions directory: {list}".format(list=str(ext_listing),
+                                                                             count=len(ext_listing)))
 
         # Only process directories with the expected naming convention
         app_id_re = re.compile(r'^([a-z]{32})$')
         ext_listing = [x for x in ext_listing if app_id_re.match(x)]
+        logging.debug(" - {count} files in Extensions directory will be processed: {list}".format(list=str(ext_listing),
+                                                                                               count=len(ext_listing)))
 
         # Process each directory with an app_id name
         for app_id in ext_listing:
-            # Get listing of the contents of app_id directory; should contain subdirs for each version of the extention.
+            # Get listing of the contents of app_id directory; should contain subdirs for each version of the extension.
             ext_vers_listing = os.path.join(ext_path, app_id)
             ext_vers = os.listdir(ext_vers_listing)
 
             # Connect to manifest.json in latest version directory
+            manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
             try:
-                manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
                 manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
             except IOError:
-                print "Error opening manifest file"
+                logging.error(" - Error opening {} for extension {}".format(manifest_path, app_id))
 
             name = None
             description = None
@@ -509,8 +675,10 @@ class Chrome(object):
                     decoded_manifest = json.loads(manifest_file.read())
                     if decoded_manifest["name"][:2] == '__':
                         if decoded_manifest["default_locale"]:
-                            locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
-                            locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
+                            locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
+                                                                decoded_manifest["default_locale"], 'messages.json')
+                            locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
+                                                               errors='replace')
                             decoded_locale_messages = json.loads(locale_messages_file.read())
                             try:
                                 name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
@@ -518,18 +686,22 @@ class Chrome(object):
                                 try:
                                     name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
                                 except:
+                                    logging.warning(" - Error reading 'name' for {}".format(app_id))
                                     name = "<error>"
                     else:
                         try:
                             name = decoded_manifest["name"]
                         except KeyError:
                             name = None
+                            logging.error(" - Error reading 'name' for {}".format(app_id))
 
                     if "description" in decoded_manifest.keys():
                         if decoded_manifest["description"][:2] == '__':
                             if decoded_manifest["default_locale"]:
-                                locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales', decoded_manifest["default_locale"], 'messages.json')
-                                locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8', errors='replace')
+                                locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
+                                                                    decoded_manifest["default_locale"], 'messages.json')
+                                locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
+                                                                   errors='replace')
                                 decoded_locale_messages = json.loads(locale_messages_file.read())
                                 try:
                                     description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
@@ -538,17 +710,21 @@ class Chrome(object):
                                         description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
                                     except:
                                         description = "<error>"
+                                        logging.error(" - Error reading 'message' for {}".format(app_id))
                         else:
                             try:
                                 description = decoded_manifest["description"]
                             except KeyError:
                                 description = None
+                                logging.warning(" - Error reading 'description' for {}".format(app_id))
 
                     results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
-
-                except ValueError:
+                except:
+                    logging.error(" - Error decoding manifest file for {}".format(app_id))
                     pass
 
+        self.artifacts_counts['Extensions'] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
         self.installed_extensions = results
 
 
@@ -704,7 +880,7 @@ class DownloadItem(HistoryItem):
 
     def decode_interrupt_reason(self):
         interrupts = {
-            0:  "No Interrupt",               # Success
+            0:  "No Interrupt",                 # Success
 
             # from download_interrupt_reason_values.h on Chromium site
             # File errors
@@ -751,6 +927,7 @@ class DownloadItem(HistoryItem):
             self.interrupt_reason_friendly = None
         else:
             self.interrupt_reason_friendly = "[Error - Unknown Interrupt Code]"
+            logging.error(" - Error decoding interrupt code for download '{}'".format(self.url))
 
     def decode_danger_type(self):
         # from download_danger_type.h on Chromium site
@@ -780,6 +957,7 @@ class DownloadItem(HistoryItem):
             self.danger_type_friendly = None
         else:
             self.danger_type_friendly = "[Error - Unknown Danger Code]"
+            logging.error(" - Error decoding danger code for download '{}'".format(self.url))
 
     def decode_download_state(self):
         # from download_item.h on Chromium site
@@ -793,22 +971,24 @@ class DownloadItem(HistoryItem):
             self.state_friendly = states[self.state]
         else:
             self.state_friendly = "[Error - Unknown State]"
+            logging.error(" - Error decoding download state for download '{}'".format(self.url))
 
     def create_friendly_status(self):
         try:
             status = "%s -  %i%% [%i/%i]" % \
-                     (self.state_friendly, (float(self.received_bytes)/float(self.total_bytes))*100,
+                     (self.state_friendly, (float(self.received_bytes) / float(self.total_bytes)) * 100,
                       self.received_bytes, self.total_bytes)
         except ZeroDivisionError:
             status = "%s -  %i bytes" % (self.state_friendly, self.received_bytes)
         except:
             status = "[parsing error]"
+            logging.error(" - Error creating friendly status message for download '{}'".format(self.url))
         self.status_friendly = status
 
 
 class CookieItem(HistoryItem):
     def __init__(self, host_key, path, name, value, creation_utc, last_access_utc, expires_utc, secure, http_only,
-                 persistent=None, has_expires=None, priority=None):
+                 encrypted_value=None, persistent=None, has_expires=None, priority=None):
         super(CookieItem, self).__init__('cookie', timestamp=creation_utc, url=host_key, name=name, value=value)
         self.host_key = host_key
         self.path = path
@@ -819,6 +999,7 @@ class CookieItem(HistoryItem):
         self.expires_utc = expires_utc
         self.secure = secure
         self.httponly = http_only
+        self.encrypted_value = encrypted_value
         self.persistent = persistent
         self.has_expires = has_expires
         self.priority = priority
@@ -873,10 +1054,10 @@ class BrowserExtension(object):
 def friendly_date(timestamp):
     if timestamp > 99999999999999:
         # Webkit
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp)/1000000)-11644473600))
+        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
     elif timestamp > 99999999999:
         # Epoch milliseconds
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp/1000))
+        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp / 1000))
     elif timestamp > 1:
         # Epoch
         return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
@@ -916,9 +1097,11 @@ The Chrome data folder default locations are:
 
     parser.add_argument('-i', '--input', help='Path to the Chrome(ium) "Default" directory', required=True)
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
-    parser.add_argument('-f', '--format', choices=['xlsx', 'json', 'sqlite'], default='xlsx', help='Output format')
+    parser.add_argument('-f', '--format', choices=output_formats, default=output_formats[0], help='Output format')
     parser.add_argument('-m', '--mode', choices=['add', 'overwrite', 'exit'],
                         help='Output mode (what to do if output file already exists)')
+    parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
+                        default='hindsight.log')
 
     args = parser.parse_args()
 
@@ -1034,7 +1217,7 @@ The Chrome data folder default locations are:
         w.set_column('O:O', 12)         # ETag
         w.set_column('P:P', 27)         # Last Modified
 
-        print("\nWriting \"%s.xlsx\"..." % args.output)
+        print("\n Writing \"%s.xlsx\"" % args.output)
         row_number = 2
         for item in browser.parsed_artifacts:
             if item.row_type == "url" or item.row_type == "url (archived)":
@@ -1153,28 +1336,28 @@ The Chrome data folder default locations are:
 
                 c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT)")
 
-            print("\nWriting \"%s.sqlite\"..." % args.output)
+            print("\n Writing \"%s.sqlite\"" % args.output)
 
             for item in browser.parsed_artifacts:
                 if item.row_type == "url" or item.row_type == "url (archived)":
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, visit_count, "
                               "typed_count, url_hidden, transition) "
                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                             (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
-                              item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
+                               item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
 
                 if item.row_type == "autofill":
                     c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
                               "VALUES (?, ?, ?, ?, ?)",
-                             (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation))
+                              (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation))
 
                 if item.row_type == "download":
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, "
                               "interrupt_reason, danger_type, opened, etag, last_modified) "
                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                             (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
-                              item.interpretation, item.interrupt_reason_friendly, item.danger_type_friendly,
-                              item.opened, item.etag, item.last_modified))
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
+                               item.interpretation, item.interrupt_reason_friendly, item.danger_type_friendly,
+                               item.opened, item.etag, item.last_modified))
 
                 if item.row_type == "bookmark":
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
@@ -1205,20 +1388,58 @@ The Chrome data folder default locations are:
                           "VALUES (?, ?, ?, ?)",
                           (extension.name, extension.description, extension.version, extension.app_id))
 
-    print "\nHindsight v%s\n" % __version__
+    def format_plugin_output(name, version, items):
+        width = 80
+        left_side = width*0.55
+        full_plugin_name = "{} (v{})".format(name, version)
+        pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
+            .format(name=full_plugin_name, left_width=int(left_side), version=version, count=' '.join(['-', items, '-']),
+                    right_width=(width - int(left_side)-2))
+        return pretty_name
 
-    print "Start time: ", datetime.datetime.now()
+    def format_meta_output(name, content):
+        left_side = 17
+        pretty_name = "{name:>{left_width}}: {content}" \
+            .format(name=name, left_width=int(left_side), content=content)
+        return pretty_name
+
+    def format_processing_output(name, items):
+        width = 80
+        left_side = width*0.55
+        count = '{:>6}'.format(str(items))
+        pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
+            .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
+                    right_width=(width - int(left_side)-2))
+        return pretty_name
+
+    # Set up logging
+    logging.basicConfig(filename=args.log, level=logging.DEBUG, format='%(asctime)s.%(msecs).03d | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+    # Hindsight version info
+    print "\n Hindsight v%s" % __version__
+    logging.info('\n' + '#'*80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'.format(__version__) + '#'*80)
+    logging.debug("Options: " + str(args))
+
+    # Analysis start time
+    print format_meta_output("Start time", datetime.datetime.now())
+    logging.info("Starting analysis")
     target_browser = Chrome(args.input)
-    print("\nReading files from %s..." % (args.input))
 
+    # Reading input directory
+    print format_meta_output("Input directory", args.input)
+    logging.info("Reading files from %s" % args.input)
     input_listing = os.listdir(args.input)
+    logging.debug("Input directory contents: " + str(input_listing))
+    print format_meta_output("Output name", args.output)
 
+    print("\n Processing:")
     target_browser.structure = {}
 
     supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies']
     supported_subdirs = ['Local Storage', 'Extensions']
-    supported_jsons = ['Bookmarks']  #, 'Preferences']
+    supported_jsons = ['Bookmarks']  # , 'Preferences']
     supported_items = supported_databases + supported_subdirs + supported_jsons
+    logging.debug("Supported items: " + str(supported_items))
 
     for input_file in input_listing:
         if input_file in supported_databases:
@@ -1233,63 +1454,89 @@ The Chrome data folder default locations are:
     else:
         display_version = target_browser.version[0]
 
-    print("\nDetected Chrome version %s\n" % display_version)
+    # print("  Detected Chrome version: %s" % display_version)
+    print format_processing_output("Detected Chrome version", display_version)
 
-    print("Found the following supported files or directories:")
+    logging.info("Detected Chrome version %s" % display_version)
+
+    logging.info("Found the following supported files or directories:")
     for input_file in input_listing:
         if input_file in supported_items:
-            print(" - %s" % input_file)
+            logging.info(" - %s" % input_file)
 
     # Process History files
-    print "\nProcessing files..."
     if 'History' in input_listing:
         target_browser.get_history(args.input, 'History', target_browser.version)
+        print format_processing_output("URL records", target_browser.artifacts_counts['History'])
+
         target_browser.get_downloads(args.input, 'History', target_browser.version)
+        print format_processing_output("Download records", target_browser.artifacts_counts['Downloads'])
+
     if 'Archived History' in input_listing:
         target_browser.get_history(args.input, 'Archived History', target_browser.version)
+        print format_processing_output("Archived URL records", target_browser.artifacts_counts['Archived History'])
+
     if 'Cookies' in input_listing:
         target_browser.get_cookies(args.input, 'Cookies', target_browser.version)
+        print format_processing_output("Cookie records", target_browser.artifacts_counts['Cookies'])
+
     if 'Web Data' in input_listing:
         target_browser.get_autofill(args.input, 'Web Data', target_browser.version)
+        print format_processing_output("Autofill records", target_browser.artifacts_counts['Autofill'])
+
     if 'Bookmarks' in input_listing:
         target_browser.get_bookmarks(args.input, 'Bookmarks', target_browser.version)
+        print format_processing_output("Bookmark records", target_browser.artifacts_counts['Bookmarks'])
+
     if 'Local Storage' in input_listing:
         target_browser.get_local_storage(args.input, 'Local Storage')
+        print format_processing_output("Local Storage records", target_browser.artifacts_counts['Local Storage'])
+
     if 'Extensions' in input_listing:
         target_browser.get_extensions(args.input, 'Extensions')
+        print format_processing_output("Extensions", target_browser.artifacts_counts['Extensions'])
 
     target_browser.parsed_artifacts.sort()
     sys.path.insert(0, 'plugins')
-    print("\nRunning plugins...")
+    print("\n Running plugins:")
+    logging.info("Plugins:")
 
     plugin_path = os.path.join(".", 'plugins')
     plugin_listing = os.listdir(plugin_path)
 
+    logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
     for plugin in plugin_listing:
         if plugin[-3:] == ".py":
             plugin = plugin.replace(".py", "")
             module = __import__(plugin)
-            print " - " + module.friendlyName + " [v" + module.version + "]"
-            module.plugin(target_browser)
+            logging.info("Running '{}' plugin".format(module.friendlyName))
+            parsed_items = module.plugin(target_browser)
+            print format_plugin_output(module.friendlyName, module.version, parsed_items)
+            logging.info(" - Completed; {}".format(parsed_items))
 
     if args.format == 'xlsx':
+        logging.info("Writing output; XLSX format selected")
         try:
             write_excel(target_browser)
         except IOError:
             type, value, traceback = sys.exc_info()
             print value, "- is the file open?  If so, please close it and try again."
+            logging.error("Error writing XLSX file; type: {}, value: {}, traceback: {}".format(type, value, traceback))
 
     elif args.format == 'json':
+        logging.info("Writing output; JSON format selected")
         output = open(args.output, 'wb')
         output.write(json.dumps(target_browser, cls=MyEncoder, indent=4))
 
     elif args.format == 'sqlite':
+        logging.info("Writing output; SQLite format selected")
         write_sqlite(target_browser)
 
     # elif args.format == 'csv':
-    #    write_csv(target_browser.parsed_artifacts, target_browser.version)
+    # write_csv(target_browser.parsed_artifacts, target_browser.version)
 
-    print "\nFinish time: ", datetime.datetime.now()
+    print "\n Finish time: ", datetime.datetime.now()
+    logging.info("Finish time: {}\n\n".format(datetime.datetime.now()))
 
 if __name__ == "__main__":
     main()
