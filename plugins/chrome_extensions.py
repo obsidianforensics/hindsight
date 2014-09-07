@@ -16,11 +16,13 @@ artifactTypes = ["url", "url (archived)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140623"
+version = "20140813"
+parsedItems = 0
 
 
 def plugin(target_browser):
     extension_re = re.compile(r'^chrome-extension://([a-z]{32})')
+    global parsedItems
 
     for item in target_browser.parsed_artifacts:
         if item.row_type in artifactTypes:
@@ -30,3 +32,7 @@ def plugin(target_browser):
                     for ext in target_browser.installed_extensions:
                         if ext.app_id == m.group(1):
                             item.interpretation = "%s (%s) [Chrome Extension]" % (ext.name, ext.description)
+                            parsedItems += 1
+
+    # Description of what the plugin did
+    return "%s extension URLs parsed" % parsedItems

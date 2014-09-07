@@ -17,7 +17,8 @@ artifactTypes = ["url", "url (archived)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140623"
+version = "20140813"
+parsedItems = 0
 
 
 def plugin(target_browser):
@@ -26,7 +27,7 @@ def plugin(target_browser):
     qdr_re = re.compile(r'(s|n|h|d|w|m|y)(\d{0,9})')
     tbs_qdr_re = re.compile(r'qdr:(s|n|h|d|w|m|y)(\d{0,9})')
     tbs_cd_re = re.compile(r'cd_min:(\d{1,2}/\d{1,2}/\d{2,4}),cd_max:(\d{1,2}/\d{1,2}/\d{2,4})')
-
+    global parsedItems
 
     time_abbr = {"s": "second", "n": "minute", "h": "hour", "d": "day", "w": "week", "m": "month", "y": "year"}
 
@@ -50,7 +51,6 @@ def plugin(target_browser):
                         parameters[p.group(1)] = urllib.unquote_plus(p.group(2))  # Put parameter name and value in hash
                     except AttributeError:
                         pass
-                # print(parameters)
 
                 if 'q' in parameters:  # 'q' parameter must be present for rest of parameters to be parsed
                     derived = "Searched for \"%s\" [" % (parameters['q'])
@@ -134,9 +134,16 @@ def plugin(target_browser):
                     if 'sourceid' in parameters:
                         derived += "Using %s  | " % (parameters['sourceid'])
 
+                    # if 'ei' in parameters:
+                    #     derived += "Using %s  | " % (parameters['sourceid'])
+
                     if derived[-1:] == '[':
                         derived = derived[:-1]
                     elif derived[-3:] == ' | ':
                         derived = derived[:-3] + ']'
 
                     item.interpretation = derived
+                parsedItems += 1
+
+    # Description of what the plugin did
+    return "%s searches parsed" % parsedItems

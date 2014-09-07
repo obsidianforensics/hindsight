@@ -16,12 +16,14 @@ artifactTypes = ["cookie (created)", "cookie (accessed)", "local storage"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140630"
+version = "20140816"
+parsedItems = 0
 
 
 def plugin(target_browser):
     timestamp_re = re.compile(r'^(1(\d{9}|\d{12}|\d{16}))$')
     ls_timestamp_re = re.compile(r'timestamp.*?(\d{10,17})')
+    global parsedItems
 
     for item in target_browser.parsed_artifacts:
         if item.row_type in artifactTypes:
@@ -30,5 +32,10 @@ def plugin(target_browser):
                 ls_m = re.search(ls_timestamp_re, item.value)
                 if m:
                     item.interpretation = target_browser.friendly_date(int(m.group(0))) + " [potential timestamp]"
+                    parsedItems += 1
                 elif ls_m:
                     item.interpretation = target_browser.friendly_date(int(ls_m.group(1))) + " [potential timestamp]"
+                    parsedItems += 1
+
+    # Description of what the plugin did
+    return "%s timestamps parsed" % parsedItems

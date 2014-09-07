@@ -20,7 +20,8 @@ artifactTypes = ["cookie (created)", "cookie (accessed)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140623"
+version = "20140813"
+parsedItems = 0
 
 
 def plugin(target_browser):
@@ -31,6 +32,7 @@ def plugin(target_browser):
     utmz_re = re.compile(r'(\d+)\.(\d{10})\.(\d+)\.(\d+)')
     utmz_parameters_re = re.compile(r'(\d+)\.(\d{10})\.(\d+)\.(\d+)\.(.*)')
     utmz_extract_parameters_re = re.compile(r'(.+?)=(.+)')
+    global parsedItems
 
     for item in target_browser.parsed_artifacts:
         if item.row_type in artifactTypes:
@@ -44,27 +46,31 @@ def plugin(target_browser):
                                           % (m.group(1), m.group(2), target_browser.friendly_date(m.group(3)),
                                              target_browser.friendly_date(m.group(4)),
                                              target_browser.friendly_date(m.group(5)), m.group(6))
+                    parsedItems += 1
             if item.name == '__utmb':
                 m = re.search(utmb_re, item.value)
                 if m:
                     item.interpretation = "Domain Hash: %s | Pages Viewed: %s | Last Visit: %s | " \
                                           "[Google Analytics Cookie]" \
                                           % (m.group(1), m.group(2), target_browser.friendly_date(m.group(3)))
+                    parsedItems += 1
             if item.name == '__utmc':
                 m = re.search(utmc_re, item.value)
                 if m:
                     item.interpretation = "Domain Hash: %s | [Google Analytics Cookie]" % (m.group(1))
+                    parsedItems += 1
             if item.name == '__utmv':
                 m = re.search(utmv_re, item.value)
                 if m:
                     item.interpretation = "Domain Hash: %s | Custom Values: %s | [Google Analytics Cookie]" \
                                           % (m.group(1), urllib.unquote_plus(m.group(2)))
+                    parsedItems += 1
             if item.name == '__utmz':
                 m = re.search(utmz_re, item.value)
                 if m:
                     derived = "Domain Hash: %s | Last Visit: %s | Sessions: %s | Sources: %s | " \
                               % (m.group(1), target_browser.friendly_date(m.group(2)), m.group(3), m.group(4))
-
+                    parsedItems += 1
                     p = re.search(utmz_parameters_re, item.value)
 
                     parameters = {}
@@ -79,27 +85,27 @@ def plugin(target_browser):
                             parameters[rp.group(1)] = rp.group(2)           # Put the parameter name and value in hash
                         except AttributeError:
                             pass
+                    if 'cmd' in parameters:
+                        #Ex: 38950847.1357762586.5.5.utmcsr=google.com|utmccn=(referral)|utmcmd=referral|utmcct=/reader/view
+                        if parameters['cmd'] == 'referral':
+                            if 'csr' in parameters and 'cct' in parameters:
+                                derived += "Referrer: %s%s | " % (parameters['csr'], parameters['cct'])
+                            if parameters['ccn'] != '(referral)':
+                                derived += "Ad Campaign Info: %s | " % (urllib.unquote_plus(parameters['ccn']))
 
-                    #Ex: 38950847.1357762586.5.5.utmcsr=google.com|utmccn=(referral)|utmcmd=referral|utmcct=/reader/view
-                    if parameters['cmd'] == 'referral':
-                        if 'csr' in parameters and 'cct' in parameters:
-                            derived += "Referrer: %s%s | " % (parameters['csr'], parameters['cct'])
-                        if parameters['ccn'] != '(referral)':
-                            derived += "Ad Campaign Info: %s | " % (urllib.unquote_plus(parameters['ccn']))
+                        #Ex: 120910874.1368486805.1.1.utmcsr=google|utmccn=(organic)|utmcmd=organic|utmctr=(not%20provided)
+                        elif parameters['cmd'] == 'organic':
+                            derived += "Last Type of Access: %s | " % (parameters['cmd'])
+                            if 'ctr' in parameters:
+                                derived += "Search keywords: %s | " % (urllib.unquote_plus(parameters['ctr']))
+                            if parameters['ccn'] != '(organic)':
+                                derived += "Ad Campaign Info: %s | " % (parameters['ccn'])
 
-                    #Ex: 120910874.1368486805.1.1.utmcsr=google|utmccn=(organic)|utmcmd=organic|utmctr=(not%20provided)
-                    elif parameters['cmd'] == 'organic':
-                        derived += "Last Type of Access: %s | " % (parameters['cmd'])
-                        if 'ctr' in parameters:
-                            derived += "Search keywords: %s | " % (urllib.unquote_plus(parameters['ctr']))
-                        if parameters['ccn'] != '(organic)':
-                            derived += "Ad Campaign Info: %s | " % (parameters['ccn'])
-
-                    #Ex: 27069237.1369840721.3.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none)
-                    elif parameters['cmd'] != 'none' and parameters['ccn'] == '(direct)':
-                        derived += "Last Type of Access: %s | " % (urllib.unquote_plus(parameters['ccn']))
-                        if 'ctr' in parameters:
-                            derived += "Search keywords: %s | " % (urllib.unquote_plus(parameters['ctr']))
+                        #Ex: 27069237.1369840721.3.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none)
+                        elif parameters['cmd'] != 'none' and parameters['ccn'] == '(direct)':
+                            derived += "Last Type of Access: %s | " % (urllib.unquote_plus(parameters['ccn']))
+                            if 'ctr' in parameters:
+                                derived += "Search keywords: %s | " % (urllib.unquote_plus(parameters['ctr']))
 
                     # Otherwise, just print out all the fields
                     else:
@@ -116,3 +122,6 @@ def plugin(target_browser):
 
                     derived += "[Google Analytics Cookie] "
                     item.interpretation = derived
+
+    # Description of what the plugin did
+    return "%s cookies parsed" % parsedItems
