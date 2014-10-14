@@ -68,7 +68,6 @@ except ImportError:
     cookie_decryption['linux'] = 0
     cookie_decryption['mac'] = 0
 
-# print cookie_decryption
 __author__ = "Ryan Benson"
 __version__ = "1.2.0"
 __email__ = "ryan@obsidianforensics.com"
@@ -1329,7 +1328,7 @@ The Chrome data folder default locations are:
         with output_db:
             c = output_db.cursor()
             if args.mode == 'overwrite' or not output_exists:
-                c.execute("CREATE TABLE timeline(type TEXT, timestamp INT, url TEXT, title TEXT, value TEXT, "
+                c.execute("CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, "
                           "interpretation TEXT, safe TEXT, visit_count INT, typed_count INT, url_hidden INT, "
                           "transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
                           "last_modified TEXT)")
