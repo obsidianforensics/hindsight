@@ -127,7 +127,7 @@ class Chrome(object):
         elif timestamp > 99999999999:
             # Epoch milliseconds
             return int(timestamp) / 1000
-        elif timestamp > 1:
+        elif timestamp >= 0:
             # Epoch
             return timestamp
         else:
@@ -141,7 +141,7 @@ class Chrome(object):
         elif timestamp > 99999999999:
             # Epoch milliseconds
             return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp / 1000))
-        elif timestamp > 1:
+        elif timestamp >= 0:
             # Epoch
             return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
         else:
@@ -1057,7 +1057,7 @@ def friendly_date(timestamp):
     elif timestamp > 99999999999:
         # Epoch milliseconds
         return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp / 1000))
-    elif timestamp > 1:
+    elif timestamp >= 0:
         # Epoch
         return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
     else:
