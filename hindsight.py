@@ -1500,18 +1500,22 @@ The Chrome data folder default locations are:
     print("\n Running plugins:")
     logging.info("Plugins:")
 
-    plugin_path = os.path.join(".", 'plugins')
-    plugin_listing = os.listdir(plugin_path)
+    try:
+        plugin_path = os.path.join(".", 'plugins')
+        plugin_listing = os.listdir(plugin_path)
 
-    logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
-    for plugin in plugin_listing:
-        if plugin[-3:] == ".py":
-            plugin = plugin.replace(".py", "")
-            module = __import__(plugin)
-            logging.info("Running '{}' plugin".format(module.friendlyName))
-            parsed_items = module.plugin(target_browser)
-            print format_plugin_output(module.friendlyName, module.version, parsed_items)
-            logging.info(" - Completed; {}".format(parsed_items))
+        logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
+        for plugin in plugin_listing:
+            if plugin[-3:] == ".py":
+                plugin = plugin.replace(".py", "")
+                module = __import__(plugin)
+                logging.info("Running '{}' plugin".format(module.friendlyName))
+                parsed_items = module.plugin(target_browser)
+                print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                logging.info(" - Completed; {}".format(parsed_items))
+    except:
+        logging.error(" - Error loading plugins; skipping")
+        print("   Error loading plugins; skipping")
 
     if args.format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
