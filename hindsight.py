@@ -153,9 +153,9 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 37)
+        possible_versions = range(1, 39)
 
-        def trim_versions_if(column, table, version):
+        def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
             versions >= 'version' if 'column' is in 'table'.
             """
@@ -165,28 +165,35 @@ class Chrome(object):
                 else:
                     possible_versions[:] = [x for x in possible_versions if x < version]
 
+        def trim_lesser_versions(version):
+            """Remove version numbers > 'version' from 'possible_versions'"""
+            possible_versions[:] = [x for x in possible_versions if x > version]
+
         if 'History' in self.structure.keys():
             if 'visits' in self.structure['History'].keys():
-                trim_versions_if('visit_duration', self.structure['History']['visits'], 20)
+                trim_lesser_versions_if('visit_duration', self.structure['History']['visits'], 20)
             if 'visit_source' in self.structure['History'].keys():
-                trim_versions_if('source', self.structure['History']['visit_source'], 7)
+                trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
             if 'downloads' in self.structure['History'].keys():
-                trim_versions_if('target_path', self.structure['History']['downloads'], 26)
-                trim_versions_if('opened', self.structure['History']['downloads'], 16)
-                trim_versions_if('etag', self.structure['History']['downloads'], 30)
+                trim_lesser_versions_if('target_path', self.structure['History']['downloads'], 26)
+                trim_lesser_versions_if('opened', self.structure['History']['downloads'], 16)
+                trim_lesser_versions_if('etag', self.structure['History']['downloads'], 30)
+                trim_lesser_versions_if('original_mime_type', self.structure['History']['downloads'], 37)
 
         if 'Cookies' in self.structure.keys():
             if 'cookies' in self.structure['Cookies'].keys():
-                trim_versions_if('persistent', self.structure['Cookies']['cookies'], 17)
-                trim_versions_if('priority', self.structure['Cookies']['cookies'], 28)
-                trim_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
+                trim_lesser_versions_if('persistent', self.structure['Cookies']['cookies'], 17)
+                trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
+                trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
 
         if 'Web Data' in self.structure.keys():
             if 'autofill' in self.structure['Web Data'].keys():
-                trim_versions_if('name', self.structure['Web Data']['autofill'], 2)
-                trim_versions_if('date_created', self.structure['Web Data']['autofill'], 35)
+                trim_lesser_versions_if('name', self.structure['Web Data']['autofill'], 2)
+                trim_lesser_versions_if('date_created', self.structure['Web Data']['autofill'], 35)
             if 'autofill_profiles' in self.structure['Web Data'].keys():
-                trim_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
+                trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
+            if 'web_apps' not in self.structure['Web Data'].keys():
+                trim_lesser_versions(37)
         self.version = possible_versions
 
     def get_history(self, path, history_file, version):
