@@ -17,7 +17,7 @@ artifactTypes = ["url", "url (archived)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140813"
+version = "20141103"
 parsedItems = 0
 
 
@@ -44,6 +44,7 @@ def plugin(target_browser):
 
                 #Parse out search parameters
                 # TODO: Figure out # vs & separators
+                raw_parameters = raw_parameters.replace('#q=', '&q=')  # Replace #q with &q so it will split correctly
                 for pair in raw_parameters.split('&'):          # Split the query on the '&' delimiter
                     # print pair
                     p = re.search(extract_parameters_re, pair)  # Split each parameter on the first '='
