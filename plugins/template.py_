@@ -1,0 +1,41 @@
+###################################################################################################
+#
+# name_of_plugin.py
+#   Short description of what the plugin does.
+#
+# Plugin Author: Your Name Here (author@email.com)
+#
+###################################################################################################
+
+import re
+
+# Config
+friendlyName = "Plugin Name that Users Will See"
+description = "Short description of what the plugin does"
+artifactTypes = ["cookie (created)", "cookie (accessed)", "local storage"]  # Artifacts that this plugin processes
+remoteLookups = 0  # if this plugin will query online sources/databases
+browser = "Chrome"  # browsers that the plugin applies to
+browserVersion = 1  # browser versions that the plugin applies to
+version = "20140816"  # version of the plugin (use the date)
+parsedItems = 0  # count of items that the plugin parsed; initialized to 0
+
+
+def plugin(target_browser):
+    # Lots of plugins use regexes, let's put them up here
+    timestamp_re = re.compile(r'^(1(\d{9}|\d{12}|\d{16}))$')
+
+    # Setting up our return variable
+    global parsedItems
+
+    for item in target_browser.parsed_artifacts:               # For each item that Hindsight has parsed,
+        if item.row_type in artifactTypes:                     # if the row if of a supported type for this plugin, and
+            if item.interpretation is None:                    # if there isn't already an interpretation,
+                m = re.search(timestamp_re, item.value)        # do something.
+                if m:
+                                                               # Set the interpretation for items with a match
+                    item.interpretation = target_browser.friendly_date(int(m.group(0))) + " [potential timestamp]"
+                    parsedItems += 1                           # and increment the count of parsed items
+
+
+    # Lastly, a count of parsed items with a description of what the plugin did
+    return "%s timestamps parsed" % parsedItems
