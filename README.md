@@ -10,14 +10,15 @@ There is a user guide in the documentation folder that covers many topics, but t
 Example usage:  C:\>hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
 
 Command Line Options:
-Option | Description
---- | ---
--i or --input | Path to the Chrome(ium) "Default" directory
--o or --output | Name of the output file (without extension)
--f or --format | Output format (default is XLSX, other options are SQLite and JSON)
--l or --log	| Location Hindsight should log to (will append if exists)
--m or --mode | Output mode (what to do if output file already exists).  Only works for SQLite.
--h or --help | Shows these options and the default Chrome data locations
+
+| Option         | Description                                             |
+| -------------- | ------------------------------------------------------- |
+| -i or --input  | Path to the Chrome(ium) "Default" directory |
+| -o or --output | Name of the output file (without extension) |
+| -f or --format | Output format (default is XLSX, other options are SQLite and JSON) |
+| -l or --log	 | Location Hindsight should log to (will append if exists) |
+| -m or --mode   | Output mode (what to do if output file already exists).  Only works for SQLite. |
+| -h or --help   | Shows these options and the default Chrome data locations |
 
 The Chrome data folder default locations are:
 * WinXP:   <userdir>\Local Settings\Application Data\Google\Chrome\User Data\Default\
