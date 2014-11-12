@@ -33,11 +33,6 @@ try:
     output_formats.append('json')
 except ImportError:
     print "Couldn't import module 'json'; JSON output disabled.\n"
-try:
-    import unicodecsv
-    output_formats.append('csv')
-except ImportError:
-    print "Couldn't import module 'unicodecsv'; CSV output disabled.\n"
 
 # Try to import modules for cookie decryption on different OSes.  
 cookie_decryption = {'windows': 0, 'mac': 0, 'linux': 0}
@@ -69,7 +64,7 @@ except ImportError:
     cookie_decryption['mac'] = 0
 
 __author__ = "Ryan Benson"
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -137,13 +132,13 @@ class Chrome(object):
         timestamp = int(timestamp)
         if timestamp > 99999999999999:
             # Webkit
-            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
+            return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
         elif timestamp > 99999999999:
             # Epoch milliseconds
-            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp / 1000))
+            return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp / 1000))
         elif timestamp >= 0:
             # Epoch
-            return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
+            return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
         else:
             return "error"
 
@@ -1060,13 +1055,13 @@ class BrowserExtension(object):
 def friendly_date(timestamp):
     if timestamp > 99999999999999:
         # Webkit
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
     elif timestamp > 99999999999:
         # Epoch milliseconds
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp / 1000))
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp / 1000))
     elif timestamp >= 0:
         # Epoch
-        return time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(timestamp))
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
     else:
         return "error"
 
@@ -1113,43 +1108,6 @@ The Chrome data folder default locations are:
 
     if not args.output:
         args.output = "Hindsight Internet History Analysis (%s)" % (time.strftime('%Y-%m-%dT%H-%M-%S'))
-
-    # TODO: finish csv option
-    def write_csv(items, version, csv='out.csv'):
-        outfile = open(csv, "wb")
-        fieldnames = ['name', 'url']
-        writer = unicodecsv.writer(outfile, skipinitialspace=True, quotechar=b'"', quoting=unicodecsv.QUOTE_ALL, lineterminator="\n", dialect='excel')
-        # writer = unicodecsv.DictWriter(outfile, fieldnames=fieldnames, extrasaction='ignore')
-        # writer = unicodecsv.writer(outfile, fieldnames=fieldnames)
-
-        # print(type(items))
-        # print(items)
-
-        writer.writerow(["Hindsight Internet History Forensics (v1.0)", "Detected Chrome Version: " + str(version)])
-        writer.writerow(["Type", "Timestamp", "URL", "Title / Name / Status", "Data / Value / Path", "Interpretation",
-                         "Safe?", "Visit Count", "Typed Count", "URL Hidden", "Transition", "Interrupt Reason",
-                         "Danger Type", "Opened?", "ETag", "Last Modified"])
-
-        for item in items:
-            display = {}
-            # display["url"] = [item.row_type, item.timestamp, item.url, item.name, item.value, "", "", item.visit_count, item.typed_count, item.hidden, item.transition_friendy]
-            # display["download"] = [item.row_type, item.timestamp, item.url]
-            # print(item.url)
-            # print(item)
-            if item.row_type == "url" or item.row_type == "url (archived)":
-                writer.writerow([item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value, "", "", item.visit_count, item.typed_count, item.hidden, item.transition_friendly])
-            if item.row_type == "download":
-                writer.writerow([item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value, "", "", "", "", "", "", item.interrupt_reason_friendly, item.danger_type_friendly, item.opened, item.etag, item.last_modified])
-            if item.row_type == "autofill":
-                writer.writerow([item.row_type, friendly_date(item.timestamp), "", item.name, item.value, "", "", "", "", "", ""])
-            if item.row_type == "bookmark":
-                writer.writerow([item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value, "", "", "", "", "", ""])
-            if item.row_type == "bookmark folder":
-                writer.writerow([item.row_type, friendly_date(item.timestamp), "", item.name, item.value, "", "", "", "", "", ""])
-            if item.row_type == "cookie (created)" or item.row_type == "cookie (accessed)":
-                writer.writerow([item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value, "", "", "", "", "", ""])
-            if item.row_type == "local storage":
-                writer.writerow([item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value, "", "", "", "", "", ""])
 
     def write_excel(browser):
         workbook = xlsxwriter.Workbook(args.output + '.xlsx')
@@ -1507,22 +1465,18 @@ The Chrome data folder default locations are:
     print("\n Running plugins:")
     logging.info("Plugins:")
 
-    try:
-        plugin_path = os.path.join(".", 'plugins')
-        plugin_listing = os.listdir(plugin_path)
+    plugin_path = os.path.join(".", 'plugins')
+    plugin_listing = os.listdir(plugin_path)
 
-        logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
-        for plugin in plugin_listing:
-            if plugin[-3:] == ".py":
-                plugin = plugin.replace(".py", "")
-                module = __import__(plugin)
-                logging.info("Running '{}' plugin".format(module.friendlyName))
-                parsed_items = module.plugin(target_browser)
-                print format_plugin_output(module.friendlyName, module.version, parsed_items)
-                logging.info(" - Completed; {}".format(parsed_items))
-    except:
-        logging.error(" - Error loading plugins; skipping")
-        print("   Error loading plugins; skipping")
+    logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
+    for plugin in plugin_listing:
+        if plugin[-3:] == ".py":
+            plugin = plugin.replace(".py", "")
+            module = __import__(plugin)
+            logging.info("Running '{}' plugin".format(module.friendlyName))
+            parsed_items = module.plugin(target_browser)
+            print format_plugin_output(module.friendlyName, module.version, parsed_items)
+            logging.info(" - Completed; {}".format(parsed_items))
 
     if args.format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
@@ -1541,9 +1495,6 @@ The Chrome data folder default locations are:
     elif args.format == 'sqlite':
         logging.info("Writing output; SQLite format selected")
         write_sqlite(target_browser)
-
-    # elif args.format == 'csv':
-    # write_csv(target_browser.parsed_artifacts, target_browser.version)
 
     print "\n Finish time: ", datetime.datetime.now()
     logging.info("Finish time: {}\n\n".format(datetime.datetime.now()))
