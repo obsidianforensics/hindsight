@@ -7,7 +7,7 @@ Hindsight is a free tool for analyzing the browsing history of the Google Chrome
 
 There is a user guide in the documentation folder that covers many topics, but the info below should get you started:
 
-Example usage:  C:\\\>hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
+Example usage:  \> C:\\hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
 
 Command Line Options:
 
