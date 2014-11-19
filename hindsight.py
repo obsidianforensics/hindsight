@@ -64,7 +64,7 @@ except ImportError:
     cookie_decryption['mac'] = 0
 
 __author__ = "Ryan Benson"
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -116,31 +116,35 @@ class Chrome(object):
                     self.structure[database][str(table[0])].append(str(column[1]))
 
     def to_epoch(self, timestamp):
-        if timestamp > 99999999999999:
+        if float(timestamp) > 99999999999999:
             # Webkit
-            return (int(timestamp) / 1000000) - 11644473600
-        elif timestamp > 99999999999:
+            return (float(timestamp) / 1000000) - 11644473600
+        elif float(timestamp) > 99999999999:
             # Epoch milliseconds
-            return int(timestamp) / 1000
-        elif timestamp >= 0:
+            return float(timestamp) / 1000
+        elif int(timestamp) >= 0:
             # Epoch
-            return timestamp
+            return float(timestamp)
         else:
-            return "error"
+            return 0
 
     def friendly_date(self, timestamp):
-        timestamp = int(timestamp)
+        timestamp = float(timestamp)
         if timestamp > 99999999999999:
             # Webkit
-            return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
+            ts = datetime.datetime.fromtimestamp(timestamp/1000000 - 11644473600)
+            return ts.strftime("%Y-%m-%d %H:%M:%S.%f")
         elif timestamp > 99999999999:
             # Epoch milliseconds
-            return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp / 1000))
+            ts = datetime.datetime.fromtimestamp(timestamp/1000)
+            return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
         elif timestamp >= 0:
             # Epoch
-            return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
+            ts = datetime.datetime.fromtimestamp(timestamp)
+            return ts.strftime("%Y-%m-%d %H:%M:%S")
         else:
-            return "error"
+            return 0
 
     def determine_version(self):
         """ Determine version of Chrome databases files by looking for combinations of columns in certain tables.
@@ -1053,17 +1057,21 @@ class BrowserExtension(object):
 
 
 def friendly_date(timestamp):
+    timestamp = float(timestamp)
     if timestamp > 99999999999999:
         # Webkit
-        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime((int(timestamp) / 1000000) - 11644473600))
+        ts = datetime.datetime.fromtimestamp(timestamp/1000000 - 11644473600)
+        return ts.strftime("%Y-%m-%d %H:%M:%S.%f")
     elif timestamp > 99999999999:
         # Epoch milliseconds
-        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp / 1000))
+        ts = datetime.datetime.fromtimestamp(timestamp/1000)
+        return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     elif timestamp >= 0:
         # Epoch
-        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
+        ts = datetime.datetime.fromtimestamp(timestamp)
+        return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     else:
-        return "error"
+        return 0
 
 
 def main():
@@ -1118,24 +1126,24 @@ The Chrome data folder default locations are:
         center_header_format = workbook.add_format({'font_color': 'black', 'align': 'center',  'bg_color': 'gray', 'bold': 'true'})
         header_format        = workbook.add_format({'font_color': 'black', 'bg_color': 'gray', 'bold': 'true'})
         black_type_format    = workbook.add_format({'font_color': 'black', 'align': 'left'})
-        black_date_format    = workbook.add_format({'font_color': 'black', 'num_format': 'mm/dd/yyyy hh:mm:ss.000'})
+        black_date_format    = workbook.add_format({'font_color': 'black', 'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
         black_url_format     = workbook.add_format({'font_color': 'black', 'align': 'left'})
         black_field_format   = workbook.add_format({'font_color': 'black', 'align': 'left'})
         black_value_format   = workbook.add_format({'font_color': 'black', 'align': 'left',   'num_format': '0'})
         black_flag_format    = workbook.add_format({'font_color': 'black', 'align': 'center'})
         black_trans_format   = workbook.add_format({'font_color': 'black', 'align': 'left'})
         gray_type_format     = workbook.add_format({'font_color': 'gray',  'align': 'left'})
-        gray_date_format     = workbook.add_format({'font_color': 'gray',  'num_format': 'mm/dd/yyyy hh:mm:ss'})
+        gray_date_format     = workbook.add_format({'font_color': 'gray',  'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
         gray_url_format      = workbook.add_format({'font_color': 'gray',  'align': 'left'})
         gray_field_format    = workbook.add_format({'font_color': 'gray',  'align': 'left'})
         gray_value_format    = workbook.add_format({'font_color': 'gray',  'align': 'left', 'num_format': '0'})
         red_type_format      = workbook.add_format({'font_color': 'red',   'align': 'left'})
-        red_date_format      = workbook.add_format({'font_color': 'red',   'num_format': 'mm/dd/yyyy hh:mm:ss'})
+        red_date_format      = workbook.add_format({'font_color': 'red',   'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
         red_url_format       = workbook.add_format({'font_color': 'red',   'align': 'left'})
         red_field_format     = workbook.add_format({'font_color': 'red',   'align': 'right'})
         red_value_format     = workbook.add_format({'font_color': 'red',   'align': 'left', 'num_format': '0'})
         green_type_format    = workbook.add_format({'font_color': 'green', 'align': 'left'})
-        green_date_format    = workbook.add_format({'font_color': 'green', 'num_format': 'mm/dd/yyyy hh:mm:ss'})
+        green_date_format    = workbook.add_format({'font_color': 'green', 'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
         green_url_format     = workbook.add_format({'font_color': 'green', 'align': 'left'})
         green_field_format   = workbook.add_format({'font_color': 'green', 'align': 'left'})
         green_value_format   = workbook.add_format({'font_color': 'green', 'align': 'left'})
