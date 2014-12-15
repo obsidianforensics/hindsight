@@ -19,6 +19,7 @@ Command Line Options:
 | -l or --log	 | Location Hindsight should log to (will append if exists) |
 | -m or --mode   | Output mode (what to do if output file already exists).  Only works for SQLite. |
 | -h or --help   | Shows these options and the default Chrome data locations |
+| -t or --timezone | Display timezone for the timestamps in XLSX output |
 
 The Chrome data folder default locations are:
 * WinXP:   \[userdir\]\Local Settings\Application Data\Google\Chrome\User Data\Default\
