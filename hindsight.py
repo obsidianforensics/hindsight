@@ -63,8 +63,13 @@ except ImportError:
     cookie_decryption['linux'] = 0
     cookie_decryption['mac'] = 0
 
+try:
+    import pytz
+except ImportError:
+    print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
+
 __author__ = "Ryan Benson"
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -116,35 +121,45 @@ class Chrome(object):
                     self.structure[database][str(table[0])].append(str(column[1]))
 
     def to_epoch(self, timestamp):
-        if float(timestamp) > 99999999999999:
+        try:
+            timestamp = float(timestamp)
+        except:
+            return 0
+        if timestamp > 99999999999999:
             # Webkit
             return (float(timestamp) / 1000000) - 11644473600
-        elif float(timestamp) > 99999999999:
+        elif timestamp > 99999999999:
             # Epoch milliseconds
             return float(timestamp) / 1000
-        elif int(timestamp) >= 0:
+        elif timestamp >= 0:
             # Epoch
             return float(timestamp)
         else:
             return 0
 
-    def friendly_date(self, timestamp):
-        timestamp = float(timestamp)
-        if timestamp > 99999999999999:
-            # Webkit
-            ts = datetime.datetime.fromtimestamp(timestamp/1000000 - 11644473600)
-            return ts.strftime("%Y-%m-%d %H:%M:%S.%f")
-        elif timestamp > 99999999999:
-            # Epoch milliseconds
-            ts = datetime.datetime.fromtimestamp(timestamp/1000)
-            return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    def to_datetime(self, timestamp):
+        try:
+            timestamp = float(timestamp)
+        except:
+            return datetime.datetime.utcfromtimestamp(0)
 
-        elif timestamp >= 0:
+        if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
+            # Webkit
+            return datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
+        elif 1900000000000 > timestamp > 2000000000:  # 2030 > ts > 1970
+            # Epoch milliseconds
+            return datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
+        elif 1900000000 > timestamp >= 0:  # 2030 > ts > 1970
             # Epoch
-            ts = datetime.datetime.fromtimestamp(timestamp)
-            return ts.strftime("%Y-%m-%d %H:%M:%S")
+            return datetime.datetime.utcfromtimestamp(float(timestamp))
         else:
-            return 0
+            return datetime.datetime.utcfromtimestamp(0)
+
+    def friendly_date(self, timestamp):
+        if isinstance(timestamp, (str, unicode, long, int)):
+            return self.to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        else:
+            return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     def determine_version(self):
         """ Determine version of Chrome databases files by looking for combinations of columns in certain tables.
@@ -152,7 +167,7 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 39)
+        possible_versions = range(1, 40)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -247,14 +262,20 @@ class Chrome(object):
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
-                    new_row = URLItem(row.get('id'), row.get('url'), row.get('title'), self.to_epoch(row.get('visit_time')),
-                                      row.get('last_visit_time'), row.get('visit_count'), row.get('typed_count'),
-                                      row.get('from_visit'), row.get('transition'), row.get('hidden'),
-                                      row.get('favicon_id'), row.get('is_indexed'), row.get('visit_duration'),
-                                      row.get('source'))
+                    duration = None
+                    if row.get('visit_duration'):
+                        duration = datetime.timedelta(microseconds=row.get('visit_duration'))
+
+                    new_row = URLItem(row.get('id'), row.get('url'), row.get('title'),
+                                      self.to_datetime(row.get('visit_time')),
+                                      self.to_datetime(row.get('last_visit_time')), row.get('visit_count'),
+                                      row.get('typed_count'), row.get('from_visit'), row.get('transition'),
+                                      row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
+                                      str(duration), row.get('source'))
 
                     if history_file == 'Archived History':
                         new_row.row_type = 'url (archived)'
+
 
                     new_row.decode_transition()
 
@@ -316,11 +337,13 @@ class Chrome(object):
 
                 for row in cursor:
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    new_row = DownloadItem(row.get('id'), row.get('url'), row.get('received_bytes'), row.get('total_bytes'),
-                                           row.get('state'), row.get('full_path'), self.to_epoch(row.get('start_time')),
-                                           self.to_epoch(row.get('end_time')), row.get('target_path'), row.get('current_path'),
-                                           row.get('opened'), row.get('danger_type'), row.get('interrupt_reason'),
-                                           row.get('etag'), row.get('last_modified'), row.get('chain_index'))
+                    new_row = DownloadItem(row.get('id'), row.get('url'), row.get('received_bytes'),
+                                           row.get('total_bytes'), row.get('state'), row.get('full_path'),
+                                           self.to_datetime(row.get('start_time')),
+                                           self.to_datetime(row.get('end_time')), row.get('target_path'),
+                                           row.get('current_path'), row.get('opened'), row.get('danger_type'),
+                                           row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
+                                           row.get('chain_index'))
 
                     new_row.decode_interrupt_reason()
                     new_row.decode_danger_type()
@@ -464,15 +487,16 @@ class Chrome(object):
 
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
                     new_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                         self.to_epoch(row.get('creation_utc')), self.to_epoch(row.get('last_access_utc')),
-                                         self.to_epoch(row.get('expires_utc')), row.get('secure'), row.get('httponly'),
-                                         row.get('encrypted_value'), row.get('persistent'), row.get('has_expires'),
-                                         row.get('priority'))
+                                         self.to_datetime(row.get('creation_utc')),
+                                         self.to_datetime(row.get('last_access_utc')),
+                                         self.to_datetime(row.get('expires_utc')), row.get('secure'),
+                                         row.get('httponly'), row.get('encrypted_value'), row.get('persistent'),
+                                         row.get('has_expires'), row.get('priority'))
 
                     accessed_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                              self.to_epoch(row.get('creation_utc')),
-                                              self.to_epoch(row.get('last_access_utc')),
-                                              self.to_epoch(row.get('expires_utc')), row.get('secure'),
+                                              self.to_datetime(row.get('creation_utc')),
+                                              self.to_datetime(row.get('last_access_utc')),
+                                              self.to_datetime(row.get('expires_utc')), row.get('secure'),
                                               row.get('httponly'), row.get('encrypted_value'), row.get('persistent'),
                                               row.get('has_expires'), row.get('priority'))
 
@@ -534,7 +558,7 @@ class Chrome(object):
 
                 for row in cursor:
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    results.append(AutofillItem(self.to_epoch(row.get('date_created')), row.get('name'),
+                    results.append(AutofillItem(self.to_datetime(row.get('date_created')), row.get('name'),
                                                 row.get('value'), row.get('count')))
 
                 db_file.close()
@@ -568,11 +592,11 @@ class Chrome(object):
         def process_bookmark_children(parent, children):
             for child in children:
                 if child["type"] == "url":
-                    results.append(BookmarkItem(self.to_epoch(child["date_added"]), child["name"], child["url"], parent))
+                    results.append(BookmarkItem(self.to_datetime(child["date_added"]), child["name"], child["url"], parent))
                 elif child["type"] == "folder":
                     new_parent = parent + " > " + child["name"]
-                    results.append(BookmarkFolderItem(self.to_epoch(child["date_added"]), child["date_modified"], child["name"],
-                                                      parent))
+                    results.append(BookmarkFolderItem(self.to_datetime(child["date_added"]), child["date_modified"],
+                                                      child["name"], parent))
                     process_bookmark_children(new_parent, child["children"])
 
         for top_level_folder in decoded_json["roots"].keys():
@@ -632,7 +656,7 @@ class Chrome(object):
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
                         # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(LocalStorageItem(ls_file, ls_created, row.get('key'),
+                        results.append(LocalStorageItem(ls_file, self.to_datetime(ls_created), row.get('key'),
                                                         to_unicode(row.get('value'))))
                 except:
                     logging.warning(" - Error reading key/values from {}".format(ls_file_path))
@@ -651,13 +675,13 @@ class Chrome(object):
         logging.info(" - Reading from {}".format(ext_path))
         ext_listing = os.listdir(ext_path)
         logging.debug(" - {count} files in Extensions directory: {list}".format(list=str(ext_listing),
-                                                                             count=len(ext_listing)))
+                                                                                count=len(ext_listing)))
 
         # Only process directories with the expected naming convention
         app_id_re = re.compile(r'^([a-z]{32})$')
         ext_listing = [x for x in ext_listing if app_id_re.match(x)]
-        logging.debug(" - {count} files in Extensions directory will be processed: {list}".format(list=str(ext_listing),
-                                                                                               count=len(ext_listing)))
+        logging.debug(" - {count} files in Extensions directory will be processed: {list}".format(
+            list=str(ext_listing), count=len(ext_listing)))
 
         # Process each directory with an app_id name
         for app_id in ext_listing:
@@ -735,7 +759,12 @@ class Chrome(object):
 
 class MyEncoder(json.JSONEncoder):
     def default(self, obj):
-        return obj.__dict__
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        elif isinstance(obj, buffer):
+            return obj
+        else:
+            return obj.__dict__
 
 
 class HistoryItem(object):
@@ -1057,24 +1086,10 @@ class BrowserExtension(object):
 
 
 def friendly_date(timestamp):
-    timestamp = float(timestamp)
-    if timestamp > 99999999999999:
-        # Webkit
-        ts = datetime.datetime.fromtimestamp(timestamp/1000000 - 11644473600)
-        return ts.strftime("%Y-%m-%d %H:%M:%S.%f")
-    elif timestamp > 99999999999:
-        # Epoch milliseconds
-        ts = datetime.datetime.fromtimestamp(timestamp/1000)
-        return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    elif timestamp >= 0:
-        # Epoch
-        ts = datetime.datetime.fromtimestamp(timestamp)
-        return ts.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    else:
-        return 0
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def main():
+def parse_arguments():
     description = '''
 Hindsight v%s - Internet history forensics for Google Chrome/Chromium.
 
@@ -1111,11 +1126,30 @@ The Chrome data folder default locations are:
                         help='Output mode (what to do if output file already exists)')
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
                         default='hindsight.log')
+    parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
 
     args = parser.parse_args()
 
     if not args.output:
         args.output = "Hindsight Internet History Analysis (%s)" % (time.strftime('%Y-%m-%dT%H-%M-%S'))
+
+    if args.timezone:
+        try:
+            __import__('pytz')
+        except ImportError:
+            args.timezone = None
+        else:
+            try:
+                args.timezone = pytz.timezone(args.timezone)
+            except pytz.exceptions.UnknownTimeZoneError:
+                print("Couldn't understand timezone; using UTC.")
+                args.timezone = pytz.timezone('UTC')
+    return args
+
+
+def main():
+    global args
+    args = parse_arguments()
 
     def write_excel(browser):
         workbook = xlsxwriter.Workbook(args.output + '.xlsx')
@@ -1150,44 +1184,46 @@ The Chrome data folder default locations are:
 
         # Title bar
         w.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
-        w.merge_range('H1:K1', 'URL Specific',                                        center_header_format)
-        w.merge_range('L1:P1', 'Download Specific',                                   center_header_format)
+        w.merge_range('H1:L1', 'URL Specific',                                        center_header_format)
+        w.merge_range('M1:Q1', 'Download Specific',                                   center_header_format)
 
         # Write column headers
         w.write(1, 0, "Type",                                                         header_format)
-        w.write(1, 1, "Timestamp",                                                    header_format)
+        w.write(1, 1, "Timestamp ({})".format(args.timezone),                         header_format)
         w.write(1, 2, "URL",                                                          header_format)
         w.write_rich_string(1, 3, "Title / Name / Status",                            header_format)
         w.write_rich_string(1, 4, "Data / Value / Path",                              header_format)
         w.write(1, 5, "Interpretation",                                               header_format)
         w.write(1, 6, "Safe?",                                                        header_format)
-        w.write(1, 7, "Visit Count",                                                  header_format)
-        w.write(1, 8, "Typed Count",                                                  header_format)
-        w.write(1, 9, "URL Hidden",                                                   header_format)
-        w.write(1, 10, "Transition",                                                  header_format)
-        w.write(1, 11, "Interrupt Reason",                                            header_format)
-        w.write(1, 12, "Danger Type",                                                 header_format)
-        w.write(1, 13, "Opened?",                                                     header_format)
-        w.write(1, 14, "ETag",                                                        header_format)
-        w.write(1, 15, "Last Modified",                                               header_format)
+        w.write(1, 7, "Duration",                                                     header_format)
+        w.write(1, 8, "Visit Count",                                                  header_format)
+        w.write(1, 9, "Typed Count",                                                  header_format)
+        w.write(1, 10, "URL Hidden",                                                  header_format)
+        w.write(1, 11, "Transition",                                                  header_format)
+        w.write(1, 12, "Interrupt Reason",                                            header_format)
+        w.write(1, 13, "Danger Type",                                                 header_format)
+        w.write(1, 14, "Opened?",                                                     header_format)
+        w.write(1, 15, "ETag",                                                        header_format)
+        w.write(1, 16, "Last Modified",                                               header_format)
 
         #Set column widths
         w.set_column('A:A', 16)         # Type
-        w.set_column('B:B', 18)         # Date
+        w.set_column('B:B', 21)         # Date
         w.set_column('C:C', 60)         # URL
         w.set_column('D:D', 25)         # Title / Name / Status
         w.set_column('E:E', 80)         # Data / Value / Path
         w.set_column('F:F', 60)         # Interpretation
-        w.set_column('G:G', 12)         # Safe Browsing
+        w.set_column('G:G', 10)         # Safe Browsing
         # URL Specific
-        w.set_column('H:J', 6)          # Visit Count, Typed Count, Hidden
-        w.set_column('K:K', 12)         # Transition
+        w.set_column('H:H', 14)         # Visit Duration
+        w.set_column('I:K', 6)          # Visit Count, Typed Count, Hidden
+        w.set_column('L:L', 12)         # Transition
         # Download Specific
-        w.set_column('L:L', 12)         # Interrupt Reason
-        w.set_column('M:M', 24)         # Danger Type
-        w.set_column('N:N', 12)         # Opened
-        w.set_column('O:O', 12)         # ETag
-        w.set_column('P:P', 27)         # Last Modified
+        w.set_column('M:M', 12)         # Interrupt Reason
+        w.set_column('N:N', 24)         # Danger Type
+        w.set_column('O:O', 12)         # Opened
+        w.set_column('P:P', 12)         # ETag
+        w.set_column('Q:Q', 27)         # Last Modified
 
         print("\n Writing \"%s.xlsx\"" % args.output)
         row_number = 2
@@ -1200,10 +1236,11 @@ The Chrome data folder default locations are:
                 w.write(       row_number, 4, "",                            black_value_format)  # Indexed Content
                 w.write(       row_number, 5, item.interpretation,           black_value_format)  # Interpretation
                 w.write(       row_number, 6, "",                            black_type_format)   # Safe Browsing
-                w.write(       row_number, 7, item.visit_count,              black_flag_format)   # Visit Count
-                w.write(       row_number, 8, item.typed_count,              black_flag_format)   # Typed Count
-                w.write(       row_number, 9, item.hidden,                   black_flag_format)   # Hidden
-                w.write_string(row_number, 10, item.transition_friendly,     black_trans_format)  # Transition
+                w.write(       row_number, 7, item.visit_duration,           black_flag_format)   # Duration
+                w.write(       row_number, 8, item.visit_count,              black_flag_format)   # Visit Count
+                w.write(       row_number, 9, item.typed_count,              black_flag_format)   # Typed Count
+                w.write(       row_number, 10, item.hidden,                  black_flag_format)   # Hidden
+                w.write_string(row_number, 11, item.transition_friendly,     black_trans_format)  # Transition
 
             if item.row_type == "autofill":
                 w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
@@ -1220,16 +1257,16 @@ The Chrome data folder default locations are:
                 w.write_string(row_number, 4, item.value,                    green_value_format)  # download path
                 w.write_string(row_number, 5, "",                            green_field_format)  # Interpretation (chain?)
                 w.write(       row_number, 6, "",                            green_type_format)   # Safe Browsing
-                w.write(       row_number, 11, item.interrupt_reason_friendly,green_value_format) # download path
-                w.write(       row_number, 12, item.danger_type_friendly,    green_value_format)  # download path
+                w.write(       row_number, 12, item.interrupt_reason_friendly,green_value_format) # download path
+                w.write(       row_number, 13, item.danger_type_friendly,    green_value_format)  # download path
                 open_friendly = ""
                 if item.opened == 1:
                     open_friendly = "Yes"
                 elif item.opened == 0:
                     open_friendly = "No"
-                w.write_string(row_number, 13, open_friendly, green_value_format)                 # opened
-                w.write(row_number, 14, item.etag,            green_value_format)                 # ETag
-                w.write(row_number, 15, item.last_modified,   green_value_format)                 # Last Modified
+                w.write_string(row_number, 14, open_friendly, green_value_format)                 # opened
+                w.write(row_number, 15, item.etag,            green_value_format)                 # ETag
+                w.write(row_number, 16, item.last_modified,   green_value_format)                 # Last Modified
 
             if item.row_type == "bookmark":
                 w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
@@ -1265,7 +1302,7 @@ The Chrome data folder default locations are:
 
         # Formatting
         w.freeze_panes(2, 0)                # Freeze top row
-        w.autofilter(1, 0, row_number, 15)  # Add autofilter
+        w.autofilter(1, 0, row_number, 16)  # Add autofilter
 
         workbook.close()
 
@@ -1393,7 +1430,7 @@ The Chrome data folder default locations are:
     logging.debug("Options: " + str(args))
 
     # Analysis start time
-    print format_meta_output("Start time", datetime.datetime.now())
+    print format_meta_output("Start time", str(datetime.datetime.now())[:-3])
     logging.info("Starting analysis")
     target_browser = Chrome(args.input)
 
@@ -1426,7 +1463,6 @@ The Chrome data folder default locations are:
     else:
         display_version = target_browser.version[0]
 
-    # print("  Detected Chrome version: %s" % display_version)
     print format_processing_output("Detected Chrome version", display_version)
 
     logging.info("Detected Chrome version %s" % display_version)
@@ -1504,8 +1540,8 @@ The Chrome data folder default locations are:
         logging.info("Writing output; SQLite format selected")
         write_sqlite(target_browser)
 
-    print "\n Finish time: ", datetime.datetime.now()
-    logging.info("Finish time: {}\n\n".format(datetime.datetime.now()))
+    print "\n Finish time: ", str(datetime.datetime.now())[:-3]
+    logging.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
 
 if __name__ == "__main__":
     main()
