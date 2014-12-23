@@ -1505,11 +1505,11 @@ def main():
         print format_processing_output("Extensions", target_browser.artifacts_counts['Extensions'])
 
     target_browser.parsed_artifacts.sort()
-    sys.path.insert(0, 'plugins')
     print("\n Running plugins:")
     logging.info("Plugins:")
 
-    plugin_path = os.path.join(".", 'plugins')
+    plugin_path = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])), 'plugins')
+    sys.path.insert(0, plugin_path)
     plugin_listing = os.listdir(plugin_path)
 
     logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
