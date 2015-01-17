@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -490,14 +490,14 @@ class Chrome(object):
                                          self.to_datetime(row.get('creation_utc')),
                                          self.to_datetime(row.get('last_access_utc')),
                                          self.to_datetime(row.get('expires_utc')), row.get('secure'),
-                                         row.get('httponly'), row.get('encrypted_value'), row.get('persistent'),
+                                         row.get('httponly'), row.get('persistent'),
                                          row.get('has_expires'), row.get('priority'))
 
                     accessed_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
                                               self.to_datetime(row.get('creation_utc')),
                                               self.to_datetime(row.get('last_access_utc')),
                                               self.to_datetime(row.get('expires_utc')), row.get('secure'),
-                                              row.get('httponly'), row.get('encrypted_value'), row.get('persistent'),
+                                              row.get('httponly'), row.get('persistent'),
                                               row.get('has_expires'), row.get('priority'))
 
                     new_row.url = (new_row.host_key + new_row.path)
@@ -508,8 +508,10 @@ class Chrome(object):
                     new_row.timestamp = new_row.creation_utc
                     results.append(new_row)
 
-                    # If the cookie was created and accessed at the same time (only used once), don't create an accessed row
-                    if new_row.creation_utc != new_row.last_access_utc:
+                    # If the cookie was created and accessed at the same time (only used once), or if the last accessed
+                    # time is 0 (happens on iOS), don't create an accessed row
+                    if new_row.creation_utc != new_row.last_access_utc and \
+                                    accessed_row.last_access_utc != datetime.datetime.utcfromtimestamp(0):
                         accessed_row.row_type = 'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
@@ -754,7 +756,22 @@ class Chrome(object):
 
         self.artifacts_counts['Extensions'] = len(results)
         logging.info(" - Parsed {} items".format(len(results)))
-        self.installed_extensions = results
+        presentation = {'title': 'Installed Extensions',
+                        'columns': [
+                            {'display_name': 'Extension Name',
+                             'data_name': 'name',
+                             'display_width': 26},
+                            {'display_name': 'Description',
+                             'data_name': 'description',
+                             'display_width': 60},
+                            {'display_name': 'Version',
+                             'data_name': 'version',
+                             'display_width': 10},
+                            {'display_name': 'App ID',
+                             'data_name': 'app_id',
+                             'display_width': 36}
+                        ]}
+        self.installed_extensions = {'data': results, 'presentation': presentation}
 
 
 class MyEncoder(json.JSONEncoder):
@@ -1022,7 +1039,7 @@ class DownloadItem(HistoryItem):
 
 class CookieItem(HistoryItem):
     def __init__(self, host_key, path, name, value, creation_utc, last_access_utc, expires_utc, secure, http_only,
-                 encrypted_value=None, persistent=None, has_expires=None, priority=None):
+                 persistent=None, has_expires=None, priority=None):
         super(CookieItem, self).__init__('cookie', timestamp=creation_utc, url=host_key, name=name, value=value)
         self.host_key = host_key
         self.path = path
@@ -1033,7 +1050,6 @@ class CookieItem(HistoryItem):
         self.expires_utc = expires_utc
         self.secure = secure
         self.httponly = http_only
-        self.encrypted_value = encrypted_value
         self.persistent = persistent
         self.has_expires = has_expires
         self.priority = priority
@@ -1303,6 +1319,36 @@ def main():
         # Formatting
         w.freeze_panes(2, 0)                # Freeze top row
         w.autofilter(1, 0, row_number, 16)  # Add autofilter
+
+        for item in browser.__dict__:
+            try:
+                if browser.__dict__[item]['presentation'] and browser.__dict__[item]['data']:
+                    d = browser.__dict__[item]
+                    p = workbook.add_worksheet(d['presentation']['title'])
+                    title = d['presentation']['title']
+                    if 'version' in d['presentation']:
+                        title += " (v{})".format(d['presentation']['version'])
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns'])-1, "{}".format(title), title_header_format)
+                    for counter, column in enumerate(d['presentation']['columns']):
+                        # print column
+                        p.write(1, counter, column['display_name'], header_format)
+                        if 'display_width' in column:
+                            p.set_column(counter, counter, column['display_width'])
+
+                    for row_count, row in enumerate(d['data'], start=2):
+                        if not isinstance(row, dict):
+                            for column_count, column in enumerate(d['presentation']['columns']):
+                                p.write(row_count, column_count, row.__dict__[column['data_name']], black_type_format)
+                        else:
+                            for column_count, column in enumerate(d['presentation']['columns']):
+                                p.write(row_count, column_count, row[column['data_name']], black_type_format)
+
+                    # Formatting
+                    p.freeze_panes(2, 0)                                                       # Freeze top row
+                    p.autofilter(1, 0, len(d['data'])+2, len(d['presentation']['columns'])-1)  # Add autofilter
+
+            except:
+                pass
 
         workbook.close()
 
