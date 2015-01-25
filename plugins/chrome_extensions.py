@@ -16,7 +16,7 @@ artifactTypes = ["url", "url (archived)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20150117"
+version = "20150125"
 parsedItems = 0
 
 
@@ -29,10 +29,13 @@ def plugin(target_browser):
             if item.interpretation is None:
                 m = re.search(extension_re, item.url)
                 if m:
-                    for ext in target_browser.installed_extensions['data']:
-                        if ext.app_id == m.group(1):
-                            item.interpretation = "%s (%s) [Chrome Extension]" % (ext.name, ext.description)
-                            parsedItems += 1
+                    try:
+                        for ext in target_browser.installed_extensions['data']:
+                            if ext.app_id == m.group(1):
+                                item.interpretation = "%s (%s) [Chrome Extension]" % (ext.name, ext.description)
+                                parsedItems += 1
+                    except:
+                        pass
 
     # Description of what the plugin did
     return "%s extension URLs parsed" % parsedItems
