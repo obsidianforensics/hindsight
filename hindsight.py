@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -167,7 +167,7 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 40)
+        possible_versions = range(1, 41)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -208,6 +208,11 @@ class Chrome(object):
                 trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
             if 'web_apps' not in self.structure['Web Data'].keys():
                 trim_lesser_versions(37)
+
+        if 'Login Data' in self.structure.keys():
+            if 'logins' in self.structure['Login Data'].keys():
+                trim_lesser_versions_if('display_name', self.structure['Login Data']['logins'], 39)
+
         self.version = possible_versions
 
     def get_history(self, path, history_file, version):
@@ -525,6 +530,79 @@ class Chrome(object):
                 print("Couldn't open file")
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
+    def get_login_data(self, path, database, version):
+        # Set up empty return array
+        results = []
+
+        logging.info("Password items from {}:".format(database))
+
+        # Queries for different versions
+        query = {29:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+                            password_value, date_created, blacklisted_by_user, times_used FROM logins''',
+                 6:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+                            password_value, date_created, blacklisted_by_user FROM logins'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in query.keys() and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            logging.info(" - Using SQL query for Password items for Chrome v{}".format(compatible_version))
+            try:
+                # Connect to 'Login Data' sqlite db
+                db_path = os.path.join(path, database)
+                db_file = sqlite3.connect(db_path)
+                logging.info(" - Reading from file '{}'".format(db_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
+
+                # print 'cursor ',cursor.fetchall()
+
+                for row in cursor:
+                    if row.get('blacklisted_by_user') == 1:
+                        blacklist_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
+                                                  name=row.get('username_element'),
+                                                  value="<User chose to 'Never save password' for this site>",
+                                                  count=row.get('times_used'))
+                        blacklist_row.row_type = 'login (blacklist)'
+                        results.append(blacklist_row)
+
+                    if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
+                        username_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
+                                                 name=row.get('username_element'), value=row.get('username_value'),
+                                                 count=row.get('times_used'))
+                        username_row.row_type = 'login (username)'
+                        results.append(username_row)
+
+                    if row.get('password_value') is not None and row.get('blacklisted_by_user') == 0:
+                        password = None
+                        try:
+                            # Windows is all I've had time to test; Ubuntu uses built-in password manager
+                            password = win32crypt.CryptUnprotectData(row.get('password_value'), None, None, None, 0)[1]
+                        except:
+                            password = "<encrypted>"
+
+                        password_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
+                                                 name=row.get('password_element'), value=password,
+                                                 count=row.get('times_used'))
+                        password_row.row_type = 'login (password)'
+                        results.append(password_row)
+
+                db_file.close()
+                self.artifacts_counts['Login Data'] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
+                self.parsed_artifacts.extend(results)
+
+            except IOError:
+                print("Couldn't open file")
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
+
     def get_autofill(self, path, database, version):
         # Set up empty return array
         results = []
@@ -625,7 +703,7 @@ class Chrome(object):
         filtered_listing = []
 
         for ls_file in local_storage_listing:
-            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http') and ls_file[-8:] != '-journal':
+            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
                 filtered_listing.append(ls_file)
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
@@ -1101,6 +1179,16 @@ class BrowserExtension(object):
         self.version = version
 
 
+class LoginItem(HistoryItem):
+    def __init__(self, date_created, url, name, value, count):
+        super(LoginItem, self).__init__('login', timestamp=date_created, url=url, name=name, value=value)
+        self.date_created = date_created
+        self.url = url
+        self.name = name
+        self.value = value
+        self.count = count
+
+
 def friendly_date(timestamp):
     return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
@@ -1244,7 +1332,7 @@ def main():
         print("\n Writing \"%s.xlsx\"" % args.output)
         row_number = 2
         for item in browser.parsed_artifacts:
-            if item.row_type == "url" or item.row_type == "url (archived)":
+            if item.row_type[:3] == "url":
                 w.write_string(row_number, 0, item.row_type,                 black_type_format)   # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), black_date_format)   # date
                 w.write_string(row_number, 2, item.url,                      black_url_format)    # URL
@@ -1297,7 +1385,7 @@ def main():
                 w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
                 w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
 
-            if item.row_type == "cookie (created)" or item.row_type == "cookie (accessed)":
+            if item.row_type[:6] == "cookie":
                 w.write_string(row_number, 0, item.row_type,  gray_type_format)                   # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
                 w.write_string(row_number, 2, item.url,       gray_url_format)                    # URL
@@ -1313,6 +1401,14 @@ def main():
                 w.write_string(row_number, 4, item.value,     gray_value_format)                  # cookie value
                 w.write(       row_number, 5, item.interpretation, gray_value_format)             # cookie interpretation
                 w.write_string(row_number, 6, " ",            gray_type_format)                   # blank
+
+            if item.row_type[:5] == "login":
+                w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
+                w.write_string(row_number, 2, item.url,                      red_url_format)      # URL
+                w.write_string(row_number, 3, item.name,                     red_field_format)    # form field name
+                w.write_string(row_number, 4, item.value,                    red_value_format)    # username or pw value
+                w.write_string(row_number, 6, " ",                           red_type_format)     # blank
 
             row_number += 1
 
@@ -1490,7 +1586,7 @@ def main():
     print("\n Processing:")
     target_browser.structure = {}
 
-    supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies']
+    supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data']
     supported_subdirs = ['Local Storage', 'Extensions']
     supported_jsons = ['Bookmarks']  # , 'Preferences']
     supported_items = supported_databases + supported_subdirs + supported_jsons
@@ -1549,6 +1645,10 @@ def main():
     if 'Extensions' in input_listing:
         target_browser.get_extensions(args.input, 'Extensions')
         print format_processing_output("Extensions", target_browser.artifacts_counts['Extensions'])
+
+    if 'Login Data' in input_listing:
+        target_browser.get_login_data(args.input, 'Login Data', target_browser.version)
+        print format_processing_output("Login Data records", target_browser.artifacts_counts['Login Data'])
 
     target_browser.parsed_artifacts.sort()
     print("\n Running plugins:")
