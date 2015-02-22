@@ -17,7 +17,7 @@ artifactTypes = ["url", "url (archived)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20141103"
+version = "20150222"
 parsedItems = 0
 
 
@@ -123,8 +123,8 @@ def plugin(target_browser):
                                 if re.search(aq_re, parameters['aq']):
                                     derived += 'Typed "%s" before clicking on the %s suggestion | ' \
                                                % (parameters['oq'], ordinals[int(parameters['aq'])])
-                                else:
-                                    derived += 'Typed "%s" before clicking on a suggestion | ' % (parameters['oq'])
+                            else:
+                                derived += 'Typed "%s" before clicking on a suggestion | ' % (parameters['oq'])
 
                     if 'as_sitesearch' in parameters:
                         derived += "Search only %s | " % (parameters['as_sitesearch'])
