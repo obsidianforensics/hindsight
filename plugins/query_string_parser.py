@@ -11,7 +11,7 @@ import urlparse
 
 # Config
 friendlyName = "Query String Parser"
-description = "Extracts the query string from a URL and prints each parameter and value."
+description = "Extracts the query string from a URL and prints each field and value."
 artifactTypes = ["url", "url (archived)"]  # Artifacts that this plugin processes
 remoteLookups = 0  # if this plugin will query online sources/databases
 browser = "all"  # browsers that the plugin applies to
