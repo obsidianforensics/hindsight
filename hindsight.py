@@ -141,19 +141,24 @@ class Chrome(object):
         try:
             timestamp = float(timestamp)
         except:
-            return datetime.datetime.utcfromtimestamp(0)
+            new_timestamp = datetime.datetime.utcfromtimestamp(0)
+            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
 
         if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
             # Webkit
-            return datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
+            new_timestamp = datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
+            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
         elif 1900000000000 > timestamp > 2000000000:  # 2030 > ts > 1970
             # Epoch milliseconds
-            return datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
+            new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
+            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
         elif 1900000000 > timestamp >= 0:  # 2030 > ts > 1970
             # Epoch
-            return datetime.datetime.utcfromtimestamp(float(timestamp))
+            new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp))
+            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
         else:
-            return datetime.datetime.utcfromtimestamp(0)
+            new_timestamp = datetime.datetime.utcfromtimestamp(0)
+            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
 
     def friendly_date(self, timestamp):
         if isinstance(timestamp, (str, unicode, long, int)):
@@ -516,7 +521,8 @@ class Chrome(object):
                     # If the cookie was created and accessed at the same time (only used once), or if the last accessed
                     # time is 0 (happens on iOS), don't create an accessed row
                     if new_row.creation_utc != new_row.last_access_utc and \
-                                    accessed_row.last_access_utc != datetime.datetime.utcfromtimestamp(0):
+                                    accessed_row.last_access_utc != self.to_datetime(0):
+                                    # accessed_row.last_access_utc != datetime.datetime.utcfromtimestamp(0):
                         accessed_row.row_type = 'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
