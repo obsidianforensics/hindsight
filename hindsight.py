@@ -1666,17 +1666,22 @@ def main():
 
     plugin_path = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])), 'plugins')
     sys.path.insert(0, plugin_path)
-    plugin_listing = os.listdir(plugin_path)
 
-    logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
-    for plugin in plugin_listing:
-        if plugin[-3:] == ".py":
-            plugin = plugin.replace(".py", "")
-            module = __import__(plugin)
-            logging.info("Running '{}' plugin".format(module.friendlyName))
-            parsed_items = module.plugin(target_browser)
-            print format_plugin_output(module.friendlyName, module.version, parsed_items)
-            logging.info(" - Completed; {}".format(parsed_items))
+    try:
+        plugin_listing = os.listdir(plugin_path)
+
+        logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
+        for plugin in plugin_listing:
+            if plugin[-3:] == ".py":
+                plugin = plugin.replace(".py", "")
+                module = __import__(plugin)
+                logging.info("Running '{}' plugin".format(module.friendlyName))
+                parsed_items = module.plugin(target_browser)
+                print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                logging.info(" - Completed; {}".format(parsed_items))
+    except Exception as e:
+        logging.debug(' - Error loading plugins ({})'.format(e))
+        print '  - Error loading plugins'
 
     if args.format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
