@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.2"
+__version__ = "1.4.3"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -346,6 +346,7 @@ class Chrome(object):
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
+                    # TODO: collapse download chain into one entry per download
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
                     new_row = DownloadItem(row.get('id'), row.get('url'), row.get('received_bytes'),
                                            row.get('total_bytes'), row.get('state'), row.get('full_path'),
@@ -615,10 +616,9 @@ class Chrome(object):
 
         logging.info("Autofill items from {}:".format(database))
 
-        # TODO: add in autofill.last_used value, new in v35
         # Queries for different versions
-        query = {35: '''SELECT autofill.date_created, autofill.name, autofill.value, autofill.count
-                        FROM autofill''',
+        query = {35: '''SELECT autofill.date_created, autofill.date_last_used, autofill.name, autofill.value,
+                        autofill.count FROM autofill''',
                  2: '''SELECT autofill_dates.date_created, autofill.name, autofill.value, autofill.count
                         FROM autofill, autofill_dates WHERE autofill.pair_id = autofill_dates.pair_id'''}
 
@@ -646,6 +646,10 @@ class Chrome(object):
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
                     results.append(AutofillItem(self.to_datetime(row.get('date_created')), row.get('name'),
                                                 row.get('value'), row.get('count')))
+
+                    if row.get('date_last_used') and row.get('count') > 1:
+                        results.append(AutofillItem(self.to_datetime(row.get('date_last_used')), row.get('name'),
+                                                    row.get('value'), row.get('count')))
 
                 db_file.close()
                 self.artifacts_counts['Autofill'] = len(results)
