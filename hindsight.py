@@ -81,14 +81,29 @@ def dict_factory(cursor, row):
 
 
 class Chrome(object):
-    def __init__(self, profile_path, version=[], structure={}, parsed_artifacts=[], installed_extensions=[],
-                 artifacts_counts={}):
+    def __init__(self, profile_path, version=None, structure=None, parsed_artifacts=None, installed_extensions=None,
+                 artifacts_counts=None):
         self.profile_path = profile_path
         self.version = version
         self.structure = structure
         self.parsed_artifacts = parsed_artifacts
         self.installed_extensions = installed_extensions
         self.artifacts_counts = artifacts_counts
+
+        if self.version is None:
+            self.version = []
+
+        if self.structure is None:
+            self.structure = {}
+
+        if self.parsed_artifacts is None:
+            self.parsed_artifacts = []
+
+        if self.installed_extensions is None:
+            self.installed_extensions = []
+
+        if self.artifacts_counts is None:
+            self.artifacts_counts = {}
 
     def build_structure(self, path, database):
 
