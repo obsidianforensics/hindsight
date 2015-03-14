@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.3"
+__version__ = "1.4.4"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -286,9 +286,13 @@ class Chrome(object):
                     if history_file == 'Archived History':
                         new_row.row_type = 'url (archived)'
 
-
+                    # Translate the transition value to human-readable
                     new_row.decode_transition()
 
+                    # Translate the numeric visit_source.source code to human-readable
+                    new_row.decode_source()
+
+                    # Add the new row to the results array
                     results.append(new_row)
 
                 db_file.close()
@@ -989,6 +993,20 @@ class URLItem(HistoryItem):
             if qualifier in qualifiers_friendly.keys():
                 self.transition_friendly += " (" + str(qualifiers_friendly[int(qualifier)]) + ")"
 
+    def decode_source(self):
+        # Source: https://code.google.com/p/chromium/codesearch#chromium/src/components/history/core/browser/history_types.h
+        source_friendly = {
+            0: "Synced",
+            None: "Local",
+            2: "Added by Extension",
+            3: "Firefox (Imported)",
+            4: "IE (Imported)",
+            5: "Safari (Imported)"}
+
+        raw = self.visit_source
+
+        if raw in source_friendly.keys():
+            self.visit_source = source_friendly[raw]
 
 class DownloadItem(HistoryItem):
     def __init__(self, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
@@ -1308,7 +1326,7 @@ def main():
         w.write_rich_string(1, 3, "Title / Name / Status",                            header_format)
         w.write_rich_string(1, 4, "Data / Value / Path",                              header_format)
         w.write(1, 5, "Interpretation",                                               header_format)
-        w.write(1, 6, "Safe?",                                                        header_format)
+        w.write(1, 6, "Source",                                                        header_format)
         w.write(1, 7, "Duration",                                                     header_format)
         w.write(1, 8, "Visit Count",                                                  header_format)
         w.write(1, 9, "Typed Count",                                                  header_format)
@@ -1327,7 +1345,7 @@ def main():
         w.set_column('D:D', 25)         # Title / Name / Status
         w.set_column('E:E', 80)         # Data / Value / Path
         w.set_column('F:F', 60)         # Interpretation
-        w.set_column('G:G', 10)         # Safe Browsing
+        w.set_column('G:G', 10)         # Source
         # URL Specific
         w.set_column('H:H', 14)         # Visit Duration
         w.set_column('I:K', 6)          # Visit Count, Typed Count, Hidden
@@ -1349,7 +1367,7 @@ def main():
                 w.write_string(row_number, 3, item.name,                     black_field_format)  # Title
                 w.write(       row_number, 4, "",                            black_value_format)  # Indexed Content
                 w.write(       row_number, 5, item.interpretation,           black_value_format)  # Interpretation
-                w.write(       row_number, 6, "",                            black_type_format)   # Safe Browsing
+                w.write(       row_number, 6, item.visit_source,            black_type_format)   # Source
                 w.write(       row_number, 7, item.visit_duration,           black_flag_format)   # Duration
                 w.write(       row_number, 8, item.visit_count,              black_flag_format)   # Visit Count
                 w.write(       row_number, 9, item.typed_count,              black_flag_format)   # Typed Count
