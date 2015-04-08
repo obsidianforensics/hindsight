@@ -3,7 +3,7 @@
 """Hindsight - Internet history forensics for Google Chrome/Chromium.
 
 This script parses the files in the Chrome data folder, runs various plugins
-against the data, and then outputs the results in a spreadsheet. 
+against the data, and then outputs the results in a spreadsheet.
 """
 
 import os
@@ -34,7 +34,7 @@ try:
 except ImportError:
     print "Couldn't import module 'json'; JSON output disabled.\n"
 
-# Try to import modules for cookie decryption on different OSes.  
+# Try to import modules for cookie decryption on different OSes.
 cookie_decryption = {'windows': 0, 'mac': 0, 'linux': 0}
 # Windows
 try:
@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.4"
+__version__ = "1.4.5"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -235,7 +235,7 @@ class Chrome(object):
 
         self.version = possible_versions
 
-    def get_history(self, path, history_file, version):
+    def get_history(self, path, history_file, version, row_type):
         # Set up empty return array
         results = []
 
@@ -298,8 +298,8 @@ class Chrome(object):
                                       row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
                                       str(duration), row.get('source'))
 
-                    if history_file == 'Archived History':
-                        new_row.row_type = 'url (archived)'
+                    # Set the row type as determined earlier
+                    new_row.row_type = row_type
 
                     # Translate the transition value to human-readable
                     new_row.decode_transition()
@@ -319,7 +319,7 @@ class Chrome(object):
                 print("Couldn't open file")
                 logging.error(" - Couldn't open {}".format(os.path.join(path, history_file)))
 
-    def get_downloads(self, path, database, version):
+    def get_downloads(self, path, database, version, row_type):
         # Set up empty return array
         results = []
 
@@ -392,10 +392,11 @@ class Chrome(object):
                         new_row.value = 'Error retrieving download location'
                         logging.error(" - Error retrieving download location for download '{}'".format(new_row.url))
 
+                    new_row.row_type = row_type
                     results.append(new_row)
 
                 db_file.close()
-                self.artifacts_counts['Downloads'] = len(results)
+                self.artifacts_counts[database + '_downloads'] = len(results)
                 logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
@@ -1023,6 +1024,7 @@ class URLItem(HistoryItem):
         if raw in source_friendly.keys():
             self.visit_source = source_friendly[raw]
 
+
 class DownloadItem(HistoryItem):
     def __init__(self, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
                  end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
@@ -1382,12 +1384,12 @@ def main():
                 w.write_string(row_number, 3, item.name,                     black_field_format)  # Title
                 w.write(       row_number, 4, "",                            black_value_format)  # Indexed Content
                 w.write(       row_number, 5, item.interpretation,           black_value_format)  # Interpretation
-                w.write(       row_number, 6, item.visit_source,            black_type_format)   # Source
+                w.write(       row_number, 6, item.visit_source,             black_type_format)   # Source
                 w.write(       row_number, 7, item.visit_duration,           black_flag_format)   # Duration
                 w.write(       row_number, 8, item.visit_count,              black_flag_format)   # Visit Count
                 w.write(       row_number, 9, item.typed_count,              black_flag_format)   # Typed Count
                 w.write(       row_number, 10, item.hidden,                  black_flag_format)   # Hidden
-                w.write_string(row_number, 11, item.transition_friendly,     black_trans_format)  # Transition
+                w.write(       row_number, 11, item.transition_friendly,     black_trans_format)  # Transition
 
             if item.row_type == "autofill":
                 w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
@@ -1658,12 +1660,23 @@ def main():
             logging.info(" - %s" % input_file)
 
     # Process History files
-    if 'History' in input_listing:
-        target_browser.get_history(args.input, 'History', target_browser.version)
-        print format_processing_output("URL records", target_browser.artifacts_counts['History'])
+    custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
+    for input_file in input_listing:
+        if re.search(r'^History', input_file):
+            row_type = 'url'
+            custom_type_m = re.search(custom_type_re, input_file)
+            if custom_type_m:
+                row_type = 'url ({})'.format(custom_type_m.group(1))
+            target_browser.get_history(args.input, input_file, target_browser.version, row_type)
+            display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
+            print format_processing_output("{} records".format(display_type), target_browser.artifacts_counts[input_file])
 
-        target_browser.get_downloads(args.input, 'History', target_browser.version)
-        print format_processing_output("Download records", target_browser.artifacts_counts['Downloads'])
+            row_type = 'download'
+            if custom_type_m:
+                row_type = 'download ({})'.format(custom_type_m.group(1))
+            target_browser.get_downloads(args.input, input_file, target_browser.version, row_type)
+            display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
+            print format_processing_output("{} records".format(display_type), target_browser.artifacts_counts[input_file + '_downloads'])
 
     if 'Archived History' in input_listing:
         target_browser.get_history(args.input, 'Archived History', target_browser.version)
