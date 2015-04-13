@@ -236,6 +236,7 @@ class Chrome(object):
         self.version = possible_versions
 
     def get_history(self, path, history_file, version, row_type):
+        print(path, history_file, version, row_type)
         # Set up empty return array
         results = []
 
@@ -805,6 +806,7 @@ class Chrome(object):
                 manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
             except IOError:
                 logging.error(" - Error opening {} for extension {}".format(manifest_path, app_id))
+                break
 
             name = None
             description = None
@@ -880,6 +882,100 @@ class Chrome(object):
                              'display_width': 36}
                         ]}
         self.installed_extensions = {'data': results, 'presentation': presentation}
+
+    def get_preferences(self, path, preferences_file):
+        def check_and_append_pref(parent, pref, value=None, description=None):
+            # If the preference exists, continue
+            if parent.get(pref):
+                # If no value is specified, use the value from the preference JSON
+                if not value:
+                    value = parent[pref]
+                # Append the preference dict to our results array
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': value,
+                    'description': description})
+            else:
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': '<not present>',
+                    'description': description})
+
+        def append_group(group):
+            # Append the preference group to our results array
+            results.append({
+                'group': group,
+                'name': None,
+                'value': None,
+                'description': None})
+
+        results = []
+        logging.info("Preferences:")
+        prefs = None
+
+        # Open 'Preferences' file
+        pref_path = os.path.join(path, preferences_file)
+        try:
+            logging.info(" - Reading from {}".format(pref_path))
+            pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
+            prefs = json.loads(pref_file.read())
+        except:
+            logging.error(" - Error decoding Preferences file {}".format(pref_path))
+            return
+
+        if prefs:
+            #print json.dumps(prefs, indent=4)
+            if prefs.get('browser'):
+                append_group("Clearing Chrome Data")
+                if prefs['browser'].get('last_clear_browsing_data_time'):
+                    check_and_append_pref(prefs['browser'], 'last_clear_browsing_data_time',
+                                          self.friendly_date(prefs['browser']['last_clear_browsing_data_time']),
+                                          "Last time the history was cleared")
+                check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
+                if prefs['browser'].get('clear_data'):
+                    check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period')
+
+            append_group("Per Host Zoom Levels")
+            # There are per_host_zoom_levels keys in two locations: profile.per_host_zoom_levels and
+            # partition.per_host_zoom_levels.[integer].
+            if prefs.get('profile'):
+                if prefs['profile'].get('per_host_zoom_levels'):
+                    for zoom in prefs['profile']['per_host_zoom_levels'].keys():
+                        check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
+
+            if prefs.get('partition'):
+                if prefs['partition'].get('per_host_zoom_levels'):
+                    for number in prefs['partition']['per_host_zoom_levels'].keys():
+                        for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
+                            check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
+
+        self.artifacts_counts['Preferences'] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
+        presentation = {'title': 'Preferences',
+                        'columns': [
+                            {'display_name': 'Group',
+                             'data_name': 'group',
+                             'display_width': 8},
+                            {'display_name': 'Setting Name',
+                             'data_name': 'name',
+                             'display_width': 30},
+                            {'display_name': 'Description',
+                             'data_name': 'description',
+                             'display_width': 60},
+                            {'display_name': 'Value',
+                             'data_name': 'value',
+                             'display_width': 25},
+                            ]}
+
+        self.preferences = {'data': results, 'presentation': presentation}
 
 
 class MyEncoder(json.JSONEncoder):
@@ -1662,7 +1758,7 @@ def main():
     # Process History files
     custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
     for input_file in input_listing:
-        if re.search(r'^History', input_file):
+        if re.search(r'^History__|^History$', input_file):
             row_type = 'url'
             custom_type_m = re.search(custom_type_re, input_file)
             if custom_type_m:
@@ -1679,7 +1775,7 @@ def main():
             print format_processing_output("{} records".format(display_type), target_browser.artifacts_counts[input_file + '_downloads'])
 
     if 'Archived History' in input_listing:
-        target_browser.get_history(args.input, 'Archived History', target_browser.version)
+        target_browser.get_history(args.input, 'Archived History', target_browser.version, 'url (archived)')
         print format_processing_output("Archived URL records", target_browser.artifacts_counts['Archived History'])
 
     if 'Cookies' in input_listing:
@@ -1705,6 +1801,10 @@ def main():
     if 'Login Data' in input_listing:
         target_browser.get_login_data(args.input, 'Login Data', target_browser.version)
         print format_processing_output("Login Data records", target_browser.artifacts_counts['Login Data'])
+
+    if 'Preferences' in input_listing:
+        target_browser.get_preferences(args.input, 'Preferences')
+        print format_processing_output("Preference Items", target_browser.artifacts_counts['Preferences'])
 
     target_browser.parsed_artifacts.sort()
     print("\n Running plugins:")
