@@ -903,13 +903,40 @@ class Chrome(object):
                     'value': '<not present>',
                     'description': description})
 
-        def append_group(group):
+        def check_and_append_pref_and_children(parent, pref, value=None, description=None):
+            # If the preference exists, continue
+            if parent.get(pref):
+                # If no value is specified, use the value from the preference JSON
+                if not value:
+                    value = parent[pref]
+                # Append the preference dict to our results array
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': value,
+                    'description': description})
+            else:
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': '<not present>',
+                    'description': description})
+
+
+        def append_group(group, description=None):
             # Append the preference group to our results array
             results.append({
                 'group': group,
                 'name': None,
                 'value': None,
-                'description': None})
+                'description': description})
+
+        def append_pref(pref, value=None, description=None):
+            results.append({
+                'group': None,
+                'name': pref,
+                'value': value,
+                'description': description})
 
         results = []
         logging.info("Preferences:")
@@ -927,6 +954,18 @@ class Chrome(object):
 
         if prefs:
             #print json.dumps(prefs, indent=4)
+            if prefs.get('account_info'):
+                append_group("Account Information")
+                for account in prefs['account_info']:
+                    append_pref('account_id: {}'.format(account['account_id']), 'email: {}'.format(account['email']))
+
+            if prefs.get('autofill'):
+                append_group("Autofill")
+                check_and_append_pref(prefs['autofill'], 'enabled')
+
+            #if prefs.get('bookmark_bar')
+            #    check_and_append_pref(prefs['bookmark_bar'], )
+
             if prefs.get('browser'):
                 append_group("Clearing Chrome Data")
                 if prefs['browser'].get('last_clear_browsing_data_time'):
@@ -943,7 +982,8 @@ class Chrome(object):
                     check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
                     check_and_append_pref(prefs['browser']['clear_data'], 'time_period')
 
-            append_group("Per Host Zoom Levels")
+            append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
+                                                 "useful in some cases.")
             # There are per_host_zoom_levels keys in two locations: profile.per_host_zoom_levels and
             # partition.per_host_zoom_levels.[integer].
             if prefs.get('profile'):
@@ -957,6 +997,16 @@ class Chrome(object):
                         for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
                             check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
 
+            if prefs.get('profile'):
+                if prefs['profile'].get('content_settings'):
+                    if prefs['profile']['content_settings'].get('pattern_pairs'):
+                        append_group("Profile Content Settings", "These settings persist even when the history is "
+                                                                 "cleared, and may be useful in some cases.")
+                        for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
+                            # Adding the space before the domain prevents Excel from freaking out...  idk.
+                            append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
+
+
         self.artifacts_counts['Preferences'] = len(results)
         logging.info(" - Parsed {} items".format(len(results)))
         presentation = {'title': 'Preferences',
@@ -966,13 +1016,13 @@ class Chrome(object):
                              'display_width': 8},
                             {'display_name': 'Setting Name',
                              'data_name': 'name',
-                             'display_width': 30},
+                             'display_width': 40},
+                            {'display_name': 'Value',
+                             'data_name': 'value',
+                             'display_width': 35},
                             {'display_name': 'Description',
                              'data_name': 'description',
                              'display_width': 60},
-                            {'display_name': 'Value',
-                             'data_name': 'value',
-                             'display_width': 25},
                             ]}
 
         self.preferences = {'data': results, 'presentation': presentation}
