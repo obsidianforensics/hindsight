@@ -187,7 +187,7 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 41)
+        possible_versions = range(1, 43)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -232,11 +232,11 @@ class Chrome(object):
         if 'Login Data' in self.structure.keys():
             if 'logins' in self.structure['Login Data'].keys():
                 trim_lesser_versions_if('display_name', self.structure['Login Data']['logins'], 39)
+                trim_lesser_versions_if('generation_upload_status', self.structure['Login Data']['logins'], 42)
 
         self.version = possible_versions
 
     def get_history(self, path, history_file, version, row_type):
-        print(path, history_file, version, row_type)
         # Set up empty return array
         results = []
 
