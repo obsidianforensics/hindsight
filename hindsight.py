@@ -953,19 +953,30 @@ class Chrome(object):
             return
 
         if prefs:
-            #print json.dumps(prefs, indent=4)
+            # Account Information
             if prefs.get('account_info'):
                 append_group("Account Information")
                 for account in prefs['account_info']:
                     append_pref('account_id: {}'.format(account['account_id']), 'email: {}'.format(account['email']))
 
+            # Local file paths
+            append_group("Local file paths")
+            if prefs.get('download'):
+                check_and_append_pref(prefs['download'], 'default_directory')
+            if prefs.get('printing'):
+                if prefs.get('print_preview_sticky_settings'):
+                    check_and_append_pref(prefs['printing']['print_preview_sticky_settings'], 'savePath')
+            if prefs.get('savefile'):
+                check_and_append_pref(prefs['savefile'], 'default_directory')
+            if prefs.get('selectfile'):
+                check_and_append_pref(prefs['selectfile'], 'last_directory')
+
+            # Autofill
             if prefs.get('autofill'):
                 append_group("Autofill")
                 check_and_append_pref(prefs['autofill'], 'enabled')
 
-            #if prefs.get('bookmark_bar')
-            #    check_and_append_pref(prefs['bookmark_bar'], )
-
+            # Clearing Chrome Data
             if prefs.get('browser'):
                 append_group("Clearing Chrome Data")
                 if prefs['browser'].get('last_clear_browsing_data_time'):
@@ -974,13 +985,15 @@ class Chrome(object):
                                           "Last time the history was cleared")
                 check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
                 if prefs['browser'].get('clear_data'):
+                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
+                                          description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
+                                                      "4: the beginning of time")
                     check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
                     check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
                     check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
                     check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
                     check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
                     check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period')
 
             append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
                                                  "useful in some cases.")
