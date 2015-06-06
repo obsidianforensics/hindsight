@@ -922,7 +922,6 @@ class Chrome(object):
                     'value': '<not present>',
                     'description': description})
 
-
         def append_group(group, description=None):
             # Append the preference group to our results array
             results.append({
@@ -1018,7 +1017,6 @@ class Chrome(object):
                         for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
                             # Adding the space before the domain prevents Excel from freaking out...  idk.
                             append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
-
 
         self.artifacts_counts['Preferences'] = len(results)
         logging.info(" - Parsed {} items".format(len(results)))
@@ -1885,9 +1883,13 @@ def main():
                 plugin = plugin.replace(".py", "")
                 module = __import__(plugin)
                 logging.info("Running '{}' plugin".format(module.friendlyName))
-                parsed_items = module.plugin(target_browser)
-                print format_plugin_output(module.friendlyName, module.version, parsed_items)
-                logging.info(" - Completed; {}".format(parsed_items))
+                try:
+                    parsed_items = module.plugin(target_browser)
+                    print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                    logging.info(" - Completed; {}".format(parsed_items))
+                except Exception, e:
+                    print format_plugin_output(module.friendlyName, module.version, 'failed')
+                    logging.info(" - Failed; {}".format(e))
     except Exception as e:
         logging.debug(' - Error loading plugins ({})'.format(e))
         print '  - Error loading plugins'
