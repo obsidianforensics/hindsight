@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.5"
+__version__ = "1.4.6"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -1433,6 +1433,9 @@ The Chrome data folder default locations are:
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
                         default='hindsight.log')
     parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
+    parser.add_argument('--decryptlinux', action='store_true',
+                        help='Try to decrypt Chrome data from a Linux system - '
+                             'this will cause problems if you try it on a non-Linux system')
 
     args = parser.parse_args()
 
@@ -1450,6 +1453,13 @@ The Chrome data folder default locations are:
             except pytz.exceptions.UnknownTimeZoneError:
                 print("Couldn't understand timezone; using UTC.")
                 args.timezone = pytz.timezone('UTC')
+
+    # Disable decryption on Linux unless explicitly enabled
+    if args.decryptlinux:
+        cookie_decryption['linux'] = 1
+    else:
+        cookie_decryption['linux'] = 0
+
     return args
 
 
