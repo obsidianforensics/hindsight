@@ -63,7 +63,7 @@ def plugin(target_browser):
 
     for item in target_browser.parsed_artifacts:
         if item.row_type in artifactTypes:
-            if item.row_type == "cookie (created)":
+            if item.row_type == u'cookie (created)':
                 for site in cookie_set:
                     if item.url in site or site.keys()[0] == '*':
                         if site[site.keys()[0]]['name'] == item.name:
@@ -72,18 +72,18 @@ def plugin(target_browser):
                                 server = target_browser.to_datetime(m.group(1))
                                 local = item.timestamp
                                 delta = abs(server - local)
-                                item.interpretation = "Server-side Timestamp: {} | Local Timestamp: {} | " \
-                                                      "Difference: {} [Time Discrepancy]".format(server, local, delta)
+                                item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
+                                                      'Difference: {} [Time Discrepancy]'.format(server, local, delta)
                                 parsedItems += 1
-            elif item.row_type == "url" or item.row_type == "url (archived)":
+            elif item.row_type == u'url' or item.row_type == u'url (archived)':
                 for site in url_set:
                     m = re.search(site, item.url)
                     if m:
                         server = target_browser.to_datetime(m.group(1))
                         local = item.timestamp
                         delta = abs(server - local)
-                        item.interpretation = "Server-side Timestamp: {} | Local Timestamp: {} | " \
-                                              "Difference: {} [Time Discrepancy]".format(server, local, delta)
+                        item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
+                                              u'Difference: {} [Time Discrepancy]'.format(server, local, delta)
                         parsedItems += 1
 
     # Description of what the plugin did

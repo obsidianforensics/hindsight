@@ -33,8 +33,7 @@ def plugin(target_browser):
                 if len(query_string_dict) > 0:                  # Check if we have any field/value pairs.
                     query_string = ''                           # Create our return string; start it off empty.
                     for field, value in query_string_dict.items():  # Add each field/value to the return string
-                        query_string += "{}: {} | ".format(field.encode('ascii', 'xmlcharrefreplace'),
-                                                           value[0].encode('ascii', 'xmlcharrefreplace'))
+                        query_string += u'{}: {} | '.format(field, value[0])
 
                                                                 # Set the interpretation to the string
                     item.interpretation = query_string[:-2] + " [Query String Parser]"

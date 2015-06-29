@@ -32,10 +32,10 @@ def plugin(target_browser):
                     try:
                         for ext in target_browser.installed_extensions['data']:
                             if ext.app_id == m.group(1):
-                                item.interpretation = "%s (%s) [Chrome Extension]" % (ext.name, ext.description)
+                                item.interpretation = u'{} ({}) [Chrome Extension]'.format(ext.name, ext.description)
                                 parsedItems += 1
                     except:
                         pass
 
     # Description of what the plugin did
-    return "%s extension URLs parsed" % parsedItems
+    return u'{} extension URLs parsed'.format(parsedItems)

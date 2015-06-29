@@ -297,7 +297,7 @@ class Chrome(object):
                                       self.to_datetime(row.get('last_visit_time')), row.get('visit_count'),
                                       row.get('typed_count'), row.get('from_visit'), row.get('transition'),
                                       row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
-                                      str(duration), row.get('source'))
+                                      unicode(duration), row.get('source'))
 
                     # Set the row type as determined earlier
                     new_row.row_type = row_type
@@ -390,7 +390,7 @@ class Chrome(object):
                     elif new_row.target_path is not None:
                         new_row.value = new_row.target_path
                     else:
-                        new_row.value = 'Error retrieving download location'
+                        new_row.value = u'Error retrieving download location'
                         logging.error(" - Error retrieving download location for download '{}'".format(new_row.url))
 
                     new_row.row_type = row_type
@@ -488,7 +488,7 @@ class Chrome(object):
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly
                         FROM cookies'''}
 
-        # Get the lowest possible versionr from the version list, and decrement it until it finds a matching query
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
         while compatible_version not in query.keys() and compatible_version > 0:
             compatible_version -= 1
@@ -511,9 +511,9 @@ class Chrome(object):
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = decrypt_cookie(row.get('encrypted_value'))
+                            cookie_value = decrypt_cookie(row.get('encrypted_value')).decode()
                         else:
-                            cookie_value = row.get('value')
+                            cookie_value = row.get('value').decode()
                     else:
                         cookie_value = row.get('value')
 
@@ -536,7 +536,7 @@ class Chrome(object):
                     accessed_row.url = (accessed_row.host_key + accessed_row.path)
 
                     # Create the row for when the cookie was created
-                    new_row.row_type = 'cookie (created)'
+                    new_row.row_type = u'cookie (created)'
                     new_row.timestamp = new_row.creation_utc
                     results.append(new_row)
 
@@ -545,7 +545,7 @@ class Chrome(object):
                     if new_row.creation_utc != new_row.last_access_utc and \
                                     accessed_row.last_access_utc != self.to_datetime(0):
                                     # accessed_row.last_access_utc != datetime.datetime.utcfromtimestamp(0):
-                        accessed_row.row_type = 'cookie (accessed)'
+                        accessed_row.row_type = u'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
 
@@ -595,31 +595,31 @@ class Chrome(object):
                 for row in cursor:
                     if row.get('blacklisted_by_user') == 1:
                         blacklist_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
-                                                  name=row.get('username_element'),
-                                                  value="<User chose to 'Never save password' for this site>",
+                                                  name=row.get('username_element').decode(),
+                                                  value=u'<User chose to "Never save password" for this site>',
                                                   count=row.get('times_used'))
-                        blacklist_row.row_type = 'login (blacklist)'
+                        blacklist_row.row_type = u'login (blacklist)'
                         results.append(blacklist_row)
 
                     if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
                         username_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
                                                  name=row.get('username_element'), value=row.get('username_value'),
                                                  count=row.get('times_used'))
-                        username_row.row_type = 'login (username)'
+                        username_row.row_type = u'login (username)'
                         results.append(username_row)
 
                     if row.get('password_value') is not None and row.get('blacklisted_by_user') == 0:
                         password = None
                         try:
                             # Windows is all I've had time to test; Ubuntu uses built-in password manager
-                            password = win32crypt.CryptUnprotectData(row.get('password_value'), None, None, None, 0)[1]
+                            password = win32crypt.CryptUnprotectData(row.get('password_value').decode(), None, None, None, 0)[1]
                         except:
-                            password = "<encrypted>"
+                            password = u'<encrypted>'
 
                         password_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
                                                  name=row.get('password_element'), value=password,
                                                  count=row.get('times_used'))
-                        password_row.row_type = 'login (password)'
+                        password_row.row_type = u'login (password)'
                         results.append(password_row)
 
                 db_file.close()
@@ -628,7 +628,7 @@ class Chrome(object):
                 self.parsed_artifacts.extend(results)
 
             except IOError:
-                print("Couldn't open file")
+                print(u"Couldn't open file")
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_autofill(self, path, database, version):
@@ -730,27 +730,29 @@ class Chrome(object):
         logging.info(" - Reading from {}".format(ls_path))
 
         local_storage_listing = os.listdir(ls_path)
-        logging.debug(" - All {} files in Local Storage directory: {}".format(len(local_storage_listing), str(local_storage_listing)))
+        logging.debug(" - All {} files in Local Storage directory: {}"
+                      .format(len(local_storage_listing), str(local_storage_listing)))
         filtered_listing = []
 
         for ls_file in local_storage_listing:
-            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
+            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:16] == 'chrome-extension') \
+                    and ls_file[-8:] != '-journal':
                 filtered_listing.append(ls_file)
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
 
                 def to_unicode(raw_data):
                     if type(raw_data) in (int, long, float):
-                        return unicode(raw_data, 'utf-8', 'replace')
+                        return unicode(raw_data, 'utf-16le', errors='replace')
                     elif type(raw_data) is unicode:
                         return raw_data
                     elif type(raw_data) is buffer:
                         try:
-                            return str(raw_data).decode('utf-8', errors='replace')
-                        except:
-                            return "<buffer decode error>"
+                            return unicode(raw_data, 'utf-16le', errors='replace')
+                        except UnicodeDecodeError:
+                            return u'<buffer decode error>'
                     else:
-                        return "<unknown type decode error>"
+                        return u'<unknown type decode error>'
 
                 # Connect to Local Storage file sqlite db
                 try:
@@ -767,7 +769,7 @@ class Chrome(object):
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
                         # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(LocalStorageItem(ls_file, self.to_datetime(ls_created), row.get('key'),
+                        results.append(LocalStorageItem(ls_file.decode(), self.to_datetime(ls_created), row.get('key'),
                                                         to_unicode(row.get('value'))))
                 except:
                     logging.warning(" - Error reading key/values from {}".format(ls_file_path))
@@ -1044,7 +1046,7 @@ class MyEncoder(json.JSONEncoder):
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
         elif isinstance(obj, buffer):
-            return obj
+            return unicode(obj, encoding='utf-8', errors='replace')
         else:
             return obj.__dict__
 
@@ -1089,47 +1091,47 @@ class URLItem(HistoryItem):
     def decode_transition(self):
         # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
         transition_friendly = {
-            0: "link",                  # User got to this page by clicking a link on another page.
-            1: "typed",                 # User got this page by typing the URL in the URL bar.  This should not be
+            0: u'link',                 # User got to this page by clicking a link on another page.
+            1: u'typed',                # User got this page by typing the URL in the URL bar.  This should not be
                                         # used for cases where the user selected a choice that didn't look at all
                                         # like a URL; see GENERATED below.
-                                        # We also use this for other "explicit" navigation actions.
-            2: "auto bookmark",         # User got to this page through a suggestion in the UI, for example)
+                                        # We also use this for other 'explicit' navigation actions.
+            2: u'auto bookmark',        # User got to this page through a suggestion in the UI, for example)
                                         # through the destinations page.
-            3: "auto subframe",         # This is a subframe navigation. This is any content that is automatically
+            3: u'auto subframe',        # This is a subframe navigation. This is any content that is automatically
                                         # loaded in a non-toplevel frame. For example, if a page consists of
                                         # several frames containing ads, those ad URLs will have this transition
                                         # type. The user may not even realize the content in these pages is a
                                         # separate frame, so may not care about the URL (see MANUAL below).
-            4: "manual subframe",       # For subframe navigations that are explicitly requested by the user and
+            4: u'manual subframe',      # For subframe navigations that are explicitly requested by the user and
                                         # generate new navigation entries in the back/forward list. These are
                                         # probably more important than frames that were automatically loaded in
                                         # the background because the user probably cares about the fact that this
                                         # link was loaded.
-            5: "generated",             # User got to this page by typing in the URL bar and selecting an entry
+            5: u'generated',            # User got to this page by typing in the URL bar and selecting an entry
                                         # that did not look like a URL.  For example, a match might have the URL
-                                        # of a Google search result page, but appear like "Search Google for ...".
+                                        # of a Google search result page, but appear like 'Search Google for ...'.
                                         # These are not quite the same as TYPED navigations because the user
                                         # didn't type or see the destination URL.
                                         # See also KEYWORD.
-            6: "start page",            # This is a toplevel navigation. This is any content that is automatically
+            6: u'start page',           # This is a toplevel navigation. This is any content that is automatically
                                         # loaded in a toplevel frame.  For example, opening a tab to show the ASH
                                         # screen saver, opening the devtools window, opening the NTP after the safe
                                         # browsing warning, opening web-based dialog boxes are examples of
                                         # AUTO_TOPLEVEL navigations.
-            7: "form submit",           # The user filled out values in a form and submitted it. NOTE that in
+            7: u'form submit',          # The user filled out values in a form and submitted it. NOTE that in
                                         # some situations submitting a form does not result in this transition
                                         # type. This can happen if the form uses script to submit the contents.
-            8: "reload",                # The user "reloaded" the page, either by hitting the reload button or by
+            8: u'reload',               # The user 'reloaded' the page, either by hitting the reload button or by
                                         # hitting enter in the address bar.  NOTE: This is distinct from the
-                                        # concept of whether a particular load uses "reload semantics" (i.e.
+                                        # concept of whether a particular load uses 'reload semantics' (i.e.
                                         # bypasses cached data).  For this reason, lots of code needs to pass
-                                        # around the concept of whether a load should be treated as a "reload"
+                                        # around the concept of whether a load should be treated as a 'reload'
                                         # separately from their tracking of this transition type, which is mainly
                                         # used for proper scoring for consumers who care about how frequently a
                                         # user typed/visited a particular URL.
                                         # SessionRestore and undo tab close use this transition type too.
-            9: "keyword",               # The url was generated from a replaceable keyword other than the default
+            9: u'keyword',              # The url was generated from a replaceable keyword other than the default
                                         # search provider. If the user types a keyword (which also applies to
                                         # tab-to-search) in the omnibox this qualifier is applied to the transition
                                         # type of the generated url. TemplateURLModel then may generate an
@@ -1138,21 +1140,21 @@ class URLItem(HistoryItem):
                                         # wikipedia the generated url has a transition qualifer of KEYWORD, and
                                         # TemplateURLModel generates a visit for 'wikipedia.org' with a transition
                                         # type of KEYWORD_GENERATED.
-            10: "keyword generated"}    # Corresponds to a visit generated for a keyword. See description of
+            10: u'keyword generated'}   # Corresponds to a visit generated for a keyword. See description of
                                         # KEYWORD for more details.
 
         qualifiers_friendly = {
-            0x00800000: "Blocked",                 # A managed user attempted to visit a URL but was blocked.
-            0x01000000: "Forward or Back",         # User used the Forward or Back button to navigate among browsing
+            0x00800000: u'Blocked',                # A managed user attempted to visit a URL but was blocked.
+            0x01000000: u'Forward or Back',        # User used the Forward or Back button to navigate among browsing
                                                    # history.
-            0x02000000: "From Address Bar",        # User used the address bar to trigger this navigation.
-            0x04000000: "Home Page",               # User is navigating to the home page.
-            0x08000000: "From API",                # The transition originated from an external application; the exact
+            0x02000000: u'From Address Bar',       # User used the address bar to trigger this navigation.
+            0x04000000: u'Home Page',              # User is navigating to the home page.
+            0x08000000: u'From API',               # The transition originated from an external application; the exact
                                                    # definition of this is embedder dependent.
-            0x10000000: "Navigation Chain Start",  # The beginning of a navigation chain.
-            0x20000000: "Navigation Chain End",    # The last transition in a redirect chain.
-            0x40000000: "Client Redirect",         # Redirects caused by JavaScript or a meta refresh tag on the page.
-            0x80000000: "Server Redirect"}         # Redirects sent from the server by HTTP headers. It might be nice to
+            0x10000000: u'Navigation Chain Start', # The beginning of a navigation chain.
+            0x20000000: u'Navigation Chain End',   # The last transition in a redirect chain.
+            0x40000000: u'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page.
+            0x80000000: u'Server Redirect'}        # Redirects sent from the server by HTTP headers. It might be nice to
                                                    # break this out into 2 types in the future, permanent or temporary,
                                                    # if we can get that information from WebKit.
         raw = self.transition
@@ -1164,17 +1166,17 @@ class URLItem(HistoryItem):
         if code in transition_friendly.keys():
             self.transition_friendly = transition_friendly[code]
             if qualifier in qualifiers_friendly.keys():
-                self.transition_friendly += " (" + str(qualifiers_friendly[int(qualifier)]) + ")"
+                self.transition_friendly += u' (' + unicode(qualifiers_friendly[int(qualifier)]) + u')'
 
     def decode_source(self):
         # Source: https://code.google.com/p/chromium/codesearch#chromium/src/components/history/core/browser/history_types.h
         source_friendly = {
-            0: "Synced",
-            None: "Local",
-            2: "Added by Extension",
-            3: "Firefox (Imported)",
-            4: "IE (Imported)",
-            5: "Safari (Imported)"}
+            0: u'Synced',
+            None: u'Local',
+            2: u'Added by Extension',
+            3: u'Firefox (Imported)',
+            4: u'IE (Imported)',
+            5: u'Safari (Imported)'}
 
         raw = self.visit_source
 
@@ -1187,7 +1189,7 @@ class DownloadItem(HistoryItem):
                  end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
                  interrupt_reason=None, etag=None, last_modified=None, chain_index=None, interrupt_reason_friendly=None,
                  danger_type_friendly=None, state_friendly=None, status_friendly=None):
-        super(DownloadItem, self).__init__('download', timestamp=start_time, url=url)
+        super(DownloadItem, self).__init__(u'download', timestamp=start_time, url=url)
         self.download_id = download_id
         self.url = url
         self.received_bytes = received_bytes
@@ -1211,45 +1213,45 @@ class DownloadItem(HistoryItem):
 
     def decode_interrupt_reason(self):
         interrupts = {
-            0:  "No Interrupt",                 # Success
+            0:  u'No Interrupt',                # Success
 
             # from download_interrupt_reason_values.h on Chromium site
             # File errors
-            1:  "File Error",                   # Generic file operation failure.
-            2:  "Access Denied",                # The file cannot be accessed due to security restrictions.
-            3:  "Disk Full",                    # There is not enough room on the drive.
-            5:  "Path Too Long",                # The directory or file name is too long.
-            6:  "File Too Large",               # The file is too large for the file system to handle.
-            7:  "Virus",                        # The file contains a virus.
-            10: "Temporary Problem",            # The file was in use. Too many files are opened at once. We have run
+            1:  u'File Error',                  # Generic file operation failure.
+            2:  u'Access Denied',               # The file cannot be accessed due to security restrictions.
+            3:  u'Disk Full',                   # There is not enough room on the drive.
+            5:  u'Path Too Long',               # The directory or file name is too long.
+            6:  u'File Too Large',              # The file is too large for the file system to handle.
+            7:  u'Virus',                       # The file contains a virus.
+            10: u'Temporary Problem',           # The file was in use. Too many files are opened at once. We have run
                                                 # out of memory.
-            11: "Blocked",                      # The file was blocked due to local policy.
-            12: "Security Check Failed",        # An attempt to check the safety of the download failed due to
+            11: u'Blocked',                     # The file was blocked due to local policy.
+            12: u'Security Check Failed',       # An attempt to check the safety of the download failed due to
                                                 # unexpected reasons. See http://crbug.com/153212.
-            13: "Resume Error",                 # An attempt was made to seek past the end of a file in opening a file
+            13: u'Resume Error',                # An attempt was made to seek past the end of a file in opening a file
                                                 # (as part of resuming a previously interrupted download).
 
             # Network errors
-            20: "Network Error",                # Generic network failure.
-            21: "Operation Timed Out",          # The network operation timed out.
-            22: "Connection Lost",              # The network connection has been lost.
-            23: "Server Down",                  # The server has gone down.
+            20: u'Network Error',               # Generic network failure.
+            21: u'Operation Timed Out',         # The network operation timed out.
+            22: u'Connection Lost',             # The network connection has been lost.
+            23: u'Server Down',                 # The server has gone down.
 
             # Server responses
-            30: "Server Error",                 # The server indicates that the operation has failed (generic).
-            31: "Range Request Error",          # The server does not support range requests. Internal use only:
+            30: u'Server Error',                # The server indicates that the operation has failed (generic).
+            31: u'Range Request Error',         # The server does not support range requests. Internal use only:
                                                 # must restart from the beginning.
-            32: "Server Precondition Error",    # The download request does not meet the specified precondition.
+            32: u'Server Precondition Error',   # The download request does not meet the specified precondition.
                                                 # Internal use only:  the file has changed on the server.
-            33: "Unable to get file",           # The server does not have the requested data.
+            33: u'Unable to get file',          # The server does not have the requested data.
 
             # User input
-            40: "Cancelled",                    # The user cancelled the download.
-            41: "Browser Shutdown",             # The user shut down the browser. Internal use only:  resume pending
+            40: u'Cancelled',                   # The user cancelled the download.
+            41: u'Browser Shutdown',            # The user shut down the browser. Internal use only:  resume pending
                                                 # downloads if possible.
 
             # Crash
-            50: "Browser Crashed"}              # The browser crashed. Internal use only:  resume pending downloads
+            50: u'Browser Crashed'}             # The browser crashed. Internal use only:  resume pending downloads
                                                 # if possible.
 
         if self.interrupt_reason in interrupts.keys():
@@ -1257,62 +1259,62 @@ class DownloadItem(HistoryItem):
         elif self.interrupt_reason is None:
             self.interrupt_reason_friendly = None
         else:
-            self.interrupt_reason_friendly = "[Error - Unknown Interrupt Code]"
+            self.interrupt_reason_friendly = u'[Error - Unknown Interrupt Code]'
             logging.error(" - Error decoding interrupt code for download '{}'".format(self.url))
 
     def decode_danger_type(self):
         # from download_danger_type.h on Chromium site
         dangers = {
-            0: "Not Dangerous",                 # The download is safe.
-            1: "Dangerous",                     # A dangerous file to the system (e.g.: a pdf or extension from places
-                                                # other than gallery).
-            2: "Dangerous URL",                 # SafeBrowsing download service shows this URL leads to malicious file
-                                                # download.
-            3: "Dangerous Content",             # SafeBrowsing download service shows this file content as being
-                                                # malicious.
-            4: "Content May Be Malicious",      # The content of this download may be malicious (e.g., extension is exe
-                                                # but SafeBrowsing has not finished checking the content).
-            5: "Uncommon Content",              # SafeBrowsing download service checked the contents of the download,
-                                                # but didn't have enough data to determine whether it was malicious.
-            6: "Dangerous But User Validated",  # The download was evaluated to be one of the other types of danger,
-                                                # but the user told us to go ahead anyway.
-            7: "Dangerous Host",                # SafeBrowsing download service checked the contents of the download
-                                                # and didn't have data on this specific file, but the file was served
-                                                # from a host known to serve mostly malicious content.
-            8: "Potentially Unwanted"}          # Applications and extensions that modify browser and/or computer
-                                                # settings
+            0: u'Not Dangerous',                 # The download is safe.
+            1: u'Dangerous',                     # A dangerous file to the system (e.g.: a pdf or extension from places
+                                                 # other than gallery).
+            2: u'Dangerous URL',                 # SafeBrowsing download service shows this URL leads to malicious file
+                                                 # download.
+            3: u'Dangerous Content',             # SafeBrowsing download service shows this file content as being
+                                                 # malicious.
+            4: u'Content May Be Malicious',      # The content of this download may be malicious (e.g., extension is exe
+                                                 # but SafeBrowsing has not finished checking the content).
+            5: u'Uncommon Content',              # SafeBrowsing download service checked the contents of the download,
+                                                 # but didn't have enough data to determine whether it was malicious.
+            6: u'Dangerous But User Validated',  # The download was evaluated to be one of the other types of danger,
+                                                 # but the user told us to go ahead anyway.
+            7: u'Dangerous Host',                # SafeBrowsing download service checked the contents of the download
+                                                 # and didn't have data on this specific file, but the file was served
+                                                 # from a host known to serve mostly malicious content.
+            8: u'Potentially Unwanted'}          # Applications and extensions that modify browser and/or computer
+                                                 # settings
 
         if self.danger_type in dangers.keys():
             self.danger_type_friendly = dangers[self.danger_type]
         elif self.danger_type is None:
             self.danger_type_friendly = None
         else:
-            self.danger_type_friendly = "[Error - Unknown Danger Code]"
+            self.danger_type_friendly = u'[Error - Unknown Danger Code]'
             logging.error(" - Error decoding danger code for download '{}'".format(self.url))
 
     def decode_download_state(self):
         # from download_item.h on Chromium site
         states = {
-            0: "In Progress",   # Download is actively progressing.
-            1: "Complete",      # Download is completely finished.
-            2: "Cancelled",     # Download has been cancelled.
-            3: "Interrupted"}   # This state indicates that the download has been interrupted.
+            0: u"In Progress",   # Download is actively progressing.
+            1: u"Complete",      # Download is completely finished.
+            2: u"Cancelled",     # Download has been cancelled.
+            3: u"Interrupted"}   # This state indicates that the download has been interrupted.
 
         if self.state in states.keys():
             self.state_friendly = states[self.state]
         else:
-            self.state_friendly = "[Error - Unknown State]"
+            self.state_friendly = u"[Error - Unknown State]"
             logging.error(" - Error decoding download state for download '{}'".format(self.url))
 
     def create_friendly_status(self):
         try:
-            status = "%s -  %i%% [%i/%i]" % \
+            status = u"%s -  %i%% [%i/%i]" % \
                      (self.state_friendly, (float(self.received_bytes) / float(self.total_bytes)) * 100,
                       self.received_bytes, self.total_bytes)
         except ZeroDivisionError:
-            status = "%s -  %i bytes" % (self.state_friendly, self.received_bytes)
+            status = u"%s -  %i bytes" % (self.state_friendly, self.received_bytes)
         except:
-            status = "[parsing error]"
+            status = u"[parsing error]"
             logging.error(" - Error creating friendly status message for download '{}'".format(self.url))
         self.status_friendly = status
 
@@ -1337,7 +1339,7 @@ class CookieItem(HistoryItem):
 
 class AutofillItem(HistoryItem):
     def __init__(self, date_created, name, value, count):
-        super(AutofillItem, self).__init__('autofill', timestamp=date_created, name=name, value=value)
+        super(AutofillItem, self).__init__(u'autofill', timestamp=date_created, name=name, value=value)
         self.date_created = date_created
         self.name = name
         self.value = value
@@ -1346,7 +1348,7 @@ class AutofillItem(HistoryItem):
 
 class BookmarkItem(HistoryItem):
     def __init__(self, date_added, name, url, parent_folder, sync_transaction_version=None):
-        super(BookmarkItem, self).__init__('bookmark', timestamp=date_added, name=name, value=parent_folder)
+        super(BookmarkItem, self).__init__(u'bookmark', timestamp=date_added, name=name, value=parent_folder)
         self.date_added = date_added
         self.name = name
         self.url = url
@@ -1356,7 +1358,7 @@ class BookmarkItem(HistoryItem):
 
 class BookmarkFolderItem(HistoryItem):
     def __init__(self, date_added, date_modified, name, parent_folder, sync_transaction_version=None):
-        super(BookmarkFolderItem, self).__init__('bookmark folder', timestamp=date_added, name=name, value=parent_folder)
+        super(BookmarkFolderItem, self).__init__(u'bookmark folder', timestamp=date_added, name=name, value=parent_folder)
         self.date_added = date_added
         self.date_modified = date_modified
         self.name = name
@@ -1366,7 +1368,7 @@ class BookmarkFolderItem(HistoryItem):
 
 class LocalStorageItem(HistoryItem):
     def __init__(self, url, date_created, key, value):
-        super(LocalStorageItem, self).__init__('local storage', timestamp=date_created, name=key, value=value)
+        super(LocalStorageItem, self).__init__(u'local storage', timestamp=date_created, name=key, value=value)
         self.url = url
         self.date_created = date_created
         self.key = key
@@ -1383,7 +1385,7 @@ class BrowserExtension(object):
 
 class LoginItem(HistoryItem):
     def __init__(self, date_created, url, name, value, count):
-        super(LoginItem, self).__init__('login', timestamp=date_created, url=url, name=name, value=value)
+        super(LoginItem, self).__init__(u'login', timestamp=date_created, url=url, name=name, value=value)
         self.date_created = date_created
         self.url = url
         self.name = name
@@ -1577,9 +1579,9 @@ def main():
                 w.write(       row_number, 13, item.danger_type_friendly,    green_value_format)  # download path
                 open_friendly = ""
                 if item.opened == 1:
-                    open_friendly = "Yes"
+                    open_friendly = u"Yes"
                 elif item.opened == 0:
-                    open_friendly = "No"
+                    open_friendly = u"No"
                 w.write_string(row_number, 14, open_friendly, green_value_format)                 # opened
                 w.write(row_number, 15, item.etag,            green_value_format)                 # ETag
                 w.write(row_number, 16, item.last_modified,   green_value_format)                 # Last Modified
@@ -1830,23 +1832,23 @@ def main():
     custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
     for input_file in input_listing:
         if re.search(r'^History__|^History$', input_file):
-            row_type = 'url'
+            row_type = u'url'
             custom_type_m = re.search(custom_type_re, input_file)
             if custom_type_m:
-                row_type = 'url ({})'.format(custom_type_m.group(1))
+                row_type = u'url ({})'.format(custom_type_m.group(1))
             target_browser.get_history(args.input, input_file, target_browser.version, row_type)
             display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
             print format_processing_output("{} records".format(display_type), target_browser.artifacts_counts[input_file])
 
-            row_type = 'download'
+            row_type = u'download'
             if custom_type_m:
-                row_type = 'download ({})'.format(custom_type_m.group(1))
+                row_type = u'download ({})'.format(custom_type_m.group(1))
             target_browser.get_downloads(args.input, input_file, target_browser.version, row_type)
             display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
             print format_processing_output("{} records".format(display_type), target_browser.artifacts_counts[input_file + '_downloads'])
 
     if 'Archived History' in input_listing:
-        target_browser.get_history(args.input, 'Archived History', target_browser.version, 'url (archived)')
+        target_browser.get_history(args.input, 'Archived History', target_browser.version, u'url (archived)')
         print format_processing_output("Archived URL records", target_browser.artifacts_counts['Archived History'])
 
     if 'Cookies' in input_listing:
