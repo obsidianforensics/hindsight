@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.6"
+__version__ = "1.4.7"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -511,7 +511,7 @@ class Chrome(object):
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = decrypt_cookie(row.get('encrypted_value')).decode()
+                            cookie_value = decrypt_cookie(row.get('encrypted_value'))
                         else:
                             cookie_value = row.get('value').decode()
                     else:
@@ -1435,14 +1435,16 @@ The Chrome data folder default locations are:
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
                         default='hindsight.log')
     parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
-    parser.add_argument('--decryptlinux', action='store_true',
-                        help='Try to decrypt Chrome data from a Linux system - '
-                             'this will cause problems if you try it on a non-Linux system')
+    parser.add_argument('-d', '--decrypt', choices=['mac', 'linux'], default=None,
+                        help='Try to decrypt Chrome data from a Linux or Mac system - support for both is currently '
+                             'buggy and enabling this may cause problems. Only use "--decrypt linux" on data from a '
+                             'Linux system, and only use "--decrypt mac" when running Hindsight on the same Mac the'
+                             'Chrome data is from.')
 
     args = parser.parse_args()
 
     if not args.output:
-        args.output = "Hindsight Internet History Analysis (%s)" % (time.strftime('%Y-%m-%dT%H-%M-%S'))
+        args.output = "Hindsight Internet History Analysis ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
 
     if args.timezone:
         try:
@@ -1456,11 +1458,17 @@ The Chrome data folder default locations are:
                 print("Couldn't understand timezone; using UTC.")
                 args.timezone = pytz.timezone('UTC')
 
-    # Disable decryption on Linux unless explicitly enabled
-    if args.decryptlinux:
+    # Disable decryption on Linux unless explicitly enabled and supported
+    if args.decrypt == 'linux' and cookie_decryption['linux'] == 1:
         cookie_decryption['linux'] = 1
     else:
         cookie_decryption['linux'] = 0
+
+    # Disable decryption on Mac unless explicitly enabled and supported
+    if args.decrypt == 'mac' and cookie_decryption['mac'] == 1:
+        cookie_decryption['mac'] = 1
+    else:
+        cookie_decryption['mac'] = 0
 
     return args
 
