@@ -1409,11 +1409,13 @@ Example:  C:\>hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\
                 Chrome\User Data\Default" -o test_case
 
 The Chrome data folder default locations are:
-    WinXP:   <userdir>\Local Settings\Application Data\Google\Chrome
+        WinXP: <userdir>\Local Settings\Application Data\Google\Chrome
                 \User Data\Default\\
-    Vista/7: <userdir>\AppData\Local\Google\Chrome\User Data\Default\\
-    Linux:   <userdir>/.config/google-chrome/Default/
-    OS X:    <userdir>/Library/Application Support/Google/Chrome/Default/
+    Vista/7/8: <userdir>\AppData\Local\Google\Chrome\User Data\Default\\
+        Linux: <userdir>/.config/google-chrome/Default/
+         OS X: <userdir>/Library/Application Support/Google/Chrome/Default/
+          iOS: \Applications\com.google.chrome.ios\Library\Application Support
+                \Google\Chrome\Default\\
     '''
 
     class MyParser(argparse.ArgumentParser):
@@ -1436,9 +1438,9 @@ The Chrome data folder default locations are:
                         default='hindsight.log')
     parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
     parser.add_argument('-d', '--decrypt', choices=['mac', 'linux'], default=None,
-                        help='Try to decrypt Chrome data from a Linux or Mac system - support for both is currently '
+                        help='Try to decrypt Chrome data from a Linux or Mac system; support for both is currently '
                              'buggy and enabling this may cause problems. Only use "--decrypt linux" on data from a '
-                             'Linux system, and only use "--decrypt mac" when running Hindsight on the same Mac the'
+                             'Linux system, and only use "--decrypt mac" when running Hindsight on the same Mac the '
                              'Chrome data is from.')
 
     args = parser.parse_args()
