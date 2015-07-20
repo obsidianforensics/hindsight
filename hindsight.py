@@ -69,7 +69,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.7"
+__version__ = "1.4.8"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -153,27 +153,28 @@ class Chrome(object):
             return 0
 
     def to_datetime(self, timestamp):
+        """Convert a variety of timestamp formats to a datetime object."""
         try:
             timestamp = float(timestamp)
         except:
-            new_timestamp = datetime.datetime.utcfromtimestamp(0)
-            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
+            timestamp = 0
 
         if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
             # Webkit
             new_timestamp = datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
-            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
         elif 1900000000000 > timestamp > 2000000000:  # 2030 > ts > 1970
             # Epoch milliseconds
             new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
-            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
         elif 1900000000 > timestamp >= 0:  # 2030 > ts > 1970
             # Epoch
             new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp))
-            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
         else:
             new_timestamp = datetime.datetime.utcfromtimestamp(0)
+
+        try:
             return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
+        except NameError:
+            return new_timestamp
 
     def friendly_date(self, timestamp):
         if isinstance(timestamp, (str, unicode, long, int)):
@@ -182,7 +183,7 @@ class Chrome(object):
             return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
     def determine_version(self):
-        """ Determine version of Chrome databases files by looking for combinations of columns in certain tables.
+        """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
 
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
