@@ -1759,7 +1759,7 @@ def main():
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
                                item.interpretation))
 
-            for extension in browser.installed_extensions:
+            for extension in browser.installed_extensions['data']:
                 c.execute("INSERT INTO installed_extensions (name, description, version, app_id) "
                           "VALUES (?, ?, ?, ?)",
                           (extension.name, extension.description, extension.version, extension.app_id))
