@@ -22,7 +22,6 @@ try:
     output_formats.append('xlsx')
 except ImportError:
     print "Couldn't import module 'xlsxwriter'; XLSX output disabled.\n"
-    # logging.warning("Couldn't import module 'xlsxwriter'; XLSX output disabled")
 try:
     import sqlite3
     output_formats.append('sqlite')
@@ -69,7 +68,7 @@ except ImportError:
     print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.8"
+__version__ = "1.4.8a"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -188,7 +187,7 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 43)
+        possible_versions = range(1, 45)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -1571,14 +1570,14 @@ def main():
                 w.write(       row_number, 10, item.hidden,                  black_flag_format)   # Hidden
                 w.write(       row_number, 11, item.transition_friendly,     black_trans_format)  # Transition
 
-            if item.row_type == "autofill":
+            elif item.row_type[:8] == "autofill":
                 w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
                 w.write_string(row_number, 3, item.name,                     red_field_format)    # autofill field
                 w.write_string(row_number, 4, item.value,                    red_value_format)    # autofill value
                 w.write_string(row_number, 6, " ",                           red_type_format)     # blank
 
-            if item.row_type == "download":
+            elif item.row_type[:8] == "download":
                 w.write_string(row_number, 0, item.row_type,                 green_type_format)   # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), green_date_format)   # date
                 w.write_string(row_number, 2, item.url,                      green_url_format)    # download URL
@@ -1597,20 +1596,20 @@ def main():
                 w.write(row_number, 15, item.etag,            green_value_format)                 # ETag
                 w.write(row_number, 16, item.last_modified,   green_value_format)                 # Last Modified
 
-            if item.row_type == "bookmark":
+            elif item.row_type[:15] == "bookmark folder":
+                w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
+                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
+                w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
+                w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
+
+            elif item.row_type[:8] == "bookmark":
                 w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
                 w.write_string(row_number, 2, item.url,       red_url_format)                     # URL
                 w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
                 w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
 
-            if item.row_type == "bookmark folder":
-                w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
-                w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
-                w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
-
-            if item.row_type[:6] == "cookie":
+            elif item.row_type[:6] == "cookie":
                 w.write_string(row_number, 0, item.row_type,  gray_type_format)                   # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
                 w.write_string(row_number, 2, item.url,       gray_url_format)                    # URL
@@ -1618,7 +1617,7 @@ def main():
                 w.write_string(row_number, 4, item.value,     gray_value_format)                  # cookie value
                 w.write(       row_number, 5, item.interpretation, gray_value_format)             # cookie interpretation
 
-            if item.row_type == "local storage":
+            elif item.row_type[:13] == "local storage":
                 w.write_string(row_number, 0, item.row_type,  gray_type_format)                   # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
                 w.write_string(row_number, 2, item.url,       gray_url_format)                    # URL
@@ -1627,7 +1626,7 @@ def main():
                 w.write(       row_number, 5, item.interpretation, gray_value_format)             # cookie interpretation
                 w.write_string(row_number, 6, " ",            gray_type_format)                   # blank
 
-            if item.row_type[:5] == "login":
+            elif item.row_type[:5] == "login":
                 w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
                 w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
                 w.write_string(row_number, 2, item.url,                      red_url_format)      # URL
