@@ -12,7 +12,7 @@ import re
 # Config
 friendlyName = "Chrome Extension Names"
 description = "Adds the name and description of each Chrome extension found in a URLItem to the Interpretation field"
-artifactTypes = ["url", "url (archived)"]
+artifactTypes = ("url", "local storage")
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
@@ -21,11 +21,11 @@ parsedItems = 0
 
 
 def plugin(target_browser):
-    extension_re = re.compile(r'^chrome-extension://([a-z]{32})')
+    extension_re = re.compile(r'^chrome-extension[_|://]([a-z]{32})')
     global parsedItems
 
     for item in target_browser.parsed_artifacts:
-        if item.row_type in artifactTypes:
+        if item.row_type.startswith(artifactTypes):
             if item.interpretation is None:
                 m = re.search(extension_re, item.url)
                 if m:

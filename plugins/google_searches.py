@@ -13,11 +13,11 @@ import urllib
 # Config
 friendlyName = u'Google Searches'
 description = u'Extracts parameters from Google search URLs'
-artifactTypes = [u'url', u'url (archived)']
+artifactTypes = (u'url',)
 remoteLookups = 0
 browser = u'Chrome'
 browserVersion = 1
-version = u'20150222'
+version = u'20150728'
 parsedItems = 0
 
 
@@ -33,12 +33,11 @@ def plugin(target_browser):
                  u'w': u'week', u'm': u'month', u'y': u'year'}
 
     for item in target_browser.parsed_artifacts:
-        if item.row_type in artifactTypes:
+        if item.row_type.startswith(artifactTypes):
             m = re.search(google_re, item.url)
             if m:
                 parameters = {}
                 raw_parameters = m.group(3)
-                # print(raw_parameters)
 
                 if m.group(2) == u'#q':
                     raw_parameters = u'q' + raw_parameters
@@ -55,7 +54,7 @@ def plugin(target_browser):
                         pass
 
                 if u'q' in parameters:  # 'q' parameter must be present for rest of parameters to be parsed
-                    derived = u'Searched for "{}" | '.format(parameters[u'q'])
+                    derived = u'Searched for "{}" [ '.format(parameters[u'q'])
 
                     if u'pws' in parameters:
                         derived += u'Google personalization turned '

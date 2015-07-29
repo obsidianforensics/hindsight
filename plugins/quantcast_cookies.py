@@ -29,8 +29,9 @@ def plugin(target_browser):
             if item.name == u'__qca':
                 m = re.search(timestamp_re, item.value)
                 if m:
-                    item.interpretation = target_browser.friendly_date(int(m.group(3))) + u' [Quantcast Cookie Timestamp]'
-                    parsedItems +=1
+                    item.interpretation = target_browser.friendly_date(int(m.group(3))) \
+                                          + u' [Quantcast Cookie Timestamp]'
+                    parsedItems += 1
 
     # Description of what the plugin did
-    return "%s cookies parsed" % parsedItems
+    return u"{} cookies parsed".format(parsedItems)

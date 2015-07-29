@@ -16,7 +16,7 @@ import urllib
 # Config
 friendlyName = "Google Analytics Cookie Parser"
 description = "Parses Google Analytics cookies"
-artifactTypes = [u'cookie (created)', u'cookie (accessed)']
+artifactTypes = (u'cookie (created)', u'cookie (accessed)')
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
@@ -35,7 +35,7 @@ def plugin(target_browser):
     global parsedItems
 
     for item in target_browser.parsed_artifacts:
-        if item.row_type in artifactTypes:
+        if item.row_type.startswith(artifactTypes):
             if item.name == u'__utma':
                 # TODO: consider adding in extra rows for each timestamp in cookie?
                 m = re.search(utma_re, item.value)

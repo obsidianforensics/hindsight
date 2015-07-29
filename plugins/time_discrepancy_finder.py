@@ -19,7 +19,7 @@ import re
 # Config
 friendlyName = "Time Discrepancy Finder"
 description = "Attempts to find discrepancies between server-side and local timestamps"
-artifactTypes = ["cookie (created)", "url", "url (archived)"]
+artifactTypes = ("cookie (created)", "url")
 remoteLookups = 0
 browser = "any"
 browserVersion = 1
@@ -62,7 +62,7 @@ def plugin(target_browser):
     ]
 
     for item in target_browser.parsed_artifacts:
-        if item.row_type in artifactTypes:
+        if item.row_type.startswith(artifactTypes):
             if item.row_type == u'cookie (created)':
                 for site in cookie_set:
                     if item.url in site or site.keys()[0] == '*':
@@ -73,7 +73,7 @@ def plugin(target_browser):
                                 local = item.timestamp
                                 delta = abs(server - local)
                                 item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
-                                                      'Difference: {} [Time Discrepancy]'.format(server, local, delta)
+                                                      u'Difference: {} [Time Discrepancy]'.format(server, local, delta)
                                 parsedItems += 1
             elif item.row_type == u'url' or item.row_type == u'url (archived)':
                 for site in url_set:
@@ -87,4 +87,4 @@ def plugin(target_browser):
                         parsedItems += 1
 
     # Description of what the plugin did
-    return "%s differences parsed" % parsedItems
+    return u"{} differences parsed".format(parsedItems)

@@ -12,7 +12,7 @@ import re
 # Config
 friendlyName = "Generic Timestamp Decoder"
 description = "Attempts to detect and decode potential epoch second, epoch millisecond, and Webkit timestamps"
-artifactTypes = ["cookie (created)", "cookie (accessed)", "local storage"]
+artifactTypes = ("cookie (created)", "cookie (accessed)", "local storage")
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
@@ -26,7 +26,7 @@ def plugin(target_browser):
     global parsedItems
 
     for item in target_browser.parsed_artifacts:
-        if item.row_type in artifactTypes:
+        if item.row_type.startswith(artifactTypes):
             if item.interpretation is None:
                 m = re.search(timestamp_re, item.value)
                 ls_m = re.search(ls_timestamp_re, item.value)
@@ -38,4 +38,4 @@ def plugin(target_browser):
                     parsedItems += 1
 
     # Description of what the plugin did
-    return "%s timestamps parsed" % parsedItems
+    return u"{} timestamps parsed".format(parsedItems)
