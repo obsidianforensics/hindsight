@@ -65,10 +65,11 @@ except ImportError:
 try:
     import pytz
 except ImportError:
-    print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({}).".format(time.tzname[time.daylight])
+    print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({})."\
+        .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.8b"
+__version__ = "1.4.9"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -187,7 +188,7 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 45)
+        possible_versions = range(1, 46)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -223,6 +224,7 @@ class Chrome(object):
                 trim_lesser_versions_if('persistent', self.structure['Cookies']['cookies'], 17)
                 trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
                 trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
+                trim_lesser_versions_if('firstpartyonly', self.structure['Cookies']['cookies'], 44)
 
         if 'Web Data' in self.structure.keys():
             if 'autofill' in self.structure['Web Data'].keys():
@@ -1536,7 +1538,7 @@ def main():
         w.write_rich_string(1, 3, "Title / Name / Status",                            header_format)
         w.write_rich_string(1, 4, "Data / Value / Path",                              header_format)
         w.write(1, 5, "Interpretation",                                               header_format)
-        w.write(1, 6, "Source",                                                        header_format)
+        w.write(1, 6, "Source",                                                       header_format)
         w.write(1, 7, "Duration",                                                     header_format)
         w.write(1, 8, "Visit Count",                                                  header_format)
         w.write(1, 9, "Typed Count",                                                  header_format)
@@ -1802,11 +1804,13 @@ def main():
         return pretty_name
 
     # Set up logging
-    logging.basicConfig(filename=args.log, level=logging.DEBUG, format='%(asctime)s.%(msecs).03d | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    logging.basicConfig(filename=args.log, level=logging.DEBUG, format='%(asctime)s.%(msecs).03d | %(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S')
 
     # Hindsight version info
     print "\n Hindsight v%s" % __version__
-    logging.info('\n' + '#'*80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'.format(__version__) + '#'*80)
+    logging.info('\n' + '#'*80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'
+                 .format(__version__) + '#'*80)
     logging.debug("Options: " + str(args))
 
     # Analysis start time
