@@ -69,7 +69,7 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.9"
+__version__ = "1.4.9.1"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -124,6 +124,9 @@ class Chrome(object):
                       "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
                       "Chrome installation while it is running.  Please close Chrome and try again."
                 exit()
+            except:
+                logging.error(" - Couldn't connect to {}".format(database_path))
+                return
 
             # For each table, find all the columns in it
             for table in tables:
@@ -291,7 +294,12 @@ class Chrome(object):
                 cursor = db_file.cursor()
 
                 # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                try:
+                    cursor.execute(query[compatible_version])
+                except:
+                    logging.error(" - Error querying '{}'".format(history_path))
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
 
                 for row in cursor:
                     duration = None
@@ -323,7 +331,7 @@ class Chrome(object):
                 self.parsed_artifacts.extend(results)
 
             except IOError:
-                print("Couldn't open file")
+                self.artifacts_counts[history_file] = 'Failed'
                 logging.error(" - Couldn't open {}".format(os.path.join(path, history_file)))
 
     def get_downloads(self, path, database, version, row_type):
@@ -369,7 +377,12 @@ class Chrome(object):
                 cursor = db_file.cursor()
 
                 # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                try:
+                    cursor.execute(query[compatible_version])
+                except:
+                    logging.error(" - Error querying '{}'".format(history_path))
+                    self.artifacts_counts[database + '_downloads'] = 'Failed'
+                    return
 
                 for row in cursor:
                     try:
@@ -411,7 +424,7 @@ class Chrome(object):
                 self.parsed_artifacts.extend(results)
 
             except IOError:
-                print("Couldn't open file")
+                self.artifacts_counts[database + '_downloads'] = 'Failed'
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_cookies(self, path, database, version):
@@ -563,8 +576,8 @@ class Chrome(object):
                 logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
-            except IOError:
-                print("Couldn't open file")
+            except:
+                self.artifacts_counts['Cookies'] = 'Failed'
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_login_data(self, path, database, version):
@@ -636,8 +649,8 @@ class Chrome(object):
                 logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
-            except IOError:
-                print(u"Couldn't open file")
+            except:
+                self.artifacts_counts['Login Data'] = 'Failed'
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_autofill(self, path, database, version):
@@ -686,8 +699,8 @@ class Chrome(object):
                 logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
-            except IOError:
-                print("Couldn't open file")
+            except:
+                self.artifacts_counts['Autofill'] = 'Failed'
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_bookmarks(self, path, file, version):
@@ -701,12 +714,13 @@ class Chrome(object):
 
         try:
             bookmarks_file = codecs.open(bookmarks_path, 'rb', encoding='utf-8')
+            decoded_json = json.loads(bookmarks_file.read())
             logging.info(" - Reading from file '{}'".format(bookmarks_path))
         except:
             logging.error(" - Error opening '{}'".format(bookmarks_path))
+            self.artifacts_counts['Bookmarks'] = 'Failed'
             return
 
-        decoded_json = json.loads(bookmarks_file.read())
 
         # TODO: sync_id
         def process_bookmark_children(parent, children):
@@ -960,6 +974,7 @@ class Chrome(object):
             prefs = json.loads(pref_file.read())
         except:
             logging.error(" - Error decoding Preferences file {}".format(pref_path))
+            self.artifacts_counts['Preferences'] = 'Failed'
             return
 
         if prefs:
