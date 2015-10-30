@@ -69,7 +69,7 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.4.9.1"
+__version__ = "1.5.0"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -191,7 +191,7 @@ class Chrome(object):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 46)
+        possible_versions = range(1, 47)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -572,12 +572,12 @@ class Chrome(object):
                         results.append(accessed_row)
 
                 db_file.close()
-                self.artifacts_counts['Cookies'] = len(results)
+                self.artifacts_counts[database] = len(results)
                 logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
             except:
-                self.artifacts_counts['Cookies'] = 'Failed'
+                self.artifacts_counts[database] = 'Failed'
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_login_data(self, path, database, version):
@@ -1843,7 +1843,7 @@ def main():
     print("\n Processing:")
     target_browser.structure = {}
 
-    supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data']
+    supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
     supported_subdirs = ['Local Storage', 'Extensions']
     supported_jsons = ['Bookmarks']  # , 'Preferences']
     supported_items = supported_databases + supported_subdirs + supported_jsons
@@ -1883,14 +1883,16 @@ def main():
                 row_type = u'url ({})'.format(custom_type_m.group(1))
             target_browser.get_history(args.input, input_file, target_browser.version, row_type)
             display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
-            print format_processing_output("{} records".format(display_type), target_browser.artifacts_counts[input_file])
+            print format_processing_output("{} records".format(display_type),
+                                           target_browser.artifacts_counts[input_file])
 
             row_type = u'download'
             if custom_type_m:
                 row_type = u'download ({})'.format(custom_type_m.group(1))
             target_browser.get_downloads(args.input, input_file, target_browser.version, row_type)
             display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
-            print format_processing_output("{} records".format(display_type), target_browser.artifacts_counts[input_file + '_downloads'])
+            print format_processing_output("{} records".format(display_type),
+                                           target_browser.artifacts_counts[input_file + '_downloads'])
 
     if 'Archived History' in input_listing:
         target_browser.get_history(args.input, 'Archived History', target_browser.version, u'url (archived)')
@@ -1915,6 +1917,10 @@ def main():
     if 'Extensions' in input_listing:
         target_browser.get_extensions(args.input, 'Extensions')
         print format_processing_output("Extensions", target_browser.artifacts_counts['Extensions'])
+
+    if 'Extension Cookies' in input_listing:
+        target_browser.get_cookies(args.input, 'Extension Cookies', target_browser.version)
+        print format_processing_output("Extension Cookie records", target_browser.artifacts_counts['Extension Cookies'])
 
     if 'Login Data' in input_listing:
         target_browser.get_login_data(args.input, 'Login Data', target_browser.version)
