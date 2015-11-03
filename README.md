@@ -27,4 +27,4 @@ The Chrome data folder default locations are:
 * Linux:   \[userdir\]/.config/google-chrome/Default/
 * OS X:    \[userdir\]/Library/Application Support/Google/Chrome/Default/
 * iOS:   \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome\Default\
-
+* Android: /userdata/data/com.android.chrome/app_chrome/Default
