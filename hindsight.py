@@ -1329,7 +1329,8 @@ class DownloadItem(HistoryItem):
             0: u"In Progress",   # Download is actively progressing.
             1: u"Complete",      # Download is completely finished.
             2: u"Cancelled",     # Download has been cancelled.
-            3: u"Interrupted"}   # This state indicates that the download has been interrupted.
+            3: u"Interrupted",   # '3' was the old "Interrupted" code until a bugfix in Chrome v22. 22+ it's '4'
+            4: u"Interrupted"}   # This state indicates that the download has been interrupted.
 
         if self.state in states.keys():
             self.state_friendly = states[self.state]
