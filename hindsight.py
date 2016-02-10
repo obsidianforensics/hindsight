@@ -89,6 +89,7 @@ class Chrome(object):
         self.parsed_artifacts = parsed_artifacts
         self.installed_extensions = installed_extensions
         self.artifacts_counts = artifacts_counts
+        self.cached_key = None
 
         if self.version is None:
             self.version = []
@@ -427,67 +428,69 @@ class Chrome(object):
                 self.artifacts_counts[database + '_downloads'] = 'Failed'
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
-    def get_cookies(self, path, database, version):
-        def decrypt_cookie(encrypted_value):
-            """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
-             - Mac/Linux: http://n8henrie.com/2014/05/decrypt-chrome-cookies-with-python/
-             - Windows: https://gist.github.com/jordan-wright/5770442#file-chrome_extract-py
-             - Relevant Chromium source code: http://src.chromium.org/viewvc/chrome/trunk/src/components/os_crypt/
-             """
-            salt = b'saltysalt'
-            iv = b' ' * 16
-            length = 16
+    def decrypt_cookie(self, encrypted_value):
+        """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
+         - Mac/Linux: http://n8henrie.com/2014/05/decrypt-chrome-cookies-with-python/
+         - Windows: https://gist.github.com/jordan-wright/5770442#file-chrome_extract-py
+         - Relevant Chromium source code: http://src.chromium.org/viewvc/chrome/trunk/src/components/os_crypt/
+         """
+        salt = b'saltysalt'
+        iv = b' ' * 16
+        length = 16
 
-            def chrome_decrypt(encrypted, key=None):
-                # Encrypted cookies should be prefixed with 'v10' according to the
-                # Chromium code. Strip it off.
-                encrypted = encrypted[3:]
+        def chrome_decrypt(encrypted, key=None):
+            # Encrypted cookies should be prefixed with 'v10' according to the
+            # Chromium code. Strip it off.
+            encrypted = encrypted[3:]
 
-                # Strip padding by taking off number indicated by padding
-                # eg if last is '\x0e' then ord('\x0e') == 14, so take off 14.
-                def clean(x):
-                    return x[:-ord(x[-1])]
+            # Strip padding by taking off number indicated by padding
+            # eg if last is '\x0e' then ord('\x0e') == 14, so take off 14.
+            def clean(x):
+                return x[:-ord(x[-1])]
 
-                cipher = AES.new(key, AES.MODE_CBC, IV=iv)
-                decrypted = cipher.decrypt(encrypted)
+            cipher = AES.new(key, AES.MODE_CBC, IV=iv)
+            decrypted = cipher.decrypt(encrypted)
 
-                return clean(decrypted)
+            return clean(decrypted)
 
-            decrypted_value = "<error>"
-            if encrypted_value is not None:
-                if len(encrypted_value) >= 2:
-                    # If running Chrome on Windows
-                    if sys.platform == 'win32' and cookie_decryption['windows'] is 1:
-                        try:
-                            decrypted_value = win32crypt.CryptUnprotectData(encrypted_value, None, None, None, 0)[1]
-                        except:
-                            decrypted_value = "<encrypted>"
-                    # If running Chrome on OSX
-                    elif sys.platform == 'darwin' and cookie_decryption['mac'] is 1:
-                        try:
+        decrypted_value = "<error>"
+        if encrypted_value is not None:
+            if len(encrypted_value) >= 2:
+                # If running Chrome on Windows
+                if sys.platform == 'win32' and cookie_decryption['windows'] is 1:
+                    try:
+                        decrypted_value = win32crypt.CryptUnprotectData(encrypted_value, None, None, None, 0)[1]
+                    except:
+                        decrypted_value = "<encrypted>"
+                # If running Chrome on OSX
+                elif sys.platform == 'darwin' and cookie_decryption['mac'] is 1:
+                    try:
+                        if not self.cached_key:
                             my_pass = keyring.get_password('Chrome Safe Storage', 'Chrome')
                             my_pass = my_pass.encode('utf8')
                             iterations = 1003
-                            key = PBKDF2(my_pass, salt, length, iterations)
-                            decrypted_value = chrome_decrypt(encrypted_value, key=key)
-                        except:
-                            pass
-                    else:
-                        decrypted_value = "<encrypted>"
+                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
+                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
+                    except:
+                        pass
+                else:
+                    decrypted_value = "<encrypted>"
 
-                    # If running Chromium on Linux.
-                    # Unlike Win/Mac, we can decrypt Linux cookies without the user's pw
-                    if decrypted_value is "<encrypted>" and cookie_decryption['linux'] is 1:
-                        try:
+                # If running Chromium on Linux.
+                # Unlike Win/Mac, we can decrypt Linux cookies without the user's pw
+                if decrypted_value is "<encrypted>" and cookie_decryption['linux'] is 1:
+                    try:
+                        if not self.cached_key:
                             my_pass = 'peanuts'.encode('utf8')
                             iterations = 1
-                            key = PBKDF2(my_pass, salt, length, iterations)
-                            decrypted_value = chrome_decrypt(encrypted_value, key=key)
-                        except:
-                            pass
+                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
+                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
+                    except:
+                        pass
 
-            return decrypted_value
+        return decrypted_value
 
+    def get_cookies(self, path, database, version):
         # Set up empty return array
         results = []
 
@@ -533,7 +536,7 @@ class Chrome(object):
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = decrypt_cookie(row.get('encrypted_value'))
+                            cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
                         else:
                             cookie_value = row.get('value').decode()
                     else:
@@ -636,7 +639,7 @@ class Chrome(object):
                             # Windows is all I've had time to test; Ubuntu uses built-in password manager
                             password = win32crypt.CryptUnprotectData(row.get('password_value').decode(), None, None, None, 0)[1]
                         except:
-                            password = u'<encrypted>'
+                            password = self.decrypt_cookie(row.get('password_value'))
 
                         password_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
                                                  name=row.get('password_element'), value=password,
@@ -1957,6 +1960,10 @@ def main():
     except Exception as e:
         logging.debug(' - Error loading plugins ({})'.format(e))
         print '  - Error loading plugins'
+
+    # Destroy the cached key so that json serialization doesn't
+    # have a cardiac arrest on the non-unicode binary data.
+    target_browser.cached_key = None
 
     if args.format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
