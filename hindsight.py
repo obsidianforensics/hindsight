@@ -89,6 +89,7 @@ class Chrome(object):
         self.parsed_artifacts = parsed_artifacts
         self.installed_extensions = installed_extensions
         self.artifacts_counts = artifacts_counts
+        self.cached_key = None
 
         if self.version is None:
             self.version = []
@@ -464,11 +465,12 @@ class Chrome(object):
                 # If running Chrome on OSX
                 elif sys.platform == 'darwin' and cookie_decryption['mac'] is 1:
                     try:
-                        my_pass = keyring.get_password('Chrome Safe Storage', 'Chrome')
-                        my_pass = my_pass.encode('utf8')
-                        iterations = 1003
-                        key = PBKDF2(my_pass, salt, length, iterations)
-                        decrypted_value = chrome_decrypt(encrypted_value, key=key)
+                        if not self.cached_key:
+                            my_pass = keyring.get_password('Chrome Safe Storage', 'Chrome')
+                            my_pass = my_pass.encode('utf8')
+                            iterations = 1003
+                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
+                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
                     except:
                         pass
                 else:
@@ -478,10 +480,11 @@ class Chrome(object):
                 # Unlike Win/Mac, we can decrypt Linux cookies without the user's pw
                 if decrypted_value is "<encrypted>" and cookie_decryption['linux'] is 1:
                     try:
-                        my_pass = 'peanuts'.encode('utf8')
-                        iterations = 1
-                        key = PBKDF2(my_pass, salt, length, iterations)
-                        decrypted_value = chrome_decrypt(encrypted_value, key=key)
+                        if not self.cached_key:
+                            my_pass = 'peanuts'.encode('utf8')
+                            iterations = 1
+                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
+                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
                     except:
                         pass
 
@@ -1957,6 +1960,10 @@ def main():
     except Exception as e:
         logging.debug(' - Error loading plugins ({})'.format(e))
         print '  - Error loading plugins'
+
+    # Destroy the cached key so that json serialization doesn't
+    # have a cardiac arrest on the non-unicode binary data.
+    target_browser.cached_key = None
 
     if args.format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
