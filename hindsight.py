@@ -69,7 +69,7 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -80,64 +80,21 @@ def dict_factory(cursor, row):
     return d
 
 
-class Chrome(object):
-    def __init__(self, profile_path, version=None, structure=None, parsed_artifacts=None, installed_extensions=None,
-                 artifacts_counts=None):
+class WebBrowser(object):
+    def __init__(self, profile_path, version=None, parsed_artifacts=None, artifacts_counts=None):
         self.profile_path = profile_path
         self.version = version
-        self.structure = structure
         self.parsed_artifacts = parsed_artifacts
-        self.installed_extensions = installed_extensions
         self.artifacts_counts = artifacts_counts
-        self.cached_key = None
 
         if self.version is None:
             self.version = []
 
-        if self.structure is None:
-            self.structure = {}
-
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
 
-        if self.installed_extensions is None:
-            self.installed_extensions = []
-
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
-
-    def build_structure(self, path, database):
-
-        if database not in self.structure.keys():
-            self.structure[database] = {}
-
-            # Connect to SQLite db
-            database_path = os.path.join(path, database)
-            db = sqlite3.connect(database_path)
-            cursor = db.cursor()
-
-            # Find the names of each table in the db
-            try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                tables = cursor.fetchall()
-            except sqlite3.OperationalError:
-                print "\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files " \
-                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
-                      "Chrome installation while it is running.  Please close Chrome and try again."
-                exit()
-            except:
-                logging.error(" - Couldn't connect to {}".format(database_path))
-                return
-
-            # For each table, find all the columns in it
-            for table in tables:
-                cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
-                columns = cursor.fetchall()
-
-                # Create a dict of lists of the table/column names
-                self.structure[database][str(table[0])] = []
-                for column in columns:
-                    self.structure[database][str(table[0])].append(str(column[1]))
 
     def to_epoch(self, timestamp):
         try:
@@ -185,6 +142,68 @@ class Chrome(object):
             return self.to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         else:
             return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
+class Chrome(WebBrowser):
+    def __init__(self, profile_path, version=None, structure=None, parsed_artifacts=None, installed_extensions=None,
+                 artifacts_counts=None):
+        # TODO: try to fix this to use super()
+        WebBrowser.__init__(self, profile_path, version=None, parsed_artifacts=None, artifacts_counts=None)
+        self.profile_path = profile_path
+        self.structure = structure
+        self.installed_extensions = installed_extensions
+        self.cached_key = None
+
+        if self.version is None:
+            self.version = []
+
+        if self.structure is None:
+            self.structure = {}
+
+        if self.parsed_artifacts is None:
+            self.parsed_artifacts = []
+
+        if self.installed_extensions is None:
+            self.installed_extensions = []
+
+        if self.artifacts_counts is None:
+            self.artifacts_counts = {}
+
+    def build_structure(self, path, database):
+
+        if database not in self.structure.keys():
+            self.structure[database] = {}
+
+            # Connect to SQLite db
+            database_path = os.path.join(path, database)
+            try:
+                db = sqlite3.connect(database_path)
+                cursor = db.cursor()
+            except sqlite3.OperationalError:
+                print "not a db"
+
+            # Find the names of each table in the db
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = cursor.fetchall()
+            except sqlite3.OperationalError:
+                print "\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files " \
+                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
+                      "Chrome installation while it is running.  Please close Chrome and try again."
+                exit()
+            except:
+                logging.error(" - Couldn't connect to {}".format(database_path))
+                return
+
+            # For each table, find all the columns in it
+            for table in tables:
+                cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
+                columns = cursor.fetchall()
+
+                # Create a dict of lists of the table/column names
+                self.structure[database][str(table[0])] = []
+                for column in columns:
+                    self.structure[database][str(table[0])].append(str(column[1]))
 
     def determine_version(self):
         """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
@@ -1068,6 +1087,7 @@ class Chrome(object):
         self.preferences = {'data': results, 'presentation': presentation}
 
 
+
 class MyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
@@ -1835,6 +1855,7 @@ def main():
     # Analysis start time
     print format_meta_output("Start time", str(datetime.datetime.now())[:-3])
     logging.info("Starting analysis")
+    # target_browser = Brave(args.input)
     target_browser = Chrome(args.input)
 
     # Reading input directory
@@ -1880,7 +1901,7 @@ def main():
     # Process History files
     custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
     for input_file in input_listing:
-        if re.search(r'^History__|^History$', input_file):
+        if re.search(r'^History__|^History$|session-store-1', input_file):
             row_type = u'url'
             custom_type_m = re.search(custom_type_re, input_file)
             if custom_type_m:
