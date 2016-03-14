@@ -81,8 +81,9 @@ def dict_factory(cursor, row):
 
 
 class WebBrowser(object):
-    def __init__(self, profile_path, version=None, parsed_artifacts=None, artifacts_counts=None):
+    def __init__(self, profile_path, browser_name, version=None, parsed_artifacts=None, artifacts_counts=None):
         self.profile_path = profile_path
+        self.browser_name = browser_name
         self.version = version
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_counts = artifacts_counts
@@ -145,11 +146,12 @@ class WebBrowser(object):
 
 
 class Chrome(WebBrowser):
-    def __init__(self, profile_path, version=None, structure=None, parsed_artifacts=None, installed_extensions=None,
-                 artifacts_counts=None):
+    def __init__(self, profile_path, browser_name=None, version=None, structure=None, parsed_artifacts=None,
+                 installed_extensions=None, artifacts_counts=None):
         # TODO: try to fix this to use super()
-        WebBrowser.__init__(self, profile_path, version=None, parsed_artifacts=None, artifacts_counts=None)
+        WebBrowser.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None, artifacts_counts=None)
         self.profile_path = profile_path
+        self.browser_name = "Chrome"
         self.structure = structure
         self.installed_extensions = installed_extensions
         self.cached_key = None
@@ -211,7 +213,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 47)
+        possible_versions = range(1, 50)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -1087,6 +1089,55 @@ class Chrome(WebBrowser):
         self.preferences = {'data': results, 'presentation': presentation}
 
 
+class Brave(Chrome):
+    def __init__(self, profile_path):
+        Chrome.__init__(self, profile_path, browser_name=None, version=None, structure=None, parsed_artifacts=None,
+                        installed_extensions=None, artifacts_counts=None)
+        self.browser_name = "Brave (Chrome)"
+        self.version = ["0.8"]
+
+    def get_history(self, path, history_file, version, row_type):
+        # Set up empty return array
+        results = []
+
+        logging.info("History items from {}:".format(history_file))
+        try:
+
+            with open(os.path.join(path, history_file), 'rb') as history_input:
+                history_raw = history_input.read()
+                history_json = json.loads(history_raw)
+                # print json.dumps(history_json, indent=2)
+                # print history_json['perWindowState'][0]['frames'][1]
+                # for i, window in enumerate(history_json['perWindowState']):
+                #     for f, frame in enumerate(history_json['perWindowState'][i]['frames']):
+                #         print history_json['perWindowState'][i]['frames'][f]['title']
+
+                for s, site in enumerate(history_json['sites']):
+
+                    new_row = URLItem(s, history_json['sites'][s].get('location', "<Unknown>"),
+                                      history_json['sites'][s].get('title', "<No Title>"),
+                                      history_json['sites'][s]['lastAccessedTime'],
+                                      history_json['sites'][s]['lastAccessedTime'],
+                                      None, None, None, None, None, None, None, None, None, )
+
+                    # Set the row type as determined earlier
+                    new_row.row_type = row_type
+
+                    # Set the row type as determined earlier
+                    new_row.timestamp = self.to_datetime(new_row.last_visit_time)
+
+                    # Add the new row to the results array
+                    results.append(new_row)
+
+            self.artifacts_counts[history_file] = len(results)
+            logging.info(" - Parsed {} items".format(len(results)))
+            self.parsed_artifacts.extend(results)
+
+        except:
+            logging.error(" - Error opening '{}'".format(os.path.join(path, history_file)))
+            self.artifacts_counts[history_file] = 'Failed'
+            return
+
 
 class MyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -1855,8 +1906,6 @@ def main():
     # Analysis start time
     print format_meta_output("Start time", str(datetime.datetime.now())[:-3])
     logging.info("Starting analysis")
-    # target_browser = Brave(args.input)
-    target_browser = Chrome(args.input)
 
     # Reading input directory
     print format_meta_output("Input directory", args.input)
@@ -1866,6 +1915,11 @@ def main():
     print format_meta_output("Output name", args.output)
 
     print("\n Processing:")
+    # TODO: Detection of Chrome vs Brave; this is just a stopgap until creation of more robust browser selection method
+    if "session-store-1" in input_listing:
+        target_browser = Brave(args.input)
+    else:
+        target_browser = Chrome(args.input)
     target_browser.structure = {}
 
     supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
@@ -1889,9 +1943,9 @@ def main():
     else:
         display_version = target_browser.version[0]
 
-    print format_processing_output("Detected Chrome version", display_version)
+    print format_processing_output("Detected {} version".format(target_browser.browser_name), display_version)
 
-    logging.info("Detected Chrome version %s" % display_version)
+    logging.info("Detected {} version {}".format(target_browser.browser_name, display_version))
 
     logging.info("Found the following supported files or directories:")
     for input_file in input_listing:
