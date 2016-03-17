@@ -97,7 +97,8 @@ class WebBrowser(object):
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
 
-    def to_epoch(self, timestamp):
+    @staticmethod
+    def to_epoch(timestamp):
         try:
             timestamp = float(timestamp)
         except:
@@ -114,7 +115,8 @@ class WebBrowser(object):
         else:
             return 0
 
-    def to_datetime(self, timestamp):
+    @staticmethod
+    def to_datetime(timestamp):
         """Convert a variety of timestamp formats to a datetime object."""
         try:
             timestamp = float(timestamp)
@@ -143,6 +145,16 @@ class WebBrowser(object):
             return self.to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         else:
             return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+    @staticmethod
+    def format_processing_output(name, items):
+        width = 80
+        left_side = width*0.55
+        count = '{:>6}'.format(str(items))
+        pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
+            .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
+                    right_width=(width - int(left_side)-2))
+        return pretty_name
 
 
 class Chrome(WebBrowser):
@@ -1088,12 +1100,107 @@ class Chrome(WebBrowser):
 
         self.preferences = {'data': results, 'presentation': presentation}
 
+    def process(self):
+        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
+        supported_subdirs = ['Local Storage', 'Extensions']
+        supported_jsons = ['Bookmarks']  # , 'Preferences']
+        supported_items = supported_databases + supported_subdirs + supported_jsons
+        logging.debug("Supported items: " + str(supported_items))
+
+        input_listing = os.listdir(self.profile_path)
+        for input_file in input_listing:
+            # If input_file is in our supported db list, or if the input_file name starts with a
+            # value in supported_databases followed by '__' (used to add in dbs from additional sources)
+            if input_file in supported_databases or input_file.startswith(tuple([db + '__' for db in supported_databases])):
+                # Process structure from Chrome database files
+                self.build_structure(args.input, input_file)
+
+        # Use the structure of the input files to determine possible Chrome versions
+        self.determine_version()
+
+        if len(self.version) > 1:
+            display_version = "%s-%s" % (self.version[0], self.version[-1])
+        else:
+            display_version = self.version[0]
+
+        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
+
+        logging.info("Detected {} version {}".format(self.browser_name, display_version))
+
+        logging.info("Found the following supported files or directories:")
+        for input_file in input_listing:
+            if input_file in supported_items:
+                logging.info(" - %s" % input_file)
+
+        # Process History files
+        custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
+        for input_file in input_listing:
+            if re.search(r'^History__|^History$', input_file):
+                row_type = u'url'
+                custom_type_m = re.search(custom_type_re, input_file)
+                if custom_type_m:
+                    row_type = u'url ({})'.format(custom_type_m.group(1))
+                self.get_history(args.input, input_file, self.version, row_type)
+                display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
+                print self.format_processing_output("{} records".format(display_type),
+                                                    self.artifacts_counts[input_file])
+
+                row_type = u'download'
+                if custom_type_m:
+                    row_type = u'download ({})'.format(custom_type_m.group(1))
+                self.get_downloads(args.input, input_file, self.version, row_type)
+                display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
+                print self.format_processing_output("{} records".format(display_type),
+                                                    self.artifacts_counts[input_file + '_downloads'])
+
+        if 'Archived History' in input_listing:
+            self.get_history(args.input, 'Archived History', self.version, u'url (archived)')
+            print self.format_processing_output("Archived URL records", self.artifacts_counts['Archived History'])
+
+        if 'Cookies' in input_listing:
+            self.get_cookies(args.input, 'Cookies', self.version)
+            print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
+
+        if 'Web Data' in input_listing:
+            self.get_autofill(args.input, 'Web Data', self.version)
+            print self.format_processing_output("Autofill records", self.artifacts_counts['Autofill'])
+
+        if 'Bookmarks' in input_listing:
+            self.get_bookmarks(args.input, 'Bookmarks', self.version)
+            print self.format_processing_output("Bookmark records", self.artifacts_counts['Bookmarks'])
+
+        if 'Local Storage' in input_listing:
+            self.get_local_storage(args.input, 'Local Storage')
+            print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
+
+        if 'Extensions' in input_listing:
+            self.get_extensions(args.input, 'Extensions')
+            print self.format_processing_output("Extensions", self.artifacts_counts['Extensions'])
+
+        if 'Extension Cookies' in input_listing:
+            self.get_cookies(args.input, 'Extension Cookies', self.version)
+            print self.format_processing_output("Extension Cookie records", self.artifacts_counts['Extension Cookies'])
+
+        if 'Login Data' in input_listing:
+            self.get_login_data(args.input, 'Login Data', self.version)
+            print self.format_processing_output("Login Data records", self.artifacts_counts['Login Data'])
+
+        if 'Preferences' in input_listing:
+            self.get_preferences(args.input, 'Preferences')
+            print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
+
+        # Destroy the cached key so that json serialization doesn't
+        # have a cardiac arrest on the non-unicode binary data.
+        self.cached_key = None
+
+        self.parsed_artifacts.sort()
+
 
 class Brave(Chrome):
     def __init__(self, profile_path):
         Chrome.__init__(self, profile_path, browser_name=None, version=None, structure=None, parsed_artifacts=None,
                         installed_extensions=None, artifacts_counts=None)
-        self.browser_name = "Brave (Chrome)"
+        self.browser_name = "Brave"
         self.version = ["0.8"]
 
     def get_history(self, path, history_file, version, row_type):
@@ -1113,21 +1220,23 @@ class Brave(Chrome):
                 #         print history_json['perWindowState'][i]['frames'][f]['title']
 
                 for s, site in enumerate(history_json['sites']):
+                    if history_json['sites'][s].get('location'):
+                        lastAccessed = history_json['sites'][s]['lastAccessedTime'] if history_json['sites'][s].get('lastAccessedTime') else history_json['sites'][s]['lastAccessed']
 
-                    new_row = URLItem(s, history_json['sites'][s].get('location', "<Unknown>"),
-                                      history_json['sites'][s].get('title', "<No Title>"),
-                                      history_json['sites'][s]['lastAccessedTime'],
-                                      history_json['sites'][s]['lastAccessedTime'],
-                                      None, None, None, None, None, None, None, None, None, )
+                        new_row = URLItem(s, history_json['sites'][s]['location'],
+                                          history_json['sites'][s].get('title', "<No Title>"),
+                                          lastAccessed,
+                                          lastAccessed,
+                                          None, None, None, None, None, None, None, None, None, )
 
-                    # Set the row type as determined earlier
-                    new_row.row_type = row_type
+                        # Set the row type as determined earlier
+                        new_row.row_type = row_type
 
-                    # Set the row type as determined earlier
-                    new_row.timestamp = self.to_datetime(new_row.last_visit_time)
+                        # Set the row type as determined earlier
+                        new_row.timestamp = self.to_datetime(new_row.last_visit_time)
 
-                    # Add the new row to the results array
-                    results.append(new_row)
+                        # Add the new row to the results array
+                        results.append(new_row)
 
             self.artifacts_counts[history_file] = len(results)
             logging.info(" - Parsed {} items".format(len(results)))
@@ -1137,6 +1246,71 @@ class Brave(Chrome):
             logging.error(" - Error opening '{}'".format(os.path.join(path, history_file)))
             self.artifacts_counts[history_file] = 'Failed'
             return
+
+    def process(self):
+        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
+        supported_subdirs = ['Local Storage', 'Extensions']
+        supported_jsons = ['Bookmarks']  # , 'Preferences']
+        supported_items = supported_databases + supported_subdirs + supported_jsons
+        logging.debug("Supported items: " + str(supported_items))
+
+        input_listing = os.listdir(self.profile_path)
+
+        # TODO: Hardcoded for now, will need to figure out detection once Brave matures
+        display_version = "0.8"
+
+        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
+
+        logging.info("Detected {} version {}".format(self.browser_name, display_version))
+
+        logging.info("Found the following supported files or directories:")
+        for input_file in input_listing:
+            if input_file in supported_items:
+                logging.info(" - %s" % input_file)
+
+        # Process History files
+        custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
+        for input_file in input_listing:
+            if re.search(r'session-store-', input_file):
+                row_type = u'url'
+                custom_type_m = re.search(custom_type_re, input_file)
+                if custom_type_m:
+                    row_type = u'url ({})'.format(custom_type_m.group(1))
+                self.get_history(args.input, input_file, self.version, row_type)
+                display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
+                print self.format_processing_output("{} records".format(display_type),
+                                                    self.artifacts_counts[input_file])
+
+            if input_file == 'Partitions':
+                partitions = os.listdir(os.path.join(self.profile_path, input_file))
+                for partition in partitions:
+                    partition_path = os.path.join(self.profile_path, input_file, partition)
+                    partition_listing = os.listdir(os.path.join(self.profile_path, input_file, partition))
+                    if 'Cookies' in partition_listing:
+                        self.get_cookies(partition_path, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
+                        print self.format_processing_output("Cookie records ({})".format(partition), self.artifacts_counts['Cookies'])
+
+                    if 'Local Storage' in partition_listing:
+                        self.get_local_storage(partition_path, 'Local Storage')
+                        print self.format_processing_output("Local Storage records ({})".format(partition), self.artifacts_counts['Local Storage'])
+
+        if 'Cookies' in input_listing:
+            self.get_cookies(args.input, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
+            print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
+
+        if 'Local Storage' in input_listing:
+            self.get_local_storage(args.input, 'Local Storage')
+            print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
+
+        if 'Preferences' in input_listing:
+            self.get_preferences(args.input, 'Preferences')
+            print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
+
+        # Destroy the cached key so that json serialization doesn't
+        # have a cardiac arrest on the non-unicode binary data.
+        self.cached_key = None
+
+        self.parsed_artifacts.sort()
 
 
 class MyEncoder(json.JSONEncoder):
@@ -1884,15 +2058,6 @@ def main():
             .format(name=name, left_width=int(left_side), content=content)
         return pretty_name
 
-    def format_processing_output(name, items):
-        width = 80
-        left_side = width*0.55
-        count = '{:>6}'.format(str(items))
-        pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
-            .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
-                    right_width=(width - int(left_side)-2))
-        return pretty_name
-
     # Set up logging
     logging.basicConfig(filename=args.log, level=logging.DEBUG, format='%(asctime)s.%(msecs).03d | %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
@@ -1918,98 +2083,11 @@ def main():
     # TODO: Detection of Chrome vs Brave; this is just a stopgap until creation of more robust browser selection method
     if "session-store-1" in input_listing:
         target_browser = Brave(args.input)
+        target_browser.process()
     else:
         target_browser = Chrome(args.input)
-    target_browser.structure = {}
+        target_browser.process()
 
-    supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
-    supported_subdirs = ['Local Storage', 'Extensions']
-    supported_jsons = ['Bookmarks']  # , 'Preferences']
-    supported_items = supported_databases + supported_subdirs + supported_jsons
-    logging.debug("Supported items: " + str(supported_items))
-
-    for input_file in input_listing:
-        # If input_file is in our supported db list, or if the input_file name starts with a
-        # value in supported_databases followed by '__' (used to add in dbs from additional sources)
-        if input_file in supported_databases or input_file.startswith(tuple([db + '__' for db in supported_databases])):
-            # Process structure from Chrome database files
-            target_browser.build_structure(args.input, input_file)
-
-    # Use the structure of the input files to determine possible Chrome versions
-    target_browser.determine_version()
-
-    if len(target_browser.version) > 1:
-        display_version = "%s-%s" % (target_browser.version[0], target_browser.version[-1])
-    else:
-        display_version = target_browser.version[0]
-
-    print format_processing_output("Detected {} version".format(target_browser.browser_name), display_version)
-
-    logging.info("Detected {} version {}".format(target_browser.browser_name, display_version))
-
-    logging.info("Found the following supported files or directories:")
-    for input_file in input_listing:
-        if input_file in supported_items:
-            logging.info(" - %s" % input_file)
-
-    # Process History files
-    custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
-    for input_file in input_listing:
-        if re.search(r'^History__|^History$|session-store-1', input_file):
-            row_type = u'url'
-            custom_type_m = re.search(custom_type_re, input_file)
-            if custom_type_m:
-                row_type = u'url ({})'.format(custom_type_m.group(1))
-            target_browser.get_history(args.input, input_file, target_browser.version, row_type)
-            display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
-            print format_processing_output("{} records".format(display_type),
-                                           target_browser.artifacts_counts[input_file])
-
-            row_type = u'download'
-            if custom_type_m:
-                row_type = u'download ({})'.format(custom_type_m.group(1))
-            target_browser.get_downloads(args.input, input_file, target_browser.version, row_type)
-            display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
-            print format_processing_output("{} records".format(display_type),
-                                           target_browser.artifacts_counts[input_file + '_downloads'])
-
-    if 'Archived History' in input_listing:
-        target_browser.get_history(args.input, 'Archived History', target_browser.version, u'url (archived)')
-        print format_processing_output("Archived URL records", target_browser.artifacts_counts['Archived History'])
-
-    if 'Cookies' in input_listing:
-        target_browser.get_cookies(args.input, 'Cookies', target_browser.version)
-        print format_processing_output("Cookie records", target_browser.artifacts_counts['Cookies'])
-
-    if 'Web Data' in input_listing:
-        target_browser.get_autofill(args.input, 'Web Data', target_browser.version)
-        print format_processing_output("Autofill records", target_browser.artifacts_counts['Autofill'])
-
-    if 'Bookmarks' in input_listing:
-        target_browser.get_bookmarks(args.input, 'Bookmarks', target_browser.version)
-        print format_processing_output("Bookmark records", target_browser.artifacts_counts['Bookmarks'])
-
-    if 'Local Storage' in input_listing:
-        target_browser.get_local_storage(args.input, 'Local Storage')
-        print format_processing_output("Local Storage records", target_browser.artifacts_counts['Local Storage'])
-
-    if 'Extensions' in input_listing:
-        target_browser.get_extensions(args.input, 'Extensions')
-        print format_processing_output("Extensions", target_browser.artifacts_counts['Extensions'])
-
-    if 'Extension Cookies' in input_listing:
-        target_browser.get_cookies(args.input, 'Extension Cookies', target_browser.version)
-        print format_processing_output("Extension Cookie records", target_browser.artifacts_counts['Extension Cookies'])
-
-    if 'Login Data' in input_listing:
-        target_browser.get_login_data(args.input, 'Login Data', target_browser.version)
-        print format_processing_output("Login Data records", target_browser.artifacts_counts['Login Data'])
-
-    if 'Preferences' in input_listing:
-        target_browser.get_preferences(args.input, 'Preferences')
-        print format_processing_output("Preference Items", target_browser.artifacts_counts['Preferences'])
-
-    target_browser.parsed_artifacts.sort()
     print("\n Running plugins:")
     logging.info("Plugins:")
 
@@ -2035,10 +2113,6 @@ def main():
     except Exception as e:
         logging.debug(' - Error loading plugins ({})'.format(e))
         print '  - Error loading plugins'
-
-    # Destroy the cached key so that json serialization doesn't
-    # have a cardiac arrest on the non-unicode binary data.
-    target_browser.cached_key = None
 
     if args.format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
