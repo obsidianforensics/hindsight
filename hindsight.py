@@ -69,7 +69,7 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -2094,6 +2094,7 @@ def main():
     plugin_path = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])), 'plugins')
     sys.path.insert(0, plugin_path)
 
+    # Get list of available plugins and run them
     try:
         plugin_listing = os.listdir(plugin_path)
 
@@ -2114,6 +2115,11 @@ def main():
         logging.debug(' - Error loading plugins ({})'.format(e))
         print '  - Error loading plugins'
 
+    # Check if output directory exists; attempt to create if it doesn't
+    if not os.path.exists(os.path.dirname(args.output)):
+        os.makedirs(os.path.dirname(args.output))
+
+    # Get desired output type form args.format and call the correct output creation function
     if args.format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
         try:
@@ -2132,6 +2138,7 @@ def main():
         logging.info("Writing output; SQLite format selected")
         write_sqlite(target_browser)
 
+    # Display and log finish time
     print "\n Finish time: ", str(datetime.datetime.now())[:-3]
     logging.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
 
