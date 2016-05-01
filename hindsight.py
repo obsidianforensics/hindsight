@@ -782,6 +782,8 @@ class Chrome(WebBrowser):
 
     def get_local_storage(self, path, dir_name):
         results = []
+        illegal_xml_re = re.compile(ur'[\x00-\x08\x0b-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufdd0-\ufddf\ufffe-\uffff]',
+                                    re.UNICODE)
 
         # Grab file list of 'Local Storage' directory
         ls_path = os.path.join(path, dir_name)
@@ -794,20 +796,27 @@ class Chrome(WebBrowser):
         filtered_listing = []
 
         for ls_file in local_storage_listing:
-            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:16] == 'chrome-extension') \
-                    and ls_file[-8:] != '-journal':
+            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
+                    ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
                 filtered_listing.append(ls_file)
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
 
                 def to_unicode(raw_data):
                     if type(raw_data) in (int, long, float):
-                        return unicode(raw_data, 'utf-16le', errors='replace')
+                        return unicode(raw_data, 'utf-16', errors='replace')
                     elif type(raw_data) is unicode:
                         return raw_data
                     elif type(raw_data) is buffer:
                         try:
-                            return unicode(raw_data, 'utf-16le', errors='replace')
+                            # When Javascript used localStorage, it saves everything in UTF-16
+                            uni = unicode(raw_data, 'utf-16', errors='replace')
+                            # However, some websites use custom compression to squeeze more data in, and just pretend
+                            # it's UTF-16, which can result in "characters" that are illegal in XML. We need to remove
+                            # these so Excel will be able to display the output.
+                            # TODO: complete work on decoding the compressed data
+                            return illegal_xml_re.sub(u'\ufffd', uni)
+
                         except UnicodeDecodeError:
                             return u'<buffer decode error>'
                     else:
