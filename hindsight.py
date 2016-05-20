@@ -2125,7 +2125,7 @@ def main():
         print '  - Error loading plugins'
 
     # Check if output directory exists; attempt to create if it doesn't
-    if not os.path.exists(os.path.dirname(args.output)):
+    if os.path.dirname(args.output) != "" and not os.path.exists(os.path.dirname(args.output)):
         os.makedirs(os.path.dirname(args.output))
 
     # Get desired output type form args.format and call the correct output creation function
