@@ -62,6 +62,7 @@ except ImportError:
     cookie_decryption['linux'] = 0
     cookie_decryption['mac'] = 0
 
+# Try to import module for timezone support
 try:
     import pytz
 except ImportError:
@@ -2111,9 +2112,15 @@ def main():
         for plugin in plugin_listing:
             if plugin[-3:] == ".py":
                 plugin = plugin.replace(".py", "")
-                module = __import__(plugin)
-                logging.info("Running '{}' plugin".format(module.friendlyName))
+                logging.debug("Loading '{}'".format(plugin))
                 try:
+                    module = __import__(plugin)
+                except ImportError, e:
+                    logging.error(" - Error: {}".format(e))
+                    print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+                    continue
+                try:
+                    logging.info("Running '{}' plugin".format(module.friendlyName))
                     parsed_items = module.plugin(target_browser)
                     print format_plugin_output(module.friendlyName, module.version, parsed_items)
                     logging.info(" - Completed; {}".format(parsed_items))
