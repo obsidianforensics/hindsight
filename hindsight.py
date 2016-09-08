@@ -14,53 +14,35 @@ import time
 import datetime
 import argparse
 import logging
+import sqlite3
+import json
 
-# Try to import modules for different output formats, adding to output_formats array if successful
-output_formats = []
+# Try to import modules for different output formats, adding to self.available_output_format array if successful
 try:
     import xlsxwriter
-    output_formats.append('xlsx')
 except ImportError:
     print "Couldn't import module 'xlsxwriter'; XLSX output disabled.\n"
-try:
-    import sqlite3
-    output_formats.append('sqlite')
-except ImportError:
-    print "Couldn't import module 'sqlite3'; SQLite output disabled.\n"
-try:
-    import json
-    output_formats.append('json')
-except ImportError:
-    print "Couldn't import module 'json'; JSON output disabled.\n"
 
 # Try to import modules for cookie decryption on different OSes.
-cookie_decryption = {'windows': 0, 'mac': 0, 'linux': 0}
 # Windows
 try:
     import win32crypt
-    cookie_decryption['windows'] = 1
 except ImportError:
     print "Couldn't import module 'win32crypt'; cookie decryption on Windows disabled.\n"
 # Mac OS
 try:
     import keyring
-    cookie_decryption['mac'] = 1
 except ImportError:
     print "Couldn't import module 'keyring'; cookie decryption on Mac OS disabled.\n"
 # Linux / Mac OS
 try:
     from Crypto.Cipher import AES
-    cookie_decryption['linux'] = 1
 except ImportError:
     print "Couldn't import module 'AES from Crypto.Cipher'; cookie decryption on Mac OS / Linux disabled.\n"
-    cookie_decryption['linux'] = 0
-    cookie_decryption['mac'] = 0
 try:
     from Crypto.Protocol.KDF import PBKDF2
 except ImportError:
-    print "Couldn't import module 'PBKDF2 from Crypto.Protocol.KDF'; cookie decryption on Mac OS / Linux disabled.\n"
-    cookie_decryption['linux'] = 0
-    cookie_decryption['mac'] = 0
+    print "Couldn't import module 'PBKDF2 from Crypto.Protocol.KDF'; cookie decryption on OSX/Linux disabled.\n"
 
 # Try to import module for timezone support
 try:
@@ -70,1257 +52,85 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "1.6.1"
+__version__ = "2.0a1"
 __email__ = "ryan@obsidianforensics.com"
 
 
-def dict_factory(cursor, row):
-    d = {}
-    for idx, col in enumerate(cursor.description):
-        d[col[0]] = row[idx]
-    return d
-
-
-class WebBrowser(object):
-    def __init__(self, profile_path, browser_name, version=None, parsed_artifacts=None, artifacts_counts=None):
+class AnalysisSession(object):
+    def __init__(self, profile_path, browser_type=None, output_name=None, log_path=None, timezone=None,
+                 available_output_formats=None, selected_output_format=None, available_decrypts=None,
+                 parsed_artifacts=None, artifacts_counts=None):
         self.profile_path = profile_path
-        self.browser_name = browser_name
-        self.version = version
+        self.browser_type = browser_type
+        self.output_name = output_name
+        self.log_path = log_path
+        self.timezone = timezone
+        self.available_output_formats = available_output_formats
+        self.selected_output_format = selected_output_format
+        self.available_decrypts = available_decrypts
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_counts = artifacts_counts
 
-        if self.version is None:
-            self.version = []
-
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
 
-    @staticmethod
-    def to_epoch(timestamp):
-        try:
-            timestamp = float(timestamp)
-        except:
-            return 0
-        if timestamp > 99999999999999:
-            # Webkit
-            return (float(timestamp) / 1000000) - 11644473600
-        elif timestamp > 99999999999:
-            # Epoch milliseconds
-            return float(timestamp) / 1000
-        elif timestamp >= 0:
-            # Epoch
-            return float(timestamp)
+        if self.available_output_formats is None:
+            self.available_output_formats = ['json', 'sqlite']
+
+        if self.available_decrypts is None:
+            self.available_decrypts = {'windows': 0, 'mac': 0, 'linux': 0}
+
+        # Try to import modules for different output formats, adding to self.available_output_format array if successful
+        if 'xlsxwriter' in sys.modules:
+            self.available_output_formats.append('xlsx')
+
+        # Try to import modules for cookie decryption on different OSes.
+        # Windows
+        if 'win32crypt' in sys.modules:
+            self.available_decrypts['windows'] = 1
+
+        # Mac OS
+        if 'keyring' in sys.modules:
+            self.available_decrypts['mac'] = 1
+
+        # Linux / Mac OS
+        if 'Crypto.Cipher.AES' in sys.modules:
+            self.available_decrypts['linux'] = 1
         else:
-            return 0
+            self.available_decrypts['linux'] = 0
+            self.available_decrypts['mac'] = 0
 
-    @staticmethod
-    def to_datetime(timestamp):
-        """Convert a variety of timestamp formats to a datetime object."""
-        try:
-            timestamp = float(timestamp)
-        except:
-            timestamp = 0
+        if 'Crypto.Protocol.KDF' not in sys.modules:
+            self.available_decrypts['linux'] = 0
+            self.available_decrypts['mac'] = 0
 
-        if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
-            # Webkit
-            new_timestamp = datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
-        elif 1900000000000 > timestamp > 2000000000:  # 2030 > ts > 1970
-            # Epoch milliseconds
-            new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
-        elif 1900000000 > timestamp >= 0:  # 2030 > ts > 1970
-            # Epoch
-            new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp))
-        else:
-            new_timestamp = datetime.datetime.utcfromtimestamp(0)
-
-        try:
-            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(args.timezone)
-        except NameError:
-            return new_timestamp
-
-    def friendly_date(self, timestamp):
-        if isinstance(timestamp, (str, unicode, long, int)):
-            return self.to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        else:
-            return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-
-    @staticmethod
-    def format_processing_output(name, items):
-        width = 80
-        left_side = width*0.55
-        count = '{:>6}'.format(str(items))
-        pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
-            .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
-                    right_width=(width - int(left_side)-2))
-        return pretty_name
-
-
-class Chrome(WebBrowser):
-    def __init__(self, profile_path, browser_name=None, version=None, structure=None, parsed_artifacts=None,
-                 installed_extensions=None, artifacts_counts=None):
-        # TODO: try to fix this to use super()
-        WebBrowser.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None, artifacts_counts=None)
-        self.profile_path = profile_path
-        self.browser_name = "Chrome"
-        self.structure = structure
-        self.installed_extensions = installed_extensions
-        self.cached_key = None
-
-        if self.version is None:
-            self.version = []
-
-        if self.structure is None:
-            self.structure = {}
-
-        if self.parsed_artifacts is None:
-            self.parsed_artifacts = []
-
-        if self.installed_extensions is None:
-            self.installed_extensions = []
-
-        if self.artifacts_counts is None:
-            self.artifacts_counts = {}
-
-    def build_structure(self, path, database):
-
-        if database not in self.structure.keys():
-            self.structure[database] = {}
-
-            # Connect to SQLite db
-            database_path = os.path.join(path, database)
-            try:
-                db = sqlite3.connect(database_path)
-                cursor = db.cursor()
-            except sqlite3.OperationalError:
-                print "not a db"
-
-            # Find the names of each table in the db
-            try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                tables = cursor.fetchall()
-            except sqlite3.OperationalError:
-                print "\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files " \
-                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
-                      "Chrome installation while it is running.  Please close Chrome and try again."
-                exit()
-            except:
-                logging.error(" - Couldn't connect to {}".format(database_path))
-                return
-
-            # For each table, find all the columns in it
-            for table in tables:
-                cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
-                columns = cursor.fetchall()
-
-                # Create a dict of lists of the table/column names
-                self.structure[database][str(table[0])] = []
-                for column in columns:
-                    self.structure[database][str(table[0])].append(str(column[1]))
-
-    def determine_version(self):
-        """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
-
-        Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
-        (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
-        """
-        possible_versions = range(1, 50)
-
-        def trim_lesser_versions_if(column, table, version):
-            """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
-            versions >= 'version' if 'column' is in 'table'.
-            """
-            if table:
-                if column in table:
-                    possible_versions[:] = [x for x in possible_versions if x >= version]
-                else:
-                    possible_versions[:] = [x for x in possible_versions if x < version]
-
-        def trim_lesser_versions(version):
-            """Remove version numbers > 'version' from 'possible_versions'"""
-            possible_versions[:] = [x for x in possible_versions if x > version]
-
-        if 'History' in self.structure.keys():
-            if 'visits' in self.structure['History'].keys():
-                trim_lesser_versions_if('visit_duration', self.structure['History']['visits'], 20)
-            if 'visit_source' in self.structure['History'].keys():
-                trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
-            if 'downloads' in self.structure['History'].keys():
-                trim_lesser_versions_if('target_path', self.structure['History']['downloads'], 26)
-                trim_lesser_versions_if('opened', self.structure['History']['downloads'], 16)
-                trim_lesser_versions_if('etag', self.structure['History']['downloads'], 30)
-                trim_lesser_versions_if('original_mime_type', self.structure['History']['downloads'], 37)
-
-        # the pseudo-History file generated by the ChromeNative Volatility plugin should use the v30 query
-        elif (db.startswith('History__') for db in self.structure.keys()):
-            trim_lesser_versions(30)
-
-        if 'Cookies' in self.structure.keys():
-            if 'cookies' in self.structure['Cookies'].keys():
-                trim_lesser_versions_if('persistent', self.structure['Cookies']['cookies'], 17)
-                trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
-                trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
-                trim_lesser_versions_if('firstpartyonly', self.structure['Cookies']['cookies'], 44)
-
-        if 'Web Data' in self.structure.keys():
-            if 'autofill' in self.structure['Web Data'].keys():
-                trim_lesser_versions_if('name', self.structure['Web Data']['autofill'], 2)
-                trim_lesser_versions_if('date_created', self.structure['Web Data']['autofill'], 35)
-            if 'autofill_profiles' in self.structure['Web Data'].keys():
-                trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
-            if 'web_apps' not in self.structure['Web Data'].keys():
-                trim_lesser_versions(37)
-
-        if 'Login Data' in self.structure.keys():
-            if 'logins' in self.structure['Login Data'].keys():
-                trim_lesser_versions_if('display_name', self.structure['Login Data']['logins'], 39)
-                trim_lesser_versions_if('generation_upload_status', self.structure['Login Data']['logins'], 42)
-
-        self.version = possible_versions
-
-    def get_history(self, path, history_file, version, row_type):
-        # Set up empty return array
-        results = []
-
-        logging.info("History items from {}:".format(history_file))
-
-        # TODO: visit_source table?  don't have good sample data
-        # TODO: visits where visit_count = 0; means it should be in Archived History but could be helpful to have if
-        # that file is missing.  Changing the first JOIN to a LEFT JOIN adds these in.
-
-        # Queries for different versions
-        query = {30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
-                 29: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source, visits.is_indexed
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
-                 20: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source, visits.is_indexed
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
-                 7:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
-                             visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
-                 1:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
-                          FROM urls, visits WHERE urls.id = visits.url'''}
-
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
-            compatible_version -= 1
-
-        if compatible_version is not 0:
-            logging.info(" - Using SQL query for History items for Chrome v{}".format(compatible_version))
-            try:
-                # Connect to 'History' sqlite db
-                history_path = os.path.join(path, history_file)
-                db_file = sqlite3.connect(history_path)
-                logging.info(" - Reading from file '{}'".format(history_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
+        if 'pytz' in sys.modules:
+            if self.timezone is not None:
                 try:
-                    cursor.execute(query[compatible_version])
-                except:
-                    logging.error(" - Error querying '{}'".format(history_path))
-                    self.artifacts_counts[history_file] = 'Failed'
-                    return
-
-                for row in cursor:
-                    duration = None
-                    if row.get('visit_duration'):
-                        duration = datetime.timedelta(microseconds=row.get('visit_duration'))
-
-                    new_row = URLItem(row.get('id'), row.get('url'), row.get('title'),
-                                      self.to_datetime(row.get('visit_time')),
-                                      self.to_datetime(row.get('last_visit_time')), row.get('visit_count'),
-                                      row.get('typed_count'), row.get('from_visit'), row.get('transition'),
-                                      row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
-                                      unicode(duration), row.get('source'))
-
-                    # Set the row type as determined earlier
-                    new_row.row_type = row_type
-
-                    # Translate the transition value to human-readable
-                    new_row.decode_transition()
-
-                    # Translate the numeric visit_source.source code to human-readable
-                    new_row.decode_source()
-
-                    # Add the new row to the results array
-                    results.append(new_row)
-
-                db_file.close()
-                self.artifacts_counts[history_file] = len(results)
-                logging.info(" - Parsed {} items".format(len(results)))
-                self.parsed_artifacts.extend(results)
-
-            except IOError:
-                self.artifacts_counts[history_file] = 'Failed'
-                logging.error(" - Couldn't open {}".format(os.path.join(path, history_file)))
-
-    def get_downloads(self, path, database, version, row_type):
-        # Set up empty return array
-        results = []
-
-        logging.info("Download items from {}:".format(database))
-
-        # Queries for different versions
-        query = {30: '''SELECT downloads.id, downloads_url_chains.url, downloads.received_bytes, downloads.total_bytes,
-                            downloads.state, downloads.target_path, downloads.start_time, downloads.end_time,
-                            downloads.opened, downloads.danger_type, downloads.interrupt_reason, downloads.etag,
-                            downloads.last_modified, downloads_url_chains.chain_index
-                        FROM downloads, downloads_url_chains WHERE downloads_url_chains.id = downloads.id''',
-                 26: '''SELECT downloads.id, downloads_url_chains.url, downloads.received_bytes, downloads.total_bytes,
-                            downloads.state, downloads.target_path, downloads.start_time, downloads.end_time,
-                            downloads.opened, downloads.danger_type, downloads.interrupt_reason,
-                            downloads_url_chains.chain_index
-                        FROM downloads, downloads_url_chains WHERE downloads_url_chains.id = downloads.id''',
-                 16: '''SELECT downloads.id, downloads.url, downloads.received_bytes, downloads.total_bytes,
-                            downloads.state, downloads.full_path, downloads.start_time, downloads.end_time,
-                            downloads.opened
-                        FROM downloads''',
-                 1:  '''SELECT downloads.id, downloads.url, downloads.received_bytes, downloads.total_bytes,
-                            downloads.state, downloads.full_path, downloads.start_time
-                        FROM downloads'''}
-
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
-            compatible_version -= 1
-
-        if compatible_version is not 0:
-            logging.info(" - Using SQL query for Download items for Chrome v{}".format(compatible_version))
-            try:
-                # Connect to 'History' sqlite db
-                history_path = os.path.join(path, database)
-                db_file = sqlite3.connect(history_path)
-                logging.info(" - Reading from file '{}'".format(history_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
-                try:
-                    cursor.execute(query[compatible_version])
-                except:
-                    logging.error(" - Error querying '{}'".format(history_path))
-                    self.artifacts_counts[database + '_downloads'] = 'Failed'
-                    return
-
-                for row in cursor:
-                    try:
-                        # TODO: collapse download chain into one entry per download
-                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        new_row = DownloadItem(row.get('id'), row.get('url'), row.get('received_bytes'),
-                                               row.get('total_bytes'), row.get('state'), row.get('full_path'),
-                                               self.to_datetime(row.get('start_time')),
-                                               self.to_datetime(row.get('end_time')), row.get('target_path'),
-                                               row.get('current_path'), row.get('opened'), row.get('danger_type'),
-                                               row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
-                                               row.get('chain_index'))
-                    except:
-                        logging.exception(" - Exception processing record; skipped.")
-
-                    new_row.decode_interrupt_reason()
-                    new_row.decode_danger_type()
-                    new_row.decode_download_state()
-                    new_row.timestamp = new_row.start_time
-
-                    new_row.create_friendly_status()
-
-                    if new_row.full_path is not None:
-                        new_row.value = new_row.full_path
-                    elif new_row.current_path is not None:
-                        new_row.value = new_row.current_path
-                    elif new_row.target_path is not None:
-                        new_row.value = new_row.target_path
-                    else:
-                        new_row.value = u'Error retrieving download location'
-                        logging.error(" - Error retrieving download location for download '{}'".format(new_row.url))
-
-                    new_row.row_type = row_type
-                    results.append(new_row)
-
-                db_file.close()
-                self.artifacts_counts[database + '_downloads'] = len(results)
-                logging.info(" - Parsed {} items".format(len(results)))
-                self.parsed_artifacts.extend(results)
-
-            except IOError:
-                self.artifacts_counts[database + '_downloads'] = 'Failed'
-                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
-
-    def decrypt_cookie(self, encrypted_value):
-        """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
-         - Mac/Linux: http://n8henrie.com/2014/05/decrypt-chrome-cookies-with-python/
-         - Windows: https://gist.github.com/jordan-wright/5770442#file-chrome_extract-py
-         - Relevant Chromium source code: http://src.chromium.org/viewvc/chrome/trunk/src/components/os_crypt/
-         """
-        salt = b'saltysalt'
-        iv = b' ' * 16
-        length = 16
-
-        def chrome_decrypt(encrypted, key=None):
-            # Encrypted cookies should be prefixed with 'v10' according to the
-            # Chromium code. Strip it off.
-            encrypted = encrypted[3:]
-
-            # Strip padding by taking off number indicated by padding
-            # eg if last is '\x0e' then ord('\x0e') == 14, so take off 14.
-            def clean(x):
-                return x[:-ord(x[-1])]
-
-            cipher = AES.new(key, AES.MODE_CBC, IV=iv)
-            decrypted = cipher.decrypt(encrypted)
-
-            return clean(decrypted)
-
-        decrypted_value = "<error>"
-        if encrypted_value is not None:
-            if len(encrypted_value) >= 2:
-                # If running Chrome on Windows
-                if sys.platform == 'win32' and cookie_decryption['windows'] is 1:
-                    try:
-                        decrypted_value = win32crypt.CryptUnprotectData(encrypted_value, None, None, None, 0)[1]
-                    except:
-                        decrypted_value = "<encrypted>"
-                # If running Chrome on OSX
-                elif sys.platform == 'darwin' and cookie_decryption['mac'] is 1:
-                    try:
-                        if not self.cached_key:
-                            my_pass = keyring.get_password('Chrome Safe Storage', 'Chrome')
-                            my_pass = my_pass.encode('utf8')
-                            iterations = 1003
-                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
-                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
-                    except:
-                        pass
-                else:
-                    decrypted_value = "<encrypted>"
-
-                # If running Chromium on Linux.
-                # Unlike Win/Mac, we can decrypt Linux cookies without the user's pw
-                if decrypted_value is "<encrypted>" and cookie_decryption['linux'] is 1:
-                    try:
-                        if not self.cached_key:
-                            my_pass = 'peanuts'.encode('utf8')
-                            iterations = 1
-                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
-                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
-                    except:
-                        pass
-
-        return decrypted_value
-
-    def get_cookies(self, path, database, version):
-        # Set up empty return array
-        results = []
-
-        logging.info("Cookie items from {}:".format(database))
-
-        # Queries for different versions
-        query = {33: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
-                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
-                            cookies.persistent, cookies.has_expires, cookies.priority, cookies.encrypted_value
-                        FROM cookies''',
-                 28: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
-                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
-                            cookies.persistent, cookies.has_expires, cookies.priority
-                        FROM cookies''',
-                 17: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
-                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
-                            cookies.persistent, cookies.has_expires
-                        FROM cookies''',
-                 1:  '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
-                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly
-                        FROM cookies'''}
-
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
-            compatible_version -= 1
-
-        if compatible_version is not 0:
-            logging.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
-            try:
-                # Connect to 'Cookies' sqlite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                logging.info(" - Reading from file '{}'".format(db_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
-
-                for row in cursor:
-                    if row.get('encrypted_value') is not None:
-                        if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
-                        else:
-                            cookie_value = row.get('value').decode()
-                    else:
-                        cookie_value = row.get('value')
-
-                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    new_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                         self.to_datetime(row.get('creation_utc')),
-                                         self.to_datetime(row.get('last_access_utc')),
-                                         self.to_datetime(row.get('expires_utc')), row.get('secure'),
-                                         row.get('httponly'), row.get('persistent'),
-                                         row.get('has_expires'), row.get('priority'))
-
-                    accessed_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                              self.to_datetime(row.get('creation_utc')),
-                                              self.to_datetime(row.get('last_access_utc')),
-                                              self.to_datetime(row.get('expires_utc')), row.get('secure'),
-                                              row.get('httponly'), row.get('persistent'),
-                                              row.get('has_expires'), row.get('priority'))
-
-                    new_row.url = (new_row.host_key + new_row.path)
-                    accessed_row.url = (accessed_row.host_key + accessed_row.path)
-
-                    # Create the row for when the cookie was created
-                    new_row.row_type = u'cookie (created)'
-                    new_row.timestamp = new_row.creation_utc
-                    results.append(new_row)
-
-                    # If the cookie was created and accessed at the same time (only used once), or if the last accessed
-                    # time is 0 (happens on iOS), don't create an accessed row
-                    if new_row.creation_utc != new_row.last_access_utc and \
-                                    accessed_row.last_access_utc != self.to_datetime(0):
-                                    # accessed_row.last_access_utc != datetime.datetime.utcfromtimestamp(0):
-                        accessed_row.row_type = u'cookie (accessed)'
-                        accessed_row.timestamp = accessed_row.last_access_utc
-                        results.append(accessed_row)
-
-                db_file.close()
-                self.artifacts_counts[database] = len(results)
-                logging.info(" - Parsed {} items".format(len(results)))
-                self.parsed_artifacts.extend(results)
-
-            except:
-                self.artifacts_counts[database] = 'Failed'
-                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
-
-    def get_login_data(self, path, database, version):
-        # Set up empty return array
-        results = []
-
-        logging.info("Password items from {}:".format(database))
-
-        # Queries for different versions
-        query = {29:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
-                            password_value, date_created, blacklisted_by_user, times_used FROM logins''',
-                 6:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
-                            password_value, date_created, blacklisted_by_user FROM logins'''}
-
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
-            compatible_version -= 1
-
-        if compatible_version is not 0:
-            logging.info(" - Using SQL query for Password items for Chrome v{}".format(compatible_version))
-            try:
-                # Connect to 'Login Data' sqlite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                logging.info(" - Reading from file '{}'".format(db_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
-
-                # print 'cursor ',cursor.fetchall()
-
-                for row in cursor:
-                    if row.get('blacklisted_by_user') == 1:
-                        blacklist_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
-                                                  name=row.get('username_element').decode(),
-                                                  value=u'<User chose to "Never save password" for this site>',
-                                                  count=row.get('times_used'))
-                        blacklist_row.row_type = u'login (blacklist)'
-                        results.append(blacklist_row)
-
-                    if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
-                        username_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
-                                                 name=row.get('username_element'), value=row.get('username_value'),
-                                                 count=row.get('times_used'))
-                        username_row.row_type = u'login (username)'
-                        results.append(username_row)
-
-                    if row.get('password_value') is not None and row.get('blacklisted_by_user') == 0:
-                        password = None
-                        try:
-                            # Windows is all I've had time to test; Ubuntu uses built-in password manager
-                            password = win32crypt.CryptUnprotectData(row.get('password_value').decode(), None, None, None, 0)[1]
-                        except:
-                            password = self.decrypt_cookie(row.get('password_value'))
-
-                        password_row = LoginItem(self.to_datetime(row.get('date_created')), url=row.get('action_url'),
-                                                 name=row.get('password_element'), value=password,
-                                                 count=row.get('times_used'))
-                        password_row.row_type = u'login (password)'
-                        results.append(password_row)
-
-                db_file.close()
-                self.artifacts_counts['Login Data'] = len(results)
-                logging.info(" - Parsed {} items".format(len(results)))
-                self.parsed_artifacts.extend(results)
-
-            except:
-                self.artifacts_counts['Login Data'] = 'Failed'
-                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
-
-    def get_autofill(self, path, database, version):
-        # Set up empty return array
-        results = []
-
-        logging.info("Autofill items from {}:".format(database))
-
-        # Queries for different versions
-        query = {35: '''SELECT autofill.date_created, autofill.date_last_used, autofill.name, autofill.value,
-                        autofill.count FROM autofill''',
-                 2: '''SELECT autofill_dates.date_created, autofill.name, autofill.value, autofill.count
-                        FROM autofill, autofill_dates WHERE autofill.pair_id = autofill_dates.pair_id'''}
-
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
-            compatible_version -= 1
-
-        if compatible_version is not 0:
-            logging.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
-            try:
-                # Connect to 'Web Data' SQLite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                logging.info(" - Reading from file '{}'".format(db_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
-
-                for row in cursor:
-                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    results.append(AutofillItem(self.to_datetime(row.get('date_created')), row.get('name'),
-                                                row.get('value'), row.get('count')))
-
-                    if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(AutofillItem(self.to_datetime(row.get('date_last_used')), row.get('name'),
-                                                    row.get('value'), row.get('count')))
-
-                db_file.close()
-                self.artifacts_counts['Autofill'] = len(results)
-                logging.info(" - Parsed {} items".format(len(results)))
-                self.parsed_artifacts.extend(results)
-
-            except:
-                self.artifacts_counts['Autofill'] = 'Failed'
-                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
-
-    def get_bookmarks(self, path, file, version):
-        # Set up empty return array
-        results = []
-
-        logging.info("Bookmark items from {}:".format(file))
-
-        # Connect to 'Bookmarks' JSON file
-        bookmarks_path = os.path.join(path, file)
-
-        try:
-            bookmarks_file = codecs.open(bookmarks_path, 'rb', encoding='utf-8')
-            decoded_json = json.loads(bookmarks_file.read())
-            logging.info(" - Reading from file '{}'".format(bookmarks_path))
-        except:
-            logging.error(" - Error opening '{}'".format(bookmarks_path))
-            self.artifacts_counts['Bookmarks'] = 'Failed'
-            return
-
-
-        # TODO: sync_id
-        def process_bookmark_children(parent, children):
-            for child in children:
-                if child["type"] == "url":
-                    results.append(BookmarkItem(self.to_datetime(child["date_added"]), child["name"], child["url"], parent))
-                elif child["type"] == "folder":
-                    new_parent = parent + " > " + child["name"]
-                    results.append(BookmarkFolderItem(self.to_datetime(child["date_added"]), child["date_modified"],
-                                                      child["name"], parent))
-                    process_bookmark_children(new_parent, child["children"])
-
-        for top_level_folder in decoded_json["roots"].keys():
-            if top_level_folder != "sync_transaction_version" and top_level_folder != "synced" and top_level_folder != "meta_info":
-                if decoded_json["roots"][top_level_folder]["children"] is not None:
-                    process_bookmark_children(decoded_json["roots"][top_level_folder]["name"],
-                                              decoded_json["roots"][top_level_folder]["children"])
-
-        bookmarks_file.close()
-        self.artifacts_counts['Bookmarks'] = len(results)
-        logging.info(" - Parsed {} items".format(len(results)))
-        self.parsed_artifacts.extend(results)
-
-    def get_local_storage(self, path, dir_name):
-        results = []
-        illegal_xml_re = re.compile(ur'[\x00-\x08\x0b-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufdd0-\ufddf\ufffe-\uffff]',
-                                    re.UNICODE)
-
-        # Grab file list of 'Local Storage' directory
-        ls_path = os.path.join(path, dir_name)
-        logging.info("Local Storage:")
-        logging.info(" - Reading from {}".format(ls_path))
-
-        local_storage_listing = os.listdir(ls_path)
-        logging.debug(" - All {} files in Local Storage directory: {}"
-                      .format(len(local_storage_listing), str(local_storage_listing)))
-        filtered_listing = []
-
-        for ls_file in local_storage_listing:
-            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
-                    ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
-                filtered_listing.append(ls_file)
-                ls_file_path = os.path.join(ls_path, ls_file)
-                ls_created = os.stat(ls_file_path).st_ctime
-
-                def to_unicode(raw_data):
-                    if type(raw_data) in (int, long, float):
-                        return unicode(raw_data, 'utf-16', errors='replace')
-                    elif type(raw_data) is unicode:
-                        return raw_data
-                    elif type(raw_data) is buffer:
-                        try:
-                            # When Javascript used localStorage, it saves everything in UTF-16
-                            uni = unicode(raw_data, 'utf-16', errors='replace')
-                            # However, some websites use custom compression to squeeze more data in, and just pretend
-                            # it's UTF-16, which can result in "characters" that are illegal in XML. We need to remove
-                            # these so Excel will be able to display the output.
-                            # TODO: complete work on decoding the compressed data
-                            return illegal_xml_re.sub(u'\ufffd', uni)
-
-                        except UnicodeDecodeError:
-                            return u'<buffer decode error>'
-                    else:
-                        return u'<unknown type decode error>'
-
-                # Connect to Local Storage file sqlite db
-                try:
-                    db_file = sqlite3.connect(ls_file_path)
-                except:
-                    logging.warning(" - Error opening {}".format(ls_file_path))
-                    break
-
-                # Use a dictionary cursor
-                db_file.row_factory = dict_factory
-                cursor = db_file.cursor()
-
-                try:
-                    cursor.execute('SELECT key,value FROM ItemTable')
-                    for row in cursor:
-                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(LocalStorageItem(ls_file.decode(), self.to_datetime(ls_created), row.get('key'),
-                                                        to_unicode(row.get('value'))))
-                except:
-                    logging.warning(" - Error reading key/values from {}".format(ls_file_path))
-                    pass
-
-        self.artifacts_counts['Local Storage'] = len(results)
-        logging.info(" - Parsed {} items from {} files".format(len(results), len(filtered_listing)))
-        self.parsed_artifacts.extend(results)
-
-    def get_extensions(self, path, dir_name):
-        results = []
-        logging.info("Extensions:")
-
-        # Grab listing of 'Extensions' directory
-        ext_path = os.path.join(path, dir_name)
-        logging.info(" - Reading from {}".format(ext_path))
-        ext_listing = os.listdir(ext_path)
-        logging.debug(" - {count} files in Extensions directory: {list}".format(list=str(ext_listing),
-                                                                                count=len(ext_listing)))
-
-        # Only process directories with the expected naming convention
-        app_id_re = re.compile(r'^([a-z]{32})$')
-        ext_listing = [x for x in ext_listing if app_id_re.match(x)]
-        logging.debug(" - {count} files in Extensions directory will be processed: {list}".format(
-            list=str(ext_listing), count=len(ext_listing)))
-
-        # Process each directory with an app_id name
-        for app_id in ext_listing:
-            # Get listing of the contents of app_id directory; should contain subdirs for each version of the extension.
-            ext_vers_listing = os.path.join(ext_path, app_id)
-            ext_vers = os.listdir(ext_vers_listing)
-
-            # Connect to manifest.json in latest version directory
-            manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
-            try:
-                manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
-            except IOError:
-                logging.error(" - Error opening {} for extension {}".format(manifest_path, app_id))
-                break
-
-            name = None
-            description = None
-
-            if manifest_file:
-                try:
-                    decoded_manifest = json.loads(manifest_file.read())
-                    if decoded_manifest["name"][:2] == '__':
-                        if decoded_manifest["default_locale"]:
-                            locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
-                                                                decoded_manifest["default_locale"], 'messages.json')
-                            locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
-                                                               errors='replace')
-                            decoded_locale_messages = json.loads(locale_messages_file.read())
-                            try:
-                                name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
-                            except KeyError:
-                                try:
-                                    name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
-                                except:
-                                    logging.warning(" - Error reading 'name' for {}".format(app_id))
-                                    name = "<error>"
-                    else:
-                        try:
-                            name = decoded_manifest["name"]
-                        except KeyError:
-                            name = None
-                            logging.error(" - Error reading 'name' for {}".format(app_id))
-
-                    if "description" in decoded_manifest.keys():
-                        if decoded_manifest["description"][:2] == '__':
-                            if decoded_manifest["default_locale"]:
-                                locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
-                                                                    decoded_manifest["default_locale"], 'messages.json')
-                                locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
-                                                                   errors='replace')
-                                decoded_locale_messages = json.loads(locale_messages_file.read())
-                                try:
-                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
-                                except KeyError:
-                                    try:
-                                        description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
-                                    except:
-                                        description = "<error>"
-                                        logging.error(" - Error reading 'message' for {}".format(app_id))
-                        else:
-                            try:
-                                description = decoded_manifest["description"]
-                            except KeyError:
-                                description = None
-                                logging.warning(" - Error reading 'description' for {}".format(app_id))
-
-                    results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
-                except:
-                    logging.error(" - Error decoding manifest file for {}".format(app_id))
-                    pass
-
-        self.artifacts_counts['Extensions'] = len(results)
-        logging.info(" - Parsed {} items".format(len(results)))
-        presentation = {'title': 'Installed Extensions',
-                        'columns': [
-                            {'display_name': 'Extension Name',
-                             'data_name': 'name',
-                             'display_width': 26},
-                            {'display_name': 'Description',
-                             'data_name': 'description',
-                             'display_width': 60},
-                            {'display_name': 'Version',
-                             'data_name': 'version',
-                             'display_width': 10},
-                            {'display_name': 'App ID',
-                             'data_name': 'app_id',
-                             'display_width': 36}
-                        ]}
-        self.installed_extensions = {'data': results, 'presentation': presentation}
-
-    def get_preferences(self, path, preferences_file):
-        def check_and_append_pref(parent, pref, value=None, description=None):
-            # If the preference exists, continue
-            if parent.get(pref):
-                # If no value is specified, use the value from the preference JSON
-                if not value:
-                    value = parent[pref]
-                # Append the preference dict to our results array
-                results.append({
-                    'group': None,
-                    'name': pref,
-                    'value': value,
-                    'description': description})
+                    self.timezone = pytz.timezone(self.timezone)
+                except pytz.exceptions.UnknownTimeZoneError:
+                    print("Couldn't understand timezone; using UTC.")
+                    self.timezone = pytz.timezone('UTC')
             else:
-                results.append({
-                    'group': None,
-                    'name': pref,
-                    'value': '<not present>',
-                    'description': description})
-
-        def check_and_append_pref_and_children(parent, pref, value=None, description=None):
-            # If the preference exists, continue
-            if parent.get(pref):
-                # If no value is specified, use the value from the preference JSON
-                if not value:
-                    value = parent[pref]
-                # Append the preference dict to our results array
-                results.append({
-                    'group': None,
-                    'name': pref,
-                    'value': value,
-                    'description': description})
-            else:
-                results.append({
-                    'group': None,
-                    'name': pref,
-                    'value': '<not present>',
-                    'description': description})
-
-        def append_group(group, description=None):
-            # Append the preference group to our results array
-            results.append({
-                'group': group,
-                'name': None,
-                'value': None,
-                'description': description})
-
-        def append_pref(pref, value=None, description=None):
-            results.append({
-                'group': None,
-                'name': pref,
-                'value': value,
-                'description': description})
-
-        results = []
-        logging.info("Preferences:")
-        prefs = None
-
-        # Open 'Preferences' file
-        pref_path = os.path.join(path, preferences_file)
-        try:
-            logging.info(" - Reading from {}".format(pref_path))
-            pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
-            prefs = json.loads(pref_file.read())
-        except:
-            logging.error(" - Error decoding Preferences file {}".format(pref_path))
-            self.artifacts_counts['Preferences'] = 'Failed'
-            return
-
-        if prefs:
-            # Account Information
-            if prefs.get('account_info'):
-                append_group("Account Information")
-                for account in prefs['account_info']:
-                    append_pref('account_id: {}'.format(account['account_id']), 'email: {}'.format(account['email']))
-
-            # Local file paths
-            append_group("Local file paths")
-            if prefs.get('download'):
-                check_and_append_pref(prefs['download'], 'default_directory')
-            if prefs.get('printing'):
-                if prefs.get('print_preview_sticky_settings'):
-                    check_and_append_pref(prefs['printing']['print_preview_sticky_settings'], 'savePath')
-            if prefs.get('savefile'):
-                check_and_append_pref(prefs['savefile'], 'default_directory')
-            if prefs.get('selectfile'):
-                check_and_append_pref(prefs['selectfile'], 'last_directory')
-
-            # Autofill
-            if prefs.get('autofill'):
-                append_group("Autofill")
-                check_and_append_pref(prefs['autofill'], 'enabled')
-
-            # Clearing Chrome Data
-            if prefs.get('browser'):
-                append_group("Clearing Chrome Data")
-                if prefs['browser'].get('last_clear_browsing_data_time'):
-                    check_and_append_pref(prefs['browser'], 'last_clear_browsing_data_time',
-                                          self.friendly_date(prefs['browser']['last_clear_browsing_data_time']),
-                                          "Last time the history was cleared")
-                check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
-                if prefs['browser'].get('clear_data'):
-                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
-                                          description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
-                                                      "4: the beginning of time")
-                    check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
-
-            append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
-                                                 "useful in some cases.")
-            # There are per_host_zoom_levels keys in two locations: profile.per_host_zoom_levels and
-            # partition.per_host_zoom_levels.[integer].
-            if prefs.get('profile'):
-                if prefs['profile'].get('per_host_zoom_levels'):
-                    for zoom in prefs['profile']['per_host_zoom_levels'].keys():
-                        check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
-
-            if prefs.get('partition'):
-                if prefs['partition'].get('per_host_zoom_levels'):
-                    for number in prefs['partition']['per_host_zoom_levels'].keys():
-                        for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
-                            check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
-
-            if prefs.get('profile'):
-                if prefs['profile'].get('content_settings'):
-                    if prefs['profile']['content_settings'].get('pattern_pairs'):
-                        append_group("Profile Content Settings", "These settings persist even when the history is "
-                                                                 "cleared, and may be useful in some cases.")
-                        for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
-                            # Adding the space before the domain prevents Excel from freaking out...  idk.
-                            append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
-
-        self.artifacts_counts['Preferences'] = len(results)
-        logging.info(" - Parsed {} items".format(len(results)))
-        presentation = {'title': 'Preferences',
-                        'columns': [
-                            {'display_name': 'Group',
-                             'data_name': 'group',
-                             'display_width': 8},
-                            {'display_name': 'Setting Name',
-                             'data_name': 'name',
-                             'display_width': 40},
-                            {'display_name': 'Value',
-                             'data_name': 'value',
-                             'display_width': 35},
-                            {'display_name': 'Description',
-                             'data_name': 'description',
-                             'display_width': 60},
-                            ]}
-
-        self.preferences = {'data': results, 'presentation': presentation}
-
-    def process(self):
-        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
-        supported_subdirs = ['Local Storage', 'Extensions']
-        supported_jsons = ['Bookmarks']  # , 'Preferences']
-        supported_items = supported_databases + supported_subdirs + supported_jsons
-        logging.debug("Supported items: " + str(supported_items))
-
-        input_listing = os.listdir(self.profile_path)
-        for input_file in input_listing:
-            # If input_file is in our supported db list, or if the input_file name starts with a
-            # value in supported_databases followed by '__' (used to add in dbs from additional sources)
-            if input_file in supported_databases or input_file.startswith(tuple([db + '__' for db in supported_databases])):
-                # Process structure from Chrome database files
-                self.build_structure(args.input, input_file)
-
-        # Use the structure of the input files to determine possible Chrome versions
-        self.determine_version()
-
-        if len(self.version) > 1:
-            display_version = "%s-%s" % (self.version[0], self.version[-1])
+                self.timezone = pytz.timezone('UTC')
         else:
-            display_version = self.version[0]
+            self.timezone = None
 
-        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
+        if self.output_name is None:
+            self.output_name = "Hindsight Internet History Analysis ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
 
-        logging.info("Detected {} version {}".format(self.browser_name, display_version))
-
-        logging.info("Found the following supported files or directories:")
-        for input_file in input_listing:
-            if input_file in supported_items:
-                logging.info(" - %s" % input_file)
-
-        # Process History files
-        custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
-        for input_file in input_listing:
-            if re.search(r'^History__|^History$', input_file):
-                row_type = u'url'
-                custom_type_m = re.search(custom_type_re, input_file)
-                if custom_type_m:
-                    row_type = u'url ({})'.format(custom_type_m.group(1))
-                self.get_history(args.input, input_file, self.version, row_type)
-                display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
-                print self.format_processing_output("{} records".format(display_type),
-                                                    self.artifacts_counts[input_file])
-
-                row_type = u'download'
-                if custom_type_m:
-                    row_type = u'download ({})'.format(custom_type_m.group(1))
-                self.get_downloads(args.input, input_file, self.version, row_type)
-                display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
-                print self.format_processing_output("{} records".format(display_type),
-                                                    self.artifacts_counts[input_file + '_downloads'])
-
-        if 'Archived History' in input_listing:
-            self.get_history(args.input, 'Archived History', self.version, u'url (archived)')
-            print self.format_processing_output("Archived URL records", self.artifacts_counts['Archived History'])
-
-        if 'Cookies' in input_listing:
-            self.get_cookies(args.input, 'Cookies', self.version)
-            print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
-
-        if 'Web Data' in input_listing:
-            self.get_autofill(args.input, 'Web Data', self.version)
-            print self.format_processing_output("Autofill records", self.artifacts_counts['Autofill'])
-
-        if 'Bookmarks' in input_listing:
-            self.get_bookmarks(args.input, 'Bookmarks', self.version)
-            print self.format_processing_output("Bookmark records", self.artifacts_counts['Bookmarks'])
-
-        if 'Local Storage' in input_listing:
-            self.get_local_storage(args.input, 'Local Storage')
-            print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
-
-        if 'Extensions' in input_listing:
-            self.get_extensions(args.input, 'Extensions')
-            print self.format_processing_output("Extensions", self.artifacts_counts['Extensions'])
-
-        if 'Extension Cookies' in input_listing:
-            self.get_cookies(args.input, 'Extension Cookies', self.version)
-            print self.format_processing_output("Extension Cookie records", self.artifacts_counts['Extension Cookies'])
-
-        if 'Login Data' in input_listing:
-            self.get_login_data(args.input, 'Login Data', self.version)
-            print self.format_processing_output("Login Data records", self.artifacts_counts['Login Data'])
-
-        if 'Preferences' in input_listing:
-            self.get_preferences(args.input, 'Preferences')
-            print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
-
-        # Destroy the cached key so that json serialization doesn't
-        # have a cardiac arrest on the non-unicode binary data.
-        self.cached_key = None
-
-        self.parsed_artifacts.sort()
-
-
-class Brave(Chrome):
-    def __init__(self, profile_path):
-        Chrome.__init__(self, profile_path, browser_name=None, version=None, structure=None, parsed_artifacts=None,
-                        installed_extensions=None, artifacts_counts=None)
-        self.browser_name = "Brave"
-        self.version = ["0.8"]
-
-    def get_history(self, path, history_file, version, row_type):
-        # Set up empty return array
-        results = []
-
-        logging.info("History items from {}:".format(history_file))
-        try:
-
-            with open(os.path.join(path, history_file), 'rb') as history_input:
-                history_raw = history_input.read()
-                history_json = json.loads(history_raw)
-                # print json.dumps(history_json, indent=2)
-                # print history_json['perWindowState'][0]['frames'][1]
-                # for i, window in enumerate(history_json['perWindowState']):
-                #     for f, frame in enumerate(history_json['perWindowState'][i]['frames']):
-                #         print history_json['perWindowState'][i]['frames'][f]['title']
-
-                for s, site in enumerate(history_json['sites']):
-                    if history_json['sites'][s].get('location'):
-                        lastAccessed = history_json['sites'][s]['lastAccessedTime'] if history_json['sites'][s].get('lastAccessedTime') else history_json['sites'][s]['lastAccessed']
-
-                        new_row = URLItem(s, history_json['sites'][s]['location'],
-                                          history_json['sites'][s].get('title', "<No Title>"),
-                                          lastAccessed,
-                                          lastAccessed,
-                                          None, None, None, None, None, None, None, None, None, )
-
-                        # Set the row type as determined earlier
-                        new_row.row_type = row_type
-
-                        # Set the row type as determined earlier
-                        new_row.timestamp = self.to_datetime(new_row.last_visit_time)
-
-                        # Add the new row to the results array
-                        results.append(new_row)
-
-            self.artifacts_counts[history_file] = len(results)
-            logging.info(" - Parsed {} items".format(len(results)))
-            self.parsed_artifacts.extend(results)
-
-        except:
-            logging.error(" - Error opening '{}'".format(os.path.join(path, history_file)))
-            self.artifacts_counts[history_file] = 'Failed'
-            return
-
-    def process(self):
-        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
-        supported_subdirs = ['Local Storage', 'Extensions']
-        supported_jsons = ['Bookmarks']  # , 'Preferences']
-        supported_items = supported_databases + supported_subdirs + supported_jsons
-        logging.debug("Supported items: " + str(supported_items))
-
-        input_listing = os.listdir(self.profile_path)
-
-        # TODO: Hardcoded for now, will need to figure out detection once Brave matures
-        display_version = "0.8"
-
-        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
-
-        logging.info("Detected {} version {}".format(self.browser_name, display_version))
-
-        logging.info("Found the following supported files or directories:")
-        for input_file in input_listing:
-            if input_file in supported_items:
-                logging.info(" - %s" % input_file)
-
-        # Process History files
-        custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
-        for input_file in input_listing:
-            if re.search(r'session-store-', input_file):
-                row_type = u'url'
-                custom_type_m = re.search(custom_type_re, input_file)
-                if custom_type_m:
-                    row_type = u'url ({})'.format(custom_type_m.group(1))
-                self.get_history(args.input, input_file, self.version, row_type)
-                display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
-                print self.format_processing_output("{} records".format(display_type),
-                                                    self.artifacts_counts[input_file])
-
-            if input_file == 'Partitions':
-                partitions = os.listdir(os.path.join(self.profile_path, input_file))
-                for partition in partitions:
-                    partition_path = os.path.join(self.profile_path, input_file, partition)
-                    partition_listing = os.listdir(os.path.join(self.profile_path, input_file, partition))
-                    if 'Cookies' in partition_listing:
-                        self.get_cookies(partition_path, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
-                        print self.format_processing_output("Cookie records ({})".format(partition), self.artifacts_counts['Cookies'])
-
-                    if 'Local Storage' in partition_listing:
-                        self.get_local_storage(partition_path, 'Local Storage')
-                        print self.format_processing_output("Local Storage records ({})".format(partition), self.artifacts_counts['Local Storage'])
-
-        if 'Cookies' in input_listing:
-            self.get_cookies(args.input, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
-            print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
-
-        if 'Local Storage' in input_listing:
-            self.get_local_storage(args.input, 'Local Storage')
-            print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
-
-        if 'Preferences' in input_listing:
-            self.get_preferences(args.input, 'Preferences')
-            print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
-
-        # Destroy the cached key so that json serialization doesn't
-        # have a cardiac arrest on the non-unicode binary data.
-        self.cached_key = None
-
-        self.parsed_artifacts.sort()
+    def run(self):
+        print(self)
+        if self.selected_output_format is None:
+            self.selected_output_format = self.available_output_formats[-1]
+        if self.browser_type == "Chrome":
+            browser_analysis = Chrome(self.profile_path)
+            browser_analysis.process()
+            self.parsed_artifacts = browser_analysis.parsed_artifacts
+            self.artifacts_counts = browser_analysis.artifacts_counts
 
 
 class MyEncoder(json.JSONEncoder):
@@ -1331,6 +141,13 @@ class MyEncoder(json.JSONEncoder):
             return unicode(obj, encoding='utf-8', errors='replace')
         else:
             return obj.__dict__
+
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
 
 
 class HistoryItem(object):
@@ -1683,8 +500,1259 @@ class LoginItem(HistoryItem):
         self.count = count
 
 
+class WebBrowser(object):
+    def __init__(self, profile_path, browser_name, version=None, timezone=None, structure=None, parsed_artifacts=None,
+                 artifacts_counts=None):
+        self.profile_path = profile_path
+        self.browser_name = browser_name
+        self.version = version
+        self.timezone = timezone
+        self.structure = structure
+        self.parsed_artifacts = parsed_artifacts
+        self.artifacts_counts = artifacts_counts
+
+        if self.version is None:
+            self.version = []
+
+        if self.parsed_artifacts is None:
+            self.parsed_artifacts = []
+
+        if self.artifacts_counts is None:
+            self.artifacts_counts = {}
+
+    @staticmethod
+    def format_processing_output(name, items):
+        width = 80
+        left_side = width*0.55
+        count = '{:>6}'.format(str(items))
+        pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
+            .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
+                    right_width=(width - int(left_side)-2))
+        return pretty_name
+
+    def build_structure(self, path, database):
+
+        if database not in self.structure.keys():
+            self.structure[database] = {}
+
+            # Connect to SQLite db
+            database_path = os.path.join(path, database)
+            try:
+                db = sqlite3.connect(database_path)
+                cursor = db.cursor()
+            except sqlite3.OperationalError:
+                print "not a db"
+
+            # Find the names of each table in the db
+            try:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = cursor.fetchall()
+            except sqlite3.OperationalError:
+                print "\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files " \
+                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
+                      "Chrome installation while it is running.  Please close Chrome and try again."
+                exit()
+            except:
+                logging.error(" - Couldn't connect to {}".format(database_path))
+                return
+
+            # For each table, find all the columns in it
+            for table in tables:
+                cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
+                columns = cursor.fetchall()
+
+                # Create a dict of lists of the table/column names
+                self.structure[database][str(table[0])] = []
+                for column in columns:
+                    self.structure[database][str(table[0])].append(str(column[1]))
+
+
+class Chrome(WebBrowser):
+    def __init__(self, profile_path, browser_name=None, version=None, timezone=None, parsed_artifacts=None,
+                 installed_extensions=None, artifacts_counts=None, available_decrypts=None):
+        # TODO: try to fix this to use super()
+        WebBrowser.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None,
+                            artifacts_counts=None)
+        self.profile_path = profile_path
+        self.browser_name = "Chrome"
+        self.timezone = timezone
+        self.installed_extensions = installed_extensions
+        self.cached_key = None
+        self.available_decrypts = available_decrypts
+
+        if self.version is None:
+            self.version = []
+
+        if self.structure is None:
+            self.structure = {}
+
+        if self.parsed_artifacts is None:
+            self.parsed_artifacts = []
+
+        if self.installed_extensions is None:
+            self.installed_extensions = []
+
+        if self.artifacts_counts is None:
+            self.artifacts_counts = {}
+
+        if self.available_decrypts is None:
+            self.available_decrypts = {}
+
+    def determine_version(self):
+        """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
+
+        Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
+        (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
+        """
+        possible_versions = range(1, 50)
+
+        def trim_lesser_versions_if(column, table, version):
+            """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
+            versions >= 'version' if 'column' is in 'table'.
+            """
+            if table:
+                if column in table:
+                    possible_versions[:] = [x for x in possible_versions if x >= version]
+                else:
+                    possible_versions[:] = [x for x in possible_versions if x < version]
+
+        def trim_lesser_versions(version):
+            """Remove version numbers > 'version' from 'possible_versions'"""
+            possible_versions[:] = [x for x in possible_versions if x > version]
+
+        if 'History' in self.structure.keys():
+            if 'visits' in self.structure['History'].keys():
+                trim_lesser_versions_if('visit_duration', self.structure['History']['visits'], 20)
+            if 'visit_source' in self.structure['History'].keys():
+                trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
+            if 'downloads' in self.structure['History'].keys():
+                trim_lesser_versions_if('target_path', self.structure['History']['downloads'], 26)
+                trim_lesser_versions_if('opened', self.structure['History']['downloads'], 16)
+                trim_lesser_versions_if('etag', self.structure['History']['downloads'], 30)
+                trim_lesser_versions_if('original_mime_type', self.structure['History']['downloads'], 37)
+
+        # the pseudo-History file generated by the ChromeNative Volatility plugin should use the v30 query
+        elif (db.startswith('History__') for db in self.structure.keys()):
+            trim_lesser_versions(30)
+
+        if 'Cookies' in self.structure.keys():
+            if 'cookies' in self.structure['Cookies'].keys():
+                trim_lesser_versions_if('persistent', self.structure['Cookies']['cookies'], 17)
+                trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
+                trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
+                trim_lesser_versions_if('firstpartyonly', self.structure['Cookies']['cookies'], 44)
+
+        if 'Web Data' in self.structure.keys():
+            if 'autofill' in self.structure['Web Data'].keys():
+                trim_lesser_versions_if('name', self.structure['Web Data']['autofill'], 2)
+                trim_lesser_versions_if('date_created', self.structure['Web Data']['autofill'], 35)
+            if 'autofill_profiles' in self.structure['Web Data'].keys():
+                trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
+            if 'web_apps' not in self.structure['Web Data'].keys():
+                trim_lesser_versions(37)
+
+        if 'Login Data' in self.structure.keys():
+            if 'logins' in self.structure['Login Data'].keys():
+                trim_lesser_versions_if('display_name', self.structure['Login Data']['logins'], 39)
+                trim_lesser_versions_if('generation_upload_status', self.structure['Login Data']['logins'], 42)
+
+        self.version = possible_versions
+
+    def get_history(self, path, history_file, version, row_type):
+        # Set up empty return array
+        results = []
+
+        logging.info("History items from {}:".format(history_file))
+
+        # TODO: visit_source table?  don't have good sample data
+        # TODO: visits where visit_count = 0; means it should be in Archived History but could be helpful to have if
+        # that file is missing.  Changing the first JOIN to a LEFT JOIN adds these in.
+
+        # Queries for different versions
+        query = {30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                             visits.transition, visit_source.source
+                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                 29: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                             visits.transition, visit_source.source, visits.is_indexed
+                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                 20: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                             visits.transition, visit_source.source, visits.is_indexed
+                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                 7:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
+                             visit_source.source
+                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                 1:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
+                          FROM urls, visits WHERE urls.id = visits.url'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in query.keys() and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            logging.info(" - Using SQL query for History items for Chrome v{}".format(compatible_version))
+            try:
+                # Connect to 'History' sqlite db
+                history_path = os.path.join(path, history_file)
+                db_file = sqlite3.connect(history_path)
+                logging.info(" - Reading from file '{}'".format(history_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                try:
+                    cursor.execute(query[compatible_version])
+                except:
+                    logging.error(" - Error querying '{}'".format(history_path))
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
+
+                for row in cursor:
+                    duration = None
+                    if row.get('visit_duration'):
+                        duration = datetime.timedelta(microseconds=row.get('visit_duration'))
+
+                    new_row = URLItem(row.get('id'), row.get('url'), row.get('title'),
+                                      to_datetime(row.get('visit_time'), self.timezone),
+                                      to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
+                                      row.get('typed_count'), row.get('from_visit'), row.get('transition'),
+                                      row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
+                                      unicode(duration), row.get('source'))
+
+                    # Set the row type as determined earlier
+                    new_row.row_type = row_type
+
+                    # Translate the transition value to human-readable
+                    new_row.decode_transition()
+
+                    # Translate the numeric visit_source.source code to human-readable
+                    new_row.decode_source()
+
+                    # Add the new row to the results array
+                    results.append(new_row)
+
+                db_file.close()
+                self.artifacts_counts[history_file] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
+                self.parsed_artifacts.extend(results)
+
+            except IOError:
+                self.artifacts_counts[history_file] = 'Failed'
+                logging.error(" - Couldn't open {}".format(os.path.join(path, history_file)))
+
+    def get_downloads(self, path, database, version, row_type):
+        # Set up empty return array
+        results = []
+
+        logging.info("Download items from {}:".format(database))
+
+        # Queries for different versions
+        query = {30: '''SELECT downloads.id, downloads_url_chains.url, downloads.received_bytes, downloads.total_bytes,
+                            downloads.state, downloads.target_path, downloads.start_time, downloads.end_time,
+                            downloads.opened, downloads.danger_type, downloads.interrupt_reason, downloads.etag,
+                            downloads.last_modified, downloads_url_chains.chain_index
+                        FROM downloads, downloads_url_chains WHERE downloads_url_chains.id = downloads.id''',
+                 26: '''SELECT downloads.id, downloads_url_chains.url, downloads.received_bytes, downloads.total_bytes,
+                            downloads.state, downloads.target_path, downloads.start_time, downloads.end_time,
+                            downloads.opened, downloads.danger_type, downloads.interrupt_reason,
+                            downloads_url_chains.chain_index
+                        FROM downloads, downloads_url_chains WHERE downloads_url_chains.id = downloads.id''',
+                 16: '''SELECT downloads.id, downloads.url, downloads.received_bytes, downloads.total_bytes,
+                            downloads.state, downloads.full_path, downloads.start_time, downloads.end_time,
+                            downloads.opened
+                        FROM downloads''',
+                 1:  '''SELECT downloads.id, downloads.url, downloads.received_bytes, downloads.total_bytes,
+                            downloads.state, downloads.full_path, downloads.start_time
+                        FROM downloads'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in query.keys() and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            logging.info(" - Using SQL query for Download items for Chrome v{}".format(compatible_version))
+            try:
+                # Connect to 'History' sqlite db
+                history_path = os.path.join(path, database)
+                db_file = sqlite3.connect(history_path)
+                logging.info(" - Reading from file '{}'".format(history_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                try:
+                    cursor.execute(query[compatible_version])
+                except:
+                    logging.error(" - Error querying '{}'".format(history_path))
+                    self.artifacts_counts[database + '_downloads'] = 'Failed'
+                    return
+
+                for row in cursor:
+                    try:
+                        # TODO: collapse download chain into one entry per download
+                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
+                        new_row = DownloadItem(row.get('id'), row.get('url'), row.get('received_bytes'),
+                                               row.get('total_bytes'), row.get('state'), row.get('full_path'),
+                                               to_datetime(row.get('start_time'), self.timezone),
+                                               to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
+                                               row.get('current_path'), row.get('opened'), row.get('danger_type'),
+                                               row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
+                                               row.get('chain_index'))
+                    except:
+                        logging.exception(" - Exception processing record; skipped.")
+
+                    new_row.decode_interrupt_reason()
+                    new_row.decode_danger_type()
+                    new_row.decode_download_state()
+                    new_row.timestamp = new_row.start_time
+
+                    new_row.create_friendly_status()
+
+                    if new_row.full_path is not None:
+                        new_row.value = new_row.full_path
+                    elif new_row.current_path is not None:
+                        new_row.value = new_row.current_path
+                    elif new_row.target_path is not None:
+                        new_row.value = new_row.target_path
+                    else:
+                        new_row.value = u'Error retrieving download location'
+                        logging.error(" - Error retrieving download location for download '{}'".format(new_row.url))
+
+                    new_row.row_type = row_type
+                    results.append(new_row)
+
+                db_file.close()
+                self.artifacts_counts[database + '_downloads'] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
+                self.parsed_artifacts.extend(results)
+
+            except IOError:
+                self.artifacts_counts[database + '_downloads'] = 'Failed'
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
+
+    def decrypt_cookie(self, encrypted_value):
+        """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
+         - Mac/Linux: http://n8henrie.com/2014/05/decrypt-chrome-cookies-with-python/
+         - Windows: https://gist.github.com/jordan-wright/5770442#file-chrome_extract-py
+         - Relevant Chromium source code: http://src.chromium.org/viewvc/chrome/trunk/src/components/os_crypt/
+         """
+        salt = b'saltysalt'
+        iv = b' ' * 16
+        length = 16
+
+        def chrome_decrypt(encrypted, key=None):
+            # Encrypted cookies should be prefixed with 'v10' according to the
+            # Chromium code. Strip it off.
+            encrypted = encrypted[3:]
+
+            # Strip padding by taking off number indicated by padding
+            # eg if last is '\x0e' then ord('\x0e') == 14, so take off 14.
+            def clean(x):
+                return x[:-ord(x[-1])]
+
+            cipher = AES.new(key, AES.MODE_CBC, IV=iv)
+            decrypted = cipher.decrypt(encrypted)
+
+            return clean(decrypted)
+
+        decrypted_value = "<error>"
+        if encrypted_value is not None:
+            if len(encrypted_value) >= 2:
+                # If running Chrome on Windows
+                if sys.platform == 'win32' and self.available_decrypts['windows'] is 1:
+                    try:
+                        decrypted_value = win32crypt.CryptUnprotectData(encrypted_value, None, None, None, 0)[1]
+                    except:
+                        decrypted_value = "<encrypted>"
+                # If running Chrome on OSX
+                elif sys.platform == 'darwin' and self.available_decrypts['mac'] is 1:
+                    try:
+                        if not self.cached_key:
+                            my_pass = keyring.get_password('Chrome Safe Storage', 'Chrome')
+                            my_pass = my_pass.encode('utf8')
+                            iterations = 1003
+                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
+                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
+                    except:
+                        pass
+                else:
+                    decrypted_value = "<encrypted>"
+
+                # If running Chromium on Linux.
+                # Unlike Win/Mac, we can decrypt Linux cookies without the user's pw
+                if decrypted_value is "<encrypted>" and self.available_decrypts['linux'] is 1:
+                    try:
+                        if not self.cached_key:
+                            my_pass = 'peanuts'.encode('utf8')
+                            iterations = 1
+                            self.cached_key = PBKDF2(my_pass, salt, length, iterations)
+                        decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
+                    except:
+                        pass
+
+        return decrypted_value
+
+    def get_cookies(self, path, database, version):
+        # Set up empty return array
+        results = []
+
+        logging.info("Cookie items from {}:".format(database))
+
+        # Queries for different versions
+        query = {33: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
+                            cookies.persistent, cookies.has_expires, cookies.priority, cookies.encrypted_value
+                        FROM cookies''',
+                 28: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
+                            cookies.persistent, cookies.has_expires, cookies.priority
+                        FROM cookies''',
+                 17: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
+                            cookies.persistent, cookies.has_expires
+                        FROM cookies''',
+                 1:  '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+                            cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly
+                        FROM cookies'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in query.keys() and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            logging.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
+            try:
+                # Connect to 'Cookies' sqlite db
+                db_path = os.path.join(path, database)
+                db_file = sqlite3.connect(db_path)
+                logging.info(" - Reading from file '{}'".format(db_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
+
+                for row in cursor:
+                    if row.get('encrypted_value') is not None:
+                        if len(row.get('encrypted_value')) >= 2:
+                            cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
+                        else:
+                            cookie_value = row.get('value').decode()
+                    else:
+                        cookie_value = row.get('value')
+
+                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
+                    new_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                                         to_datetime(row.get('creation_utc'), self.timezone),
+                                         to_datetime(row.get('last_access_utc'), self.timezone),
+                                         to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
+                                         row.get('httponly'), row.get('persistent'),
+                                         row.get('has_expires'), row.get('priority'))
+
+                    accessed_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                                              to_datetime(row.get('creation_utc'), self.timezone),
+                                              to_datetime(row.get('last_access_utc'), self.timezone),
+                                              to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
+                                              row.get('httponly'), row.get('persistent'),
+                                              row.get('has_expires'), row.get('priority'))
+
+                    new_row.url = (new_row.host_key + new_row.path)
+                    accessed_row.url = (accessed_row.host_key + accessed_row.path)
+
+                    # Create the row for when the cookie was created
+                    new_row.row_type = u'cookie (created)'
+                    new_row.timestamp = new_row.creation_utc
+                    results.append(new_row)
+
+                    # If the cookie was created and accessed at the same time (only used once), or if the last accessed
+                    # time is 0 (happens on iOS), don't create an accessed row
+                    if new_row.creation_utc != new_row.last_access_utc and \
+                                    accessed_row.last_access_utc != to_datetime(0):
+                                    # accessed_row.last_access_utc != datetime.datetime.utcfromtimestamp(0):
+                        accessed_row.row_type = u'cookie (accessed)'
+                        accessed_row.timestamp = accessed_row.last_access_utc
+                        results.append(accessed_row)
+
+                db_file.close()
+                self.artifacts_counts[database] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
+                self.parsed_artifacts.extend(results)
+
+            except:
+                self.artifacts_counts[database] = 'Failed'
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
+
+    def get_login_data(self, path, database, version):
+        # Set up empty return array
+        results = []
+
+        logging.info("Password items from {}:".format(database))
+
+        # Queries for different versions
+        query = {29:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+                            password_value, date_created, blacklisted_by_user, times_used FROM logins''',
+                 6:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+                            password_value, date_created, blacklisted_by_user FROM logins'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in query.keys() and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            logging.info(" - Using SQL query for Password items for Chrome v{}".format(compatible_version))
+            try:
+                # Connect to 'Login Data' sqlite db
+                db_path = os.path.join(path, database)
+                db_file = sqlite3.connect(db_path)
+                logging.info(" - Reading from file '{}'".format(db_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
+
+                # print 'cursor ',cursor.fetchall()
+
+                for row in cursor:
+                    if row.get('blacklisted_by_user') == 1:
+                        blacklist_row = LoginItem(to_datetime(row.get('date_created'), self.timezone),
+                                                  url=row.get('action_url'), name=row.get('username_element').decode(),
+                                                  value=u'<User chose to "Never save password" for this site>',
+                                                  count=row.get('times_used'))
+                        blacklist_row.row_type = u'login (blacklist)'
+                        results.append(blacklist_row)
+
+                    if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
+                        username_row = LoginItem(to_datetime(row.get('date_created'), self.timezone),
+                                                 url=row.get('action_url'), name=row.get('username_element'),
+                                                 value=row.get('username_value'), count=row.get('times_used'))
+                        username_row.row_type = u'login (username)'
+                        results.append(username_row)
+
+                    if row.get('password_value') is not None and row.get('blacklisted_by_user') == 0:
+                        password = None
+                        try:
+                            # Windows is all I've had time to test; Ubuntu uses built-in password manager
+                            password = win32crypt.CryptUnprotectData(row.get('password_value').decode(), None, None, None, 0)[1]
+                        except:
+                            password = self.decrypt_cookie(row.get('password_value'))
+
+                        password_row = LoginItem(to_datetime(row.get('date_created'), self.timezone),
+                                                 url=row.get('action_url'), name=row.get('password_element'),
+                                                 value=password, count=row.get('times_used'))
+                        password_row.row_type = u'login (password)'
+                        results.append(password_row)
+
+                db_file.close()
+                self.artifacts_counts['Login Data'] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
+                self.parsed_artifacts.extend(results)
+
+            except:
+                self.artifacts_counts['Login Data'] = 'Failed'
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
+
+    def get_autofill(self, path, database, version):
+        # Set up empty return array
+        results = []
+
+        logging.info("Autofill items from {}:".format(database))
+
+        # Queries for different versions
+        query = {35: '''SELECT autofill.date_created, autofill.date_last_used, autofill.name, autofill.value,
+                        autofill.count FROM autofill''',
+                 2: '''SELECT autofill_dates.date_created, autofill.name, autofill.value, autofill.count
+                        FROM autofill, autofill_dates WHERE autofill.pair_id = autofill_dates.pair_id'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in query.keys() and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            logging.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
+            try:
+                # Connect to 'Web Data' SQLite db
+                db_path = os.path.join(path, database)
+                db_file = sqlite3.connect(db_path)
+                logging.info(" - Reading from file '{}'".format(db_path))
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
+
+                for row in cursor:
+                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
+                    results.append(AutofillItem(to_datetime(row.get('date_created'), self.timezone), row.get('name'),
+                                                row.get('value'), row.get('count')))
+
+                    if row.get('date_last_used') and row.get('count') > 1:
+                        results.append(AutofillItem(to_datetime(row.get('date_last_used'), self.timezone),
+                                                    row.get('name'), row.get('value'), row.get('count')))
+
+                db_file.close()
+                self.artifacts_counts['Autofill'] = len(results)
+                logging.info(" - Parsed {} items".format(len(results)))
+                self.parsed_artifacts.extend(results)
+
+            except:
+                self.artifacts_counts['Autofill'] = 'Failed'
+                logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
+
+    def get_bookmarks(self, path, file, version):
+        # Set up empty return array
+        results = []
+
+        logging.info("Bookmark items from {}:".format(file))
+
+        # Connect to 'Bookmarks' JSON file
+        bookmarks_path = os.path.join(path, file)
+
+        try:
+            bookmarks_file = codecs.open(bookmarks_path, 'rb', encoding='utf-8')
+            decoded_json = json.loads(bookmarks_file.read())
+            logging.info(" - Reading from file '{}'".format(bookmarks_path))
+        except:
+            logging.error(" - Error opening '{}'".format(bookmarks_path))
+            self.artifacts_counts['Bookmarks'] = 'Failed'
+            return
+
+
+        # TODO: sync_id
+        def process_bookmark_children(parent, children):
+            for child in children:
+                if child["type"] == "url":
+                    results.append(BookmarkItem(to_datetime(child["date_added"], self.timezone),
+                                                child["name"], child["url"], parent))
+                elif child["type"] == "folder":
+                    new_parent = parent + " > " + child["name"]
+                    results.append(BookmarkFolderItem(to_datetime(child["date_added"], self.timezone),
+                                                      child["date_modified"], child["name"], parent))
+                    process_bookmark_children(new_parent, child["children"])
+
+        for top_level_folder in decoded_json["roots"].keys():
+            if top_level_folder != "sync_transaction_version" and top_level_folder != "synced" and top_level_folder != "meta_info":
+                if decoded_json["roots"][top_level_folder]["children"] is not None:
+                    process_bookmark_children(decoded_json["roots"][top_level_folder]["name"],
+                                              decoded_json["roots"][top_level_folder]["children"])
+
+        bookmarks_file.close()
+        self.artifacts_counts['Bookmarks'] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
+        self.parsed_artifacts.extend(results)
+
+    def get_local_storage(self, path, dir_name):
+        results = []
+        illegal_xml_re = re.compile(ur'[\x00-\x08\x0b-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufdd0-\ufddf\ufffe-\uffff]',
+                                    re.UNICODE)
+
+        # Grab file list of 'Local Storage' directory
+        ls_path = os.path.join(path, dir_name)
+        logging.info("Local Storage:")
+        logging.info(" - Reading from {}".format(ls_path))
+
+        local_storage_listing = os.listdir(ls_path)
+        logging.debug(" - All {} files in Local Storage directory: {}"
+                      .format(len(local_storage_listing), str(local_storage_listing)))
+        filtered_listing = []
+
+        for ls_file in local_storage_listing:
+            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
+                    ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
+                filtered_listing.append(ls_file)
+                ls_file_path = os.path.join(ls_path, ls_file)
+                ls_created = os.stat(ls_file_path).st_ctime
+
+                def to_unicode(raw_data):
+                    if type(raw_data) in (int, long, float):
+                        return unicode(raw_data, 'utf-16', errors='replace')
+                    elif type(raw_data) is unicode:
+                        return raw_data
+                    elif type(raw_data) is buffer:
+                        try:
+                            # When Javascript used localStorage, it saves everything in UTF-16
+                            uni = unicode(raw_data, 'utf-16', errors='replace')
+                            # However, some websites use custom compression to squeeze more data in, and just pretend
+                            # it's UTF-16, which can result in "characters" that are illegal in XML. We need to remove
+                            # these so Excel will be able to display the output.
+                            # TODO: complete work on decoding the compressed data
+                            return illegal_xml_re.sub(u'\ufffd', uni)
+
+                        except UnicodeDecodeError:
+                            return u'<buffer decode error>'
+                    else:
+                        return u'<unknown type decode error>'
+
+                # Connect to Local Storage file sqlite db
+                try:
+                    db_file = sqlite3.connect(ls_file_path)
+                except:
+                    logging.warning(" - Error opening {}".format(ls_file_path))
+                    break
+
+                # Use a dictionary cursor
+                db_file.row_factory = dict_factory
+                cursor = db_file.cursor()
+
+                try:
+                    cursor.execute('SELECT key,value FROM ItemTable')
+                    for row in cursor:
+                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
+                        results.append(LocalStorageItem(ls_file.decode(), to_datetime(ls_created, self.timezone),
+                                                        row.get('key'), to_unicode(row.get('value'))))
+                except:
+                    logging.warning(" - Error reading key/values from {}".format(ls_file_path))
+                    pass
+
+        self.artifacts_counts['Local Storage'] = len(results)
+        logging.info(" - Parsed {} items from {} files".format(len(results), len(filtered_listing)))
+        self.parsed_artifacts.extend(results)
+
+    def get_extensions(self, path, dir_name):
+        results = []
+        logging.info("Extensions:")
+
+        # Grab listing of 'Extensions' directory
+        ext_path = os.path.join(path, dir_name)
+        logging.info(" - Reading from {}".format(ext_path))
+        ext_listing = os.listdir(ext_path)
+        logging.debug(" - {count} files in Extensions directory: {list}".format(list=str(ext_listing),
+                                                                                count=len(ext_listing)))
+
+        # Only process directories with the expected naming convention
+        app_id_re = re.compile(r'^([a-z]{32})$')
+        ext_listing = [x for x in ext_listing if app_id_re.match(x)]
+        logging.debug(" - {count} files in Extensions directory will be processed: {list}".format(
+            list=str(ext_listing), count=len(ext_listing)))
+
+        # Process each directory with an app_id name
+        for app_id in ext_listing:
+            # Get listing of the contents of app_id directory; should contain subdirs for each version of the extension.
+            ext_vers_listing = os.path.join(ext_path, app_id)
+            ext_vers = os.listdir(ext_vers_listing)
+
+            # Connect to manifest.json in latest version directory
+            manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
+            try:
+                manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
+            except IOError:
+                logging.error(" - Error opening {} for extension {}".format(manifest_path, app_id))
+                break
+
+            name = None
+            description = None
+
+            if manifest_file:
+                try:
+                    decoded_manifest = json.loads(manifest_file.read())
+                    if decoded_manifest["name"][:2] == '__':
+                        if decoded_manifest["default_locale"]:
+                            locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
+                                                                decoded_manifest["default_locale"], 'messages.json')
+                            locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
+                                                               errors='replace')
+                            decoded_locale_messages = json.loads(locale_messages_file.read())
+                            try:
+                                name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
+                            except KeyError:
+                                try:
+                                    name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
+                                except:
+                                    logging.warning(" - Error reading 'name' for {}".format(app_id))
+                                    name = "<error>"
+                    else:
+                        try:
+                            name = decoded_manifest["name"]
+                        except KeyError:
+                            name = None
+                            logging.error(" - Error reading 'name' for {}".format(app_id))
+
+                    if "description" in decoded_manifest.keys():
+                        if decoded_manifest["description"][:2] == '__':
+                            if decoded_manifest["default_locale"]:
+                                locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
+                                                                    decoded_manifest["default_locale"], 'messages.json')
+                                locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
+                                                                   errors='replace')
+                                decoded_locale_messages = json.loads(locale_messages_file.read())
+                                try:
+                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
+                                except KeyError:
+                                    try:
+                                        description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
+                                    except:
+                                        description = "<error>"
+                                        logging.error(" - Error reading 'message' for {}".format(app_id))
+                        else:
+                            try:
+                                description = decoded_manifest["description"]
+                            except KeyError:
+                                description = None
+                                logging.warning(" - Error reading 'description' for {}".format(app_id))
+
+                    results.append(BrowserExtension(app_id, name, description, decoded_manifest["version"]))
+                except:
+                    logging.error(" - Error decoding manifest file for {}".format(app_id))
+                    pass
+
+        self.artifacts_counts['Extensions'] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
+        presentation = {'title': 'Installed Extensions',
+                        'columns': [
+                            {'display_name': 'Extension Name',
+                             'data_name': 'name',
+                             'display_width': 26},
+                            {'display_name': 'Description',
+                             'data_name': 'description',
+                             'display_width': 60},
+                            {'display_name': 'Version',
+                             'data_name': 'version',
+                             'display_width': 10},
+                            {'display_name': 'App ID',
+                             'data_name': 'app_id',
+                             'display_width': 36}
+                        ]}
+        self.installed_extensions = {'data': results, 'presentation': presentation}
+
+    def get_preferences(self, path, preferences_file):
+        def check_and_append_pref(parent, pref, value=None, description=None):
+            # If the preference exists, continue
+            if parent.get(pref):
+                # If no value is specified, use the value from the preference JSON
+                if not value:
+                    value = parent[pref]
+                # Append the preference dict to our results array
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': value,
+                    'description': description})
+            else:
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': '<not present>',
+                    'description': description})
+
+        def check_and_append_pref_and_children(parent, pref, value=None, description=None):
+            # If the preference exists, continue
+            if parent.get(pref):
+                # If no value is specified, use the value from the preference JSON
+                if not value:
+                    value = parent[pref]
+                # Append the preference dict to our results array
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': value,
+                    'description': description})
+            else:
+                results.append({
+                    'group': None,
+                    'name': pref,
+                    'value': '<not present>',
+                    'description': description})
+
+        def append_group(group, description=None):
+            # Append the preference group to our results array
+            results.append({
+                'group': group,
+                'name': None,
+                'value': None,
+                'description': description})
+
+        def append_pref(pref, value=None, description=None):
+            results.append({
+                'group': None,
+                'name': pref,
+                'value': value,
+                'description': description})
+
+        results = []
+        logging.info("Preferences:")
+        prefs = None
+
+        # Open 'Preferences' file
+        pref_path = os.path.join(path, preferences_file)
+        try:
+            logging.info(" - Reading from {}".format(pref_path))
+            pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
+            prefs = json.loads(pref_file.read())
+        except:
+            logging.error(" - Error decoding Preferences file {}".format(pref_path))
+            self.artifacts_counts['Preferences'] = 'Failed'
+            return
+
+        if prefs:
+            # Account Information
+            if prefs.get('account_info'):
+                append_group("Account Information")
+                for account in prefs['account_info']:
+                    append_pref('account_id: {}'.format(account['account_id']), 'email: {}'.format(account['email']))
+
+            # Local file paths
+            append_group("Local file paths")
+            if prefs.get('download'):
+                check_and_append_pref(prefs['download'], 'default_directory')
+            if prefs.get('printing'):
+                if prefs.get('print_preview_sticky_settings'):
+                    check_and_append_pref(prefs['printing']['print_preview_sticky_settings'], 'savePath')
+            if prefs.get('savefile'):
+                check_and_append_pref(prefs['savefile'], 'default_directory')
+            if prefs.get('selectfile'):
+                check_and_append_pref(prefs['selectfile'], 'last_directory')
+
+            # Autofill
+            if prefs.get('autofill'):
+                append_group("Autofill")
+                check_and_append_pref(prefs['autofill'], 'enabled')
+
+            # Clearing Chrome Data
+            if prefs.get('browser'):
+                append_group("Clearing Chrome Data")
+                if prefs['browser'].get('last_clear_browsing_data_time'):
+                    check_and_append_pref(prefs['browser'], 'last_clear_browsing_data_time',
+                                          self.friendly_date(prefs['browser']['last_clear_browsing_data_time']),
+                                          "Last time the history was cleared")
+                check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
+                if prefs['browser'].get('clear_data'):
+                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
+                                          description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
+                                                      "4: the beginning of time")
+                    check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
+
+            append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
+                                                 "useful in some cases.")
+            # There are per_host_zoom_levels keys in two locations: profile.per_host_zoom_levels and
+            # partition.per_host_zoom_levels.[integer].
+            if prefs.get('profile'):
+                if prefs['profile'].get('per_host_zoom_levels'):
+                    for zoom in prefs['profile']['per_host_zoom_levels'].keys():
+                        check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
+
+            if prefs.get('partition'):
+                if prefs['partition'].get('per_host_zoom_levels'):
+                    for number in prefs['partition']['per_host_zoom_levels'].keys():
+                        for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
+                            check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
+
+            if prefs.get('profile'):
+                if prefs['profile'].get('content_settings'):
+                    if prefs['profile']['content_settings'].get('pattern_pairs'):
+                        append_group("Profile Content Settings", "These settings persist even when the history is "
+                                                                 "cleared, and may be useful in some cases.")
+                        for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
+                            # Adding the space before the domain prevents Excel from freaking out...  idk.
+                            append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
+
+        self.artifacts_counts['Preferences'] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
+        presentation = {'title': 'Preferences',
+                        'columns': [
+                            {'display_name': 'Group',
+                             'data_name': 'group',
+                             'display_width': 8},
+                            {'display_name': 'Setting Name',
+                             'data_name': 'name',
+                             'display_width': 40},
+                            {'display_name': 'Value',
+                             'data_name': 'value',
+                             'display_width': 35},
+                            {'display_name': 'Description',
+                             'data_name': 'description',
+                             'display_width': 60},
+                            ]}
+
+        self.preferences = {'data': results, 'presentation': presentation}
+
+    def process(self):
+        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
+        supported_subdirs = ['Local Storage', 'Extensions']
+        supported_jsons = ['Bookmarks']  # , 'Preferences']
+        supported_items = supported_databases + supported_subdirs + supported_jsons
+        logging.debug("Supported items: " + str(supported_items))
+
+        input_listing = os.listdir(self.profile_path)
+        for input_file in input_listing:
+            # If input_file is in our supported db list, or if the input_file name starts with a
+            # value in supported_databases followed by '__' (used to add in dbs from additional sources)
+            if input_file in supported_databases or input_file.startswith(tuple([db + '__' for db in supported_databases])):
+                # Process structure from Chrome database files
+                self.build_structure(self.profile_path, input_file)
+
+        # Use the structure of the input files to determine possible Chrome versions
+        self.determine_version()
+
+        if len(self.version) > 1:
+            display_version = "%s-%s" % (self.version[0], self.version[-1])
+        else:
+            display_version = self.version[0]
+
+        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
+
+        logging.info("Detected {} version {}".format(self.browser_name, display_version))
+
+        logging.info("Found the following supported files or directories:")
+        for input_file in input_listing:
+            if input_file in supported_items:
+                logging.info(" - %s" % input_file)
+
+        # Process History files
+        custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
+        for input_file in input_listing:
+            if re.search(r'^History__|^History$', input_file):
+                row_type = u'url'
+                custom_type_m = re.search(custom_type_re, input_file)
+                if custom_type_m:
+                    row_type = u'url ({})'.format(custom_type_m.group(1))
+                self.get_history(self.profile_path, input_file, self.version, row_type)
+                display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
+                print self.format_processing_output("{} records".format(display_type),
+                                                    self.artifacts_counts[input_file])
+
+                row_type = u'download'
+                if custom_type_m:
+                    row_type = u'download ({})'.format(custom_type_m.group(1))
+                self.get_downloads(self.profile_path, input_file, self.version, row_type)
+                display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
+                print self.format_processing_output("{} records".format(display_type),
+                                                    self.artifacts_counts[input_file + '_downloads'])
+
+        if 'Archived History' in input_listing:
+            self.get_history(self.profile_path, 'Archived History', self.version, u'url (archived)')
+            print self.format_processing_output("Archived URL records", self.artifacts_counts['Archived History'])
+
+        if 'Cookies' in input_listing:
+            self.get_cookies(self.profile_path, 'Cookies', self.version)
+            print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
+
+        if 'Web Data' in input_listing:
+            self.get_autofill(self.profile_path, 'Web Data', self.version)
+            print self.format_processing_output("Autofill records", self.artifacts_counts['Autofill'])
+
+        if 'Bookmarks' in input_listing:
+            self.get_bookmarks(self.profile_path, 'Bookmarks', self.version)
+            print self.format_processing_output("Bookmark records", self.artifacts_counts['Bookmarks'])
+
+        if 'Local Storage' in input_listing:
+            self.get_local_storage(self.profile_path, 'Local Storage')
+            print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
+
+        if 'Extensions' in input_listing:
+            self.get_extensions(self.profile_path, 'Extensions')
+            print self.format_processing_output("Extensions", self.artifacts_counts['Extensions'])
+
+        if 'Extension Cookies' in input_listing:
+            self.get_cookies(self.profile_path, 'Extension Cookies', self.version)
+            print self.format_processing_output("Extension Cookie records", self.artifacts_counts['Extension Cookies'])
+
+        if 'Login Data' in input_listing:
+            self.get_login_data(self.profile_path, 'Login Data', self.version)
+            print self.format_processing_output("Login Data records", self.artifacts_counts['Login Data'])
+
+        if 'Preferences' in input_listing:
+            self.get_preferences(self.profile_path, 'Preferences')
+            print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
+
+        # Destroy the cached key so that json serialization doesn't
+        # have a cardiac arrest on the non-unicode binary data.
+        self.cached_key = None
+
+        self.parsed_artifacts.sort()
+
+
+class Brave(Chrome):
+    def __init__(self, profile_path):
+        Chrome.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None,
+                        installed_extensions=None, artifacts_counts=None)
+        self.browser_name = "Brave"
+        self.version = ["0.8"]
+
+    def get_history(self, path, history_file, version, row_type):
+        # Set up empty return array
+        results = []
+
+        logging.info("History items from {}:".format(history_file))
+        try:
+
+            with open(os.path.join(path, history_file), 'rb') as history_input:
+                history_raw = history_input.read()
+                history_json = json.loads(history_raw)
+                # print json.dumps(history_json, indent=2)
+                # print history_json['perWindowState'][0]['frames'][1]
+                # for i, window in enumerate(history_json['perWindowState']):
+                #     for f, frame in enumerate(history_json['perWindowState'][i]['frames']):
+                #         print history_json['perWindowState'][i]['frames'][f]['title']
+
+                for s, site in enumerate(history_json['sites']):
+                    if history_json['sites'][s].get('location'):
+                        lastAccessed = history_json['sites'][s]['lastAccessedTime'] if history_json['sites'][s].get('lastAccessedTime') else history_json['sites'][s]['lastAccessed']
+
+                        new_row = URLItem(s, history_json['sites'][s]['location'],
+                                          history_json['sites'][s].get('title', "<No Title>"),
+                                          lastAccessed,
+                                          lastAccessed,
+                                          None, None, None, None, None, None, None, None, None, )
+
+                        # Set the row type as determined earlier
+                        new_row.row_type = row_type
+
+                        # Set the row type as determined earlier
+                        new_row.timestamp = to_datetime(new_row.last_visit_time, self.timezone)
+
+                        # Add the new row to the results array
+                        results.append(new_row)
+
+            self.artifacts_counts[history_file] = len(results)
+            logging.info(" - Parsed {} items".format(len(results)))
+            self.parsed_artifacts.extend(results)
+
+        except:
+            logging.error(" - Error opening '{}'".format(os.path.join(path, history_file)))
+            self.artifacts_counts[history_file] = 'Failed'
+            return
+
+    def process(self):
+        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
+        supported_subdirs = ['Local Storage', 'Extensions']
+        supported_jsons = ['Bookmarks']  # , 'Preferences']
+        supported_items = supported_databases + supported_subdirs + supported_jsons
+        logging.debug("Supported items: " + str(supported_items))
+
+        input_listing = os.listdir(self.profile_path)
+
+        # TODO: Hardcoded for now, will need to figure out detection once Brave matures
+        display_version = "0.8"
+
+        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
+
+        logging.info("Detected {} version {}".format(self.browser_name, display_version))
+
+        logging.info("Found the following supported files or directories:")
+        for input_file in input_listing:
+            if input_file in supported_items:
+                logging.info(" - %s" % input_file)
+
+        # Process History files
+        custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
+        for input_file in input_listing:
+            if re.search(r'session-store-', input_file):
+                row_type = u'url'
+                custom_type_m = re.search(custom_type_re, input_file)
+                if custom_type_m:
+                    row_type = u'url ({})'.format(custom_type_m.group(1))
+                self.get_history(args.input, input_file, self.version, row_type)
+                display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
+                print self.format_processing_output("{} records".format(display_type),
+                                                    self.artifacts_counts[input_file])
+
+            if input_file == 'Partitions':
+                partitions = os.listdir(os.path.join(self.profile_path, input_file))
+                for partition in partitions:
+                    partition_path = os.path.join(self.profile_path, input_file, partition)
+                    partition_listing = os.listdir(os.path.join(self.profile_path, input_file, partition))
+                    if 'Cookies' in partition_listing:
+                        self.get_cookies(partition_path, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
+                        print self.format_processing_output("Cookie records ({})".format(partition), self.artifacts_counts['Cookies'])
+
+                    if 'Local Storage' in partition_listing:
+                        self.get_local_storage(partition_path, 'Local Storage')
+                        print self.format_processing_output("Local Storage records ({})".format(partition), self.artifacts_counts['Local Storage'])
+
+        if 'Cookies' in input_listing:
+            self.get_cookies(args.input, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
+            print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
+
+        if 'Local Storage' in input_listing:
+            self.get_local_storage(args.input, 'Local Storage')
+            print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
+
+        if 'Preferences' in input_listing:
+            self.get_preferences(args.input, 'Preferences')
+            print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
+
+        # Destroy the cached key so that json serialization doesn't
+        # have a cardiac arrest on the non-unicode binary data.
+        self.cached_key = None
+
+        self.parsed_artifacts.sort()
+
+
+def to_epoch(timestamp):
+    try:
+        timestamp = float(timestamp)
+    except:
+        return 0
+    if timestamp > 99999999999999:
+        # Webkit
+        return (float(timestamp) / 1000000) - 11644473600
+    elif timestamp > 99999999999:
+        # Epoch milliseconds
+        return float(timestamp) / 1000
+    elif timestamp >= 0:
+        # Epoch
+        return float(timestamp)
+    else:
+        return 0
+
+
+def to_datetime(timestamp, timezone=None):
+    """Convert a variety of timestamp formats to a datetime object."""
+    try:
+        timestamp = float(timestamp)
+    except:
+        timestamp = 0
+
+    if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
+        # Webkit
+        new_timestamp = datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
+    elif 1900000000000 > timestamp > 2000000000:  # 2030 > ts > 1970
+        # Epoch milliseconds
+        new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
+    elif 1900000000 > timestamp >= 0:  # 2030 > ts > 1970
+        # Epoch
+        new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp))
+    else:
+        new_timestamp = datetime.datetime.utcfromtimestamp(0)
+
+    if timezone is not None:
+        try:
+            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(timezone)
+        except NameError:
+            return new_timestamp
+    else:
+        return new_timestamp
+
+
 def friendly_date(timestamp):
-    return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    if isinstance(timestamp, (str, unicode, long, int)):
+        return to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    else:
+        return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
 def parse_arguments():
@@ -1721,7 +1789,7 @@ The Chrome data folder default locations are:
 
     parser.add_argument('-i', '--input', help='Path to the Chrome(ium) "Default" directory', required=True)
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
-    parser.add_argument('-f', '--format', choices=output_formats, default=output_formats[0], help='Output format')
+    # parser.add_argument('-f', '--format', choices=output_formats, default=output_formats[0], help='Output format')
     parser.add_argument('-m', '--mode', choices=['add', 'overwrite', 'exit'],
                         help='Output mode (what to do if output file already exists)')
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
@@ -1735,32 +1803,18 @@ The Chrome data folder default locations are:
 
     args = parser.parse_args()
 
-    if not args.output:
-        args.output = "Hindsight Internet History Analysis ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
 
-    if args.timezone:
-        try:
-            __import__('pytz')
-        except ImportError:
-            args.timezone = None
-        else:
-            try:
-                args.timezone = pytz.timezone(args.timezone)
-            except pytz.exceptions.UnknownTimeZoneError:
-                print("Couldn't understand timezone; using UTC.")
-                args.timezone = pytz.timezone('UTC')
-
-    # Disable decryption on Linux unless explicitly enabled and supported
-    if args.decrypt == 'linux' and cookie_decryption['linux'] == 1:
-        cookie_decryption['linux'] = 1
-    else:
-        cookie_decryption['linux'] = 0
-
-    # Disable decryption on Mac unless explicitly enabled and supported
-    if args.decrypt == 'mac' and cookie_decryption['mac'] == 1:
-        cookie_decryption['mac'] = 1
-    else:
-        cookie_decryption['mac'] = 0
+    # # Disable decryption on Linux unless explicitly enabled and supported
+    # if args.decrypt == 'linux' and cookie_decryption['linux'] == 1:
+    #     cookie_decryption['linux'] = 1
+    # else:
+    #     cookie_decryption['linux'] = 0
+    #
+    # # Disable decryption on Mac unless explicitly enabled and supported
+    # if args.decrypt == 'mac' and cookie_decryption['mac'] == 1:
+    #     cookie_decryption['mac'] = 1
+    # else:
+    #     cookie_decryption['mac'] = 0
 
     return args
 
@@ -1770,7 +1824,7 @@ def main():
     args = parse_arguments()
 
     def write_excel(browser):
-        workbook = xlsxwriter.Workbook(args.output + '.xlsx')
+        workbook = xlsxwriter.Workbook(browser.output_name + '.xlsx')
         w = workbook.add_worksheet('Timeline')
 
         # Define cell formats
@@ -1843,7 +1897,7 @@ def main():
         w.set_column('P:P', 12)         # ETag
         w.set_column('Q:Q', 27)         # Last Modified
 
-        print("\n Writing \"%s.xlsx\"" % args.output)
+        print("\n Writing \"%s.xlsx\"" % browser.output_name)
         row_number = 2
         for item in browser.parsed_artifacts:
             if item.row_type[:3] == "url":
@@ -2090,13 +2144,16 @@ def main():
     print format_meta_output("Output name", args.output)
 
     print("\n Processing:")
-    # TODO: Detection of Chrome vs Brave; this is just a stopgap until creation of more robust browser selection method
-    if "session-store-1" in input_listing:
-        target_browser = Brave(args.input)
-        target_browser.process()
-    else:
-        target_browser = Chrome(args.input)
-        target_browser.process()
+    # # TODO: Detection of Chrome vs Brave; this is just a stopgap until creation of more robust browser selection method
+    # if "session-store-1" in input_listing:
+    #     target_browser = Brave(args.input)
+    #     target_browser.process()
+    # else:
+    #     target_browser = Chrome(args.input)
+    #     target_browser.process()
+
+    target_browser = AnalysisSession(args.input, browser_type='Chrome', timezone=args.timezone)
+    target_browser.run()
 
     print("\n Running plugins:")
     logging.info("Plugins:")
@@ -2132,11 +2189,11 @@ def main():
         print '  - Error loading plugins'
 
     # Check if output directory exists; attempt to create if it doesn't
-    if os.path.dirname(args.output) != "" and not os.path.exists(os.path.dirname(args.output)):
-        os.makedirs(os.path.dirname(args.output))
+    if os.path.dirname(target_browser.output_name) != "" and not os.path.exists(os.path.dirname(target_browser.output_name)):
+        os.makedirs(os.path.dirname(target_browser.output_name))
 
     # Get desired output type form args.format and call the correct output creation function
-    if args.format == 'xlsx':
+    if target_browser.selected_output_format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
         try:
             write_excel(target_browser)
