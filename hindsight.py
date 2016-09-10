@@ -123,7 +123,6 @@ class AnalysisSession(object):
             self.output_name = "Hindsight Internet History Analysis ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
 
     def run(self):
-        print(self)
         if self.selected_output_format is None:
             self.selected_output_format = self.available_output_formats[-1]
         if self.browser_type == "Chrome":
@@ -131,6 +130,13 @@ class AnalysisSession(object):
             browser_analysis.process()
             self.parsed_artifacts = browser_analysis.parsed_artifacts
             self.artifacts_counts = browser_analysis.artifacts_counts
+
+            for item in browser_analysis.__dict__:
+                try:
+                    if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
+                        setattr(self, item, browser_analysis.__dict__[item])
+                except:
+                    pass
 
 
 class MyEncoder(json.JSONEncoder):
@@ -596,7 +602,7 @@ class Chrome(WebBrowser):
             self.artifacts_counts = {}
 
         if self.available_decrypts is None:
-            self.available_decrypts = {}
+            self.available_decrypts = {'windows': 1, 'mac': 0, 'linux': 0}
 
     def determine_version(self):
         """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
@@ -2152,7 +2158,7 @@ def main():
     #     target_browser = Chrome(args.input)
     #     target_browser.process()
 
-    target_browser = AnalysisSession(args.input, browser_type='Chrome', timezone=args.timezone)
+    target_browser = AnalysisSession(args.input, browser_type='Chrome', timezone=args.timezone, output_name=args.output)
     target_browser.run()
 
     print("\n Running plugins:")
