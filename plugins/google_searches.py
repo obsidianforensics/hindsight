@@ -17,12 +17,12 @@ artifactTypes = (u'url',)
 remoteLookups = 0
 browser = u'Chrome'
 browserVersion = 1
-version = u'20150728'
+version = u'20160912'
 parsedItems = 0
 
 
 def plugin(target_browser):
-    google_re = re.compile(r'^http(s)?://www\.google\.com/(search\?|webhp\?|#q)(.*)$')
+    google_re = re.compile(r'^http(s)?://www\.google(\.[A-z]{2,3})?(\.com)?(\.[A-z]{2,3})?/(search\?|webhp\?|#q)(.*)$')
     extract_parameters_re = re.compile(r'(.+?)=(.+)')
     qdr_re = re.compile(r'(s|n|h|d|w|m|y)(\d{0,9})')
     tbs_qdr_re = re.compile(r'qdr:(s|n|h|d|w|m|y)(\d{0,9})')
@@ -37,9 +37,9 @@ def plugin(target_browser):
             m = re.search(google_re, item.url)
             if m:
                 parameters = {}
-                raw_parameters = m.group(3)
+                raw_parameters = m.group(6)
 
-                if m.group(2) == u'#q':
+                if m.group(5) == u'#q':
                     raw_parameters = u'q' + raw_parameters
 
                 #Parse out search parameters
@@ -139,8 +139,8 @@ def plugin(target_browser):
                     # if u'ei' in parameters:
                     #     derived += u'Using %s  | ' % (parameters[u'sourceid'])
 
-                    if derived[-1:] == u'[':
-                        derived = derived[:-1]
+                    if derived[-2:] == u'[ ':
+                        derived = derived[:-2]
                     elif derived[-3:] == u' | ':
                         derived = derived[:-3] + u']'
 
