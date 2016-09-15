@@ -16,6 +16,7 @@ import argparse
 import logging
 import sqlite3
 import json
+import shutil
 
 # Try to import modules for different output formats, adding to self.available_output_format array if successful
 try:
@@ -125,6 +126,7 @@ class AnalysisSession(object):
     def run(self):
         if self.selected_output_format is None:
             self.selected_output_format = self.available_output_formats[-1]
+
         if self.browser_type == "Chrome":
             browser_analysis = Chrome(self.profile_path, available_decrypts=self.available_decrypts)
             browser_analysis.process()
@@ -213,7 +215,7 @@ class AnalysisSession(object):
         w.set_column('P:P', 12)  # ETag
         w.set_column('Q:Q', 27)  # Last Modified
 
-        # print("\n Writing \"%s.xlsx\"" % browser.output_name)
+        # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
         for item in self.parsed_artifacts:
             if item.row_type[:3] == "url":
@@ -2023,198 +2025,20 @@ def main():
     global args
     args = parse_arguments()
 
-    def write_excel(browser):
-        workbook = xlsxwriter.Workbook(browser.output_name + '.xlsx')
-        w = workbook.add_worksheet('Timeline')
+    def write_excel(analysis_session):
+        # Set up a StringIO object to save the XLSX content to before saving to disk
+        import StringIO
+        string_buffer = StringIO.StringIO()
 
-        # Define cell formats
-        title_header_format  = workbook.add_format({'font_color': 'white', 'bg_color': 'gray', 'bold': 'true'})
-        center_header_format = workbook.add_format({'font_color': 'black', 'align': 'center',  'bg_color': 'gray', 'bold': 'true'})
-        header_format        = workbook.add_format({'font_color': 'black', 'bg_color': 'gray', 'bold': 'true'})
-        black_type_format    = workbook.add_format({'font_color': 'black', 'align': 'left'})
-        black_date_format    = workbook.add_format({'font_color': 'black', 'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
-        black_url_format     = workbook.add_format({'font_color': 'black', 'align': 'left'})
-        black_field_format   = workbook.add_format({'font_color': 'black', 'align': 'left'})
-        black_value_format   = workbook.add_format({'font_color': 'black', 'align': 'left',   'num_format': '0'})
-        black_flag_format    = workbook.add_format({'font_color': 'black', 'align': 'center'})
-        black_trans_format   = workbook.add_format({'font_color': 'black', 'align': 'left'})
-        gray_type_format     = workbook.add_format({'font_color': 'gray',  'align': 'left'})
-        gray_date_format     = workbook.add_format({'font_color': 'gray',  'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
-        gray_url_format      = workbook.add_format({'font_color': 'gray',  'align': 'left'})
-        gray_field_format    = workbook.add_format({'font_color': 'gray',  'align': 'left'})
-        gray_value_format    = workbook.add_format({'font_color': 'gray',  'align': 'left', 'num_format': '0'})
-        red_type_format      = workbook.add_format({'font_color': 'red',   'align': 'left'})
-        red_date_format      = workbook.add_format({'font_color': 'red',   'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
-        red_url_format       = workbook.add_format({'font_color': 'red',   'align': 'left'})
-        red_field_format     = workbook.add_format({'font_color': 'red',   'align': 'right'})
-        red_value_format     = workbook.add_format({'font_color': 'red',   'align': 'left', 'num_format': '0'})
-        green_type_format    = workbook.add_format({'font_color': 'green', 'align': 'left'})
-        green_date_format    = workbook.add_format({'font_color': 'green', 'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
-        green_url_format     = workbook.add_format({'font_color': 'green', 'align': 'left'})
-        green_field_format   = workbook.add_format({'font_color': 'green', 'align': 'left'})
-        green_value_format   = workbook.add_format({'font_color': 'green', 'align': 'left'})
+        # Generate the XLSX content using the function in the AnalysisSession and save it to the StringIO object
+        analysis_session.generate_excel(string_buffer)
 
-        # Title bar
-        w.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
-        w.merge_range('H1:L1', 'URL Specific',                                        center_header_format)
-        w.merge_range('M1:Q1', 'Download Specific',                                   center_header_format)
+        # Go back to the beginning (be kind, rewind)
+        string_buffer.seek(0)
 
-        # Write column headers
-        w.write(1, 0, "Type",                                                         header_format)
-        w.write(1, 1, "Timestamp ({})".format(args.timezone),                         header_format)
-        w.write(1, 2, "URL",                                                          header_format)
-        w.write_rich_string(1, 3, "Title / Name / Status",                            header_format)
-        w.write_rich_string(1, 4, "Data / Value / Path",                              header_format)
-        w.write(1, 5, "Interpretation",                                               header_format)
-        w.write(1, 6, "Source",                                                       header_format)
-        w.write(1, 7, "Duration",                                                     header_format)
-        w.write(1, 8, "Visit Count",                                                  header_format)
-        w.write(1, 9, "Typed Count",                                                  header_format)
-        w.write(1, 10, "URL Hidden",                                                  header_format)
-        w.write(1, 11, "Transition",                                                  header_format)
-        w.write(1, 12, "Interrupt Reason",                                            header_format)
-        w.write(1, 13, "Danger Type",                                                 header_format)
-        w.write(1, 14, "Opened?",                                                     header_format)
-        w.write(1, 15, "ETag",                                                        header_format)
-        w.write(1, 16, "Last Modified",                                               header_format)
-
-        #Set column widths
-        w.set_column('A:A', 16)         # Type
-        w.set_column('B:B', 21)         # Date
-        w.set_column('C:C', 60)         # URL
-        w.set_column('D:D', 25)         # Title / Name / Status
-        w.set_column('E:E', 80)         # Data / Value / Path
-        w.set_column('F:F', 60)         # Interpretation
-        w.set_column('G:G', 10)         # Source
-        # URL Specific
-        w.set_column('H:H', 14)         # Visit Duration
-        w.set_column('I:K', 6)          # Visit Count, Typed Count, Hidden
-        w.set_column('L:L', 12)         # Transition
-        # Download Specific
-        w.set_column('M:M', 12)         # Interrupt Reason
-        w.set_column('N:N', 24)         # Danger Type
-        w.set_column('O:O', 12)         # Opened
-        w.set_column('P:P', 12)         # ETag
-        w.set_column('Q:Q', 27)         # Last Modified
-
-        print("\n Writing \"%s.xlsx\"" % browser.output_name)
-        row_number = 2
-        for item in browser.parsed_artifacts:
-            if item.row_type[:3] == "url":
-                w.write_string(row_number, 0, item.row_type,                 black_type_format)   # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), black_date_format)   # date
-                w.write_string(row_number, 2, item.url,                      black_url_format)    # URL
-                w.write_string(row_number, 3, item.name,                     black_field_format)  # Title
-                w.write(       row_number, 4, "",                            black_value_format)  # Indexed Content
-                w.write(       row_number, 5, item.interpretation,           black_value_format)  # Interpretation
-                w.write(       row_number, 6, item.visit_source,             black_type_format)   # Source
-                w.write(       row_number, 7, item.visit_duration,           black_flag_format)   # Duration
-                w.write(       row_number, 8, item.visit_count,              black_flag_format)   # Visit Count
-                w.write(       row_number, 9, item.typed_count,              black_flag_format)   # Typed Count
-                w.write(       row_number, 10, item.hidden,                  black_flag_format)   # Hidden
-                w.write(       row_number, 11, item.transition_friendly,     black_trans_format)  # Transition
-
-            elif item.row_type[:8] == "autofill":
-                w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
-                w.write_string(row_number, 3, item.name,                     red_field_format)    # autofill field
-                w.write_string(row_number, 4, item.value,                    red_value_format)    # autofill value
-                w.write_string(row_number, 6, " ",                           red_type_format)     # blank
-
-            elif item.row_type[:8] == "download":
-                w.write_string(row_number, 0, item.row_type,                 green_type_format)   # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), green_date_format)   # date
-                w.write_string(row_number, 2, item.url,                      green_url_format)    # download URL
-                w.write_string(row_number, 3, item.status_friendly,          green_field_format)  # % complete
-                w.write_string(row_number, 4, item.value,                    green_value_format)  # download path
-                w.write_string(row_number, 5, "",                            green_field_format)  # Interpretation (chain?)
-                w.write(       row_number, 6, "",                            green_type_format)   # Safe Browsing
-                w.write(       row_number, 12, item.interrupt_reason_friendly,green_value_format) # download path
-                w.write(       row_number, 13, item.danger_type_friendly,    green_value_format)  # download path
-                open_friendly = ""
-                if item.opened == 1:
-                    open_friendly = u"Yes"
-                elif item.opened == 0:
-                    open_friendly = u"No"
-                w.write_string(row_number, 14, open_friendly, green_value_format)                 # opened
-                w.write(row_number, 15, item.etag,            green_value_format)                 # ETag
-                w.write(row_number, 16, item.last_modified,   green_value_format)                 # Last Modified
-
-            elif item.row_type[:15] == "bookmark folder":
-                w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
-                w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
-                w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
-
-            elif item.row_type[:8] == "bookmark":
-                w.write_string(row_number, 0, item.row_type,  red_type_format)                    # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
-                w.write_string(row_number, 2, item.url,       red_url_format)                     # URL
-                w.write_string(row_number, 3, item.name,      red_value_format)                   # bookmark name
-                w.write_string(row_number, 4, item.value,     red_value_format)                   # bookmark folder
-
-            elif item.row_type[:6] == "cookie":
-                w.write_string(row_number, 0, item.row_type,  gray_type_format)                   # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
-                w.write_string(row_number, 2, item.url,       gray_url_format)                    # URL
-                w.write_string(row_number, 3, item.name,      gray_field_format)                  # cookie name
-                w.write_string(row_number, 4, item.value,     gray_value_format)                  # cookie value
-                w.write(       row_number, 5, item.interpretation, gray_value_format)             # cookie interpretation
-
-            elif item.row_type[:13] == "local storage":
-                w.write_string(row_number, 0, item.row_type,  gray_type_format)                   # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), gray_date_format)    # date
-                w.write_string(row_number, 2, item.url,       gray_url_format)                    # URL
-                w.write_string(row_number, 3, item.name,      gray_field_format)                  # cookie name
-                w.write_string(row_number, 4, item.value,     gray_value_format)                  # cookie value
-                w.write(       row_number, 5, item.interpretation, gray_value_format)             # cookie interpretation
-                w.write_string(row_number, 6, " ",            gray_type_format)                   # blank
-
-            elif item.row_type[:5] == "login":
-                w.write_string(row_number, 0, item.row_type,                 red_type_format)     # record_type
-                w.write(       row_number, 1, friendly_date(item.timestamp), red_date_format)     # date
-                w.write_string(row_number, 2, item.url,                      red_url_format)      # URL
-                w.write_string(row_number, 3, item.name,                     red_field_format)    # form field name
-                w.write_string(row_number, 4, item.value,                    red_value_format)    # username or pw value
-                w.write_string(row_number, 6, " ",                           red_type_format)     # blank
-
-            row_number += 1
-
-        # Formatting
-        w.freeze_panes(2, 0)                # Freeze top row
-        w.autofilter(1, 0, row_number, 16)  # Add autofilter
-
-        for item in browser.__dict__:
-            try:
-                if browser.__dict__[item]['presentation'] and browser.__dict__[item]['data']:
-                    d = browser.__dict__[item]
-                    p = workbook.add_worksheet(d['presentation']['title'])
-                    title = d['presentation']['title']
-                    if 'version' in d['presentation']:
-                        title += " (v{})".format(d['presentation']['version'])
-                    p.merge_range(0, 0, 0, len(d['presentation']['columns'])-1, "{}".format(title), title_header_format)
-                    for counter, column in enumerate(d['presentation']['columns']):
-                        # print column
-                        p.write(1, counter, column['display_name'], header_format)
-                        if 'display_width' in column:
-                            p.set_column(counter, counter, column['display_width'])
-
-                    for row_count, row in enumerate(d['data'], start=2):
-                        if not isinstance(row, dict):
-                            for column_count, column in enumerate(d['presentation']['columns']):
-                                p.write(row_count, column_count, row.__dict__[column['data_name']], black_type_format)
-                        else:
-                            for column_count, column in enumerate(d['presentation']['columns']):
-                                p.write(row_count, column_count, row[column['data_name']], black_type_format)
-
-                    # Formatting
-                    p.freeze_panes(2, 0)                                                       # Freeze top row
-                    p.autofilter(1, 0, len(d['data'])+2, len(d['presentation']['columns'])-1)  # Add autofilter
-
-            except:
-                pass
-
-        workbook.close()
+        # Write the StringIO object to a file on disk named what the user specified
+        with open(analysis_session.output_name + '.' + analysis_session.selected_output_format, 'wb') as file_output:
+            shutil.copyfileobj(string_buffer, file_output)
 
     def write_sqlite(browser):
         output_file = args.output + '.sqlite'
@@ -2352,8 +2176,8 @@ def main():
     #     target_browser = Chrome(args.input)
     #     target_browser.process()
 
-    target_browser = AnalysisSession(args.input, browser_type='Chrome', timezone=args.timezone, output_name=args.output)
-    target_browser.run()
+    analysis_session = AnalysisSession(args.input, browser_type='Chrome', timezone=args.timezone, output_name=args.output)
+    analysis_session.run()
 
     print("\n Running plugins:")
     logging.info("Plugins:")
@@ -2378,7 +2202,7 @@ def main():
                     continue
                 try:
                     logging.info("Running '{}' plugin".format(module.friendlyName))
-                    parsed_items = module.plugin(target_browser)
+                    parsed_items = module.plugin(analysis_session)
                     print format_plugin_output(module.friendlyName, module.version, parsed_items)
                     logging.info(" - Completed; {}".format(parsed_items))
                 except Exception, e:
@@ -2389,14 +2213,15 @@ def main():
         print '  - Error loading plugins'
 
     # Check if output directory exists; attempt to create if it doesn't
-    if os.path.dirname(target_browser.output_name) != "" and not os.path.exists(os.path.dirname(target_browser.output_name)):
-        os.makedirs(os.path.dirname(target_browser.output_name))
+    if os.path.dirname(analysis_session.output_name) != "" and not os.path.exists(os.path.dirname(analysis_session.output_name)):
+        os.makedirs(os.path.dirname(analysis_session.output_name))
 
     # Get desired output type form args.format and call the correct output creation function
-    if target_browser.selected_output_format == 'xlsx':
+    if analysis_session.selected_output_format == 'xlsx':
         logging.info("Writing output; XLSX format selected")
         try:
-            write_excel(target_browser)
+            print("\n Writing {}.xlsx".format(analysis_session.output_name))
+            write_excel(analysis_session)
         except IOError:
             type, value, traceback = sys.exc_info()
             print value, "- is the file open?  If so, please close it and try again."
