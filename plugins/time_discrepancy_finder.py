@@ -14,6 +14,7 @@
 #
 ###################################################################################################
 
+import hindsight
 import re
 
 # Config
@@ -23,7 +24,7 @@ artifactTypes = ("cookie (created)", "url")
 remoteLookups = 0
 browser = "any"
 browserVersion = 1
-version = "20160707"
+version = "20160907"
 parsedItems = 0
 
 
@@ -72,7 +73,7 @@ def plugin(target_browser):
                         if site[site.keys()[0]]['name'] == item.name:
                             m = re.search(site[site.keys()[0]]['regex'], item.value)
                             if m:
-                                server = target_browser.to_datetime(m.group(1))
+                                server = hindsight.to_datetime(m.group(1))
                                 local = item.timestamp
                                 delta = abs(server - local)
                                 item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
@@ -82,7 +83,7 @@ def plugin(target_browser):
                 for site in url_set:
                     m = re.search(site, item.url)
                     if m:
-                        server = target_browser.to_datetime(m.group(1))
+                        server = hindsight.to_datetime(m.group(1))
                         local = item.timestamp
                         delta = abs(server - local)
                         item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
