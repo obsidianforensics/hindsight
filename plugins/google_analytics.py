@@ -10,22 +10,23 @@
 #
 ###################################################################################################
 
+import hindsight
 import re
 import urllib
 
 # Config
 friendlyName = "Google Analytics Cookie Parser"
 description = "Parses Google Analytics cookies"
-artifactTypes = (u'cookie (created)', u'cookie (accessed)')
+artifactTypes = u'cookie'
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140813"
+version = "20160907"
 parsedItems = 0
 
 
 def plugin(target_browser):
-    utma_re = re.compile(r'(\d+)\.(\d+)\.(\d{10})\.(\d{10})\.(\d{10})\.(\d+)')  #
+    utma_re = re.compile(r'(\d+)\.(\d+)\.(\d{10})\.(\d{10})\.(\d{10})\.(\d+)')
     utmb_re = re.compile(r'(\d+)\.(\d+)\.\d+\.(\d{10})')
     utmc_re = re.compile(r'(\d+)')
     utmv_re = re.compile(r'(\d+)\.\|?(.*)')
@@ -43,8 +44,8 @@ def plugin(target_browser):
                     item.interpretation = u'Domain Hash: {} | Unique Visitor ID: {} | First Visit: {} | ' \
                                           u'Previous Visit: {} | Last Visit: {} | Number of Sessions: {} | ' \
                                           u'[Google Analytics Cookie]'\
-                        .format(m.group(1), m.group(2), target_browser.friendly_date(m.group(3)),
-                                target_browser.friendly_date(m.group(4)), target_browser.friendly_date(m.group(5)), 
+                        .format(m.group(1), m.group(2), hindsight.friendly_date(m.group(3)),
+                                hindsight.friendly_date(m.group(4)), hindsight.friendly_date(m.group(5)),
                                 m.group(6))
                     parsedItems += 1
             if item.name == u'__utmb':
@@ -52,7 +53,7 @@ def plugin(target_browser):
                 if m:
                     item.interpretation = u'Domain Hash: {} | Pages Viewed: {} | Last Visit: {} | ' \
                                           u'[Google Analytics Cookie]' \
-                                          .format(m.group(1), m.group(2), target_browser.friendly_date(m.group(3)))
+                                          .format(m.group(1), m.group(2), hindsight.friendly_date(m.group(3)))
                     parsedItems += 1
             if item.name == u'__utmc':
                 m = re.search(utmc_re, item.value)
@@ -69,7 +70,7 @@ def plugin(target_browser):
                 m = re.search(utmz_re, item.value)
                 if m:
                     derived = u'Domain Hash: {} | Last Visit: {} | Sessions: {} | Sources: {} | ' \
-                              .format(m.group(1), target_browser.friendly_date(m.group(2)), m.group(3), m.group(4))
+                              .format(m.group(1), hindsight.friendly_date(m.group(2)), m.group(3), m.group(4))
                     parsedItems += 1
                     p = re.search(utmz_parameters_re, item.value)
 
