@@ -7,6 +7,7 @@
 #
 ###################################################################################################
 
+import hindsight
 import re
 
 # Config
@@ -16,7 +17,7 @@ artifactTypes = ["cookie (created)", "cookie (accessed)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140813"
+version = "20160907"
 parsedItems = 0
 
 
@@ -29,7 +30,7 @@ def plugin(target_browser):
             if item.name == u'__qca':
                 m = re.search(timestamp_re, item.value)
                 if m:
-                    item.interpretation = target_browser.friendly_date(int(m.group(3))) \
+                    item.interpretation = hindsight.friendly_date(int(m.group(3))) \
                                           + u' [Quantcast Cookie Timestamp]'
                     parsedItems += 1
 
