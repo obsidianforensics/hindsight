@@ -1,0 +1,8 @@
+keyring==9.0
+matplotlib==1.5.1
+pytz==2016.4
+wordcloud==1.2.1
+pycrypto==2.6
+protobuf==3.2.0
+scipy==0.18.1
+xlsxwriter==0.9.6

@@ -26,6 +26,7 @@ def plugin(target_browser):
 
     # Setting up our return variable
     global parsedItems
+    parsedItems = 0
 
     for item in target_browser.parsed_artifacts:               # For each item that Hindsight has parsed,
         if item.row_type in artifactTypes:                     # if the row if of a supported type for this plugin, and

@@ -7,9 +7,6 @@
 #
 ###################################################################################################
 
-import hindsight
-import re
-
 # Config
 friendlyName = "Generic Timestamp Decoder"
 description = "Attempts to detect and decode potential epoch second, epoch millisecond, and Webkit timestamps"
@@ -21,12 +18,18 @@ version = "20160907"
 parsedItems = 0
 
 
-def plugin(target_browser):
+def plugin(analysis_session=None):
+    import hindsight
+    import re
+    if analysis_session is None:
+        return
+
     timestamp_re = re.compile(r'^(1(\d{9}|\d{12}|\d{16}))$')
     ls_timestamp_re = re.compile(r'timestamp.*?(\d{10,17})')
     global parsedItems
+    parsedItems = 0
 
-    for item in target_browser.parsed_artifacts:
+    for item in analysis_session.parsed_artifacts:
         if item.row_type.startswith(artifactTypes):
             if item.interpretation is None:
                 m = re.search(timestamp_re, item.value)

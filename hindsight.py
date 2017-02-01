@@ -17,6 +17,7 @@ import logging
 import sqlite3
 import json
 import shutil
+import struct
 
 # Try to import modules for different output formats, adding to self.available_output_format array if successful
 try:
@@ -53,24 +54,36 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "2.0a1"
+__version__ = "2.0b1"
 __email__ = "ryan@obsidianforensics.com"
 
 
 class AnalysisSession(object):
-    def __init__(self, profile_path, browser_type=None, output_name=None, log_path=None, timezone=None,
-                 available_output_formats=None, selected_output_format=None, available_decrypts=None,
-                 parsed_artifacts=None, artifacts_counts=None):
+    def __init__(self, profile_path=None, browser_type=None, available_input_types=None, version=None, display_version=None,
+                 output_name=None, log_path=None, timezone=None, available_output_formats=None,
+                 selected_output_format=None, available_decrypts=None, selected_decrypts=None, parsed_artifacts=None, artifacts_display=None,
+                 artifacts_counts=None, selected_plugins=None, plugin_results=None, hindsight_version=None):
         self.profile_path = profile_path
         self.browser_type = browser_type
+        self.available_input_types = available_input_types
+        self.version = version
+        self.display_version = display_version
         self.output_name = output_name
         self.log_path = log_path
         self.timezone = timezone
         self.available_output_formats = available_output_formats
         self.selected_output_format = selected_output_format
         self.available_decrypts = available_decrypts
+        self.selected_decrypts = selected_decrypts
         self.parsed_artifacts = parsed_artifacts
+        self.artifacts_display = artifacts_display
         self.artifacts_counts = artifacts_counts
+        self.selected_plugins = selected_plugins
+        self.plugin_results = plugin_results
+        self.hindsight_version = hindsight_version
+
+        if self.available_input_types is None:
+            self.available_input_types = ['Chrome', 'Brave']
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
@@ -83,6 +96,12 @@ class AnalysisSession(object):
 
         if self.available_decrypts is None:
             self.available_decrypts = {'windows': 0, 'mac': 0, 'linux': 0}
+
+        if self.plugin_results is None:
+            self.plugin_results = {}
+
+        if __version__:
+            self.hindsight_version = __version__
 
         # Try to import modules for different output formats, adding to self.available_output_format array if successful
         if 'xlsxwriter' in sys.modules:
@@ -108,37 +127,96 @@ class AnalysisSession(object):
             self.available_decrypts['linux'] = 0
             self.available_decrypts['mac'] = 0
 
-        if 'pytz' in sys.modules:
-            if self.timezone is not None:
-                try:
-                    self.timezone = pytz.timezone(self.timezone)
-                except pytz.exceptions.UnknownTimeZoneError:
-                    print("Couldn't understand timezone; using UTC.")
-                    self.timezone = pytz.timezone('UTC')
-            else:
-                self.timezone = pytz.timezone('UTC')
-        else:
-            self.timezone = None
-
         if self.output_name is None:
-            self.output_name = "Hindsight Internet History Analysis ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
+            self.output_name = "Hindsight Report ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
 
     def run(self):
         if self.selected_output_format is None:
             self.selected_output_format = self.available_output_formats[-1]
 
+        if 'pytz' in sys.modules:
+            # If the timezone exists, and is a string, we need to convert it to a tzinfo object
+            if self.timezone is not None and isinstance(self.timezone, str):
+                try:
+                    self.timezone = pytz.timezone(self.timezone)
+                except pytz.exceptions.UnknownTimeZoneError:
+                    print("Couldn't understand timezone; using UTC.")
+                    self.timezone = pytz.timezone('UTC')
+
+            elif self.timezone is None:
+                self.timezone = pytz.timezone('UTC')
+        else:
+            self.timezone = None
+
+        # Set up logging
+        logging.basicConfig(filename=self.log_path, level=logging.DEBUG, format='%(asctime)s.%(msecs).03d | %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+
+        # Hindsight version info
+        logging.info(
+            '\n' + '#' * 80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'
+            .format(__version__) + '#' * 80)
+        logging.debug("Options: " + str(self.__dict__))
+
+        # Analysis start time
+        logging.info("Starting analysis")
+
         if self.browser_type == "Chrome":
-            browser_analysis = Chrome(self.profile_path, available_decrypts=self.available_decrypts)
+            browser_analysis = Chrome(self.profile_path, available_decrypts=self.available_decrypts, timezone=self.timezone)
             browser_analysis.process()
             self.parsed_artifacts = browser_analysis.parsed_artifacts
             self.artifacts_counts = browser_analysis.artifacts_counts
+            self.artifacts_display = browser_analysis.artifacts_display
+            self.version = browser_analysis.version
+            self.display_version = browser_analysis.display_version
 
             for item in browser_analysis.__dict__:
                 try:
+                    # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
+                    # browser_analysis object to analysis_session object
                     if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
                         setattr(self, item, browser_analysis.__dict__[item])
                 except:
                     pass
+
+        elif self.browser_type == "Brave":
+            browser_analysis = Brave(self.profile_path)
+            browser_analysis.process()
+            self.parsed_artifacts = browser_analysis.parsed_artifacts
+            self.artifacts_counts = browser_analysis.artifacts_counts
+            self.artifacts_display = browser_analysis.artifacts_display
+            self.version = browser_analysis.version
+            self.display_version = browser_analysis.display_version
+
+            for item in browser_analysis.__dict__:
+                try:
+                    # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
+                    # browser_analysis object to analysis_session object
+                    if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
+                        setattr(self, item, browser_analysis.__dict__[item])
+                except:
+                    pass
+
+    def run_plugins(self):
+        logging.info("Plugins:")
+        logging.debug("Selected plugins: " + str(self.selected_plugins))
+        for plugin in self.selected_plugins:
+            if plugin[-3:] == ".py":
+                plugin = plugin.replace(".py", "")
+                logging.debug("Loading '{}'".format(plugin))
+                try:
+                    module = __import__(plugin)
+                except ImportError, e:
+                    logging.error(" - Error: {}".format(e))
+                    continue
+                try:
+                    self.version = module.version
+                    parsed_items = module.plugin(self)
+                    self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
+                    logging.info(" - Completed; {}".format(parsed_items))
+                except Exception, e:
+                    self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
+                    logging.info(" - Failed; {}".format(e))
 
     def generate_excel(self, output_object):
         workbook = xlsxwriter.Workbook(output_object, {'in_memory': True})
@@ -175,7 +253,8 @@ class AnalysisSession(object):
         # Title bar
         w.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
         w.merge_range('H1:L1', 'URL Specific', center_header_format)
-        w.merge_range('M1:Q1', 'Download Specific', center_header_format)
+        w.merge_range('M1:P1', 'Download Specific', center_header_format)
+        w.merge_range('Q1:S1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, "Type", header_format)
@@ -195,6 +274,8 @@ class AnalysisSession(object):
         w.write(1, 14, "Opened?", header_format)
         w.write(1, 15, "ETag", header_format)
         w.write(1, 16, "Last Modified", header_format)
+        w.write(1, 17, "Server Name", header_format)
+        w.write(1, 18, "Data Location [Offset]", header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -212,8 +293,13 @@ class AnalysisSession(object):
         w.set_column('M:M', 12)  # Interrupt Reason
         w.set_column('N:N', 24)  # Danger Type
         w.set_column('O:O', 12)  # Opened
+
         w.set_column('P:P', 12)  # ETag
         w.set_column('Q:Q', 27)  # Last Modified
+
+        # Cache Specific
+        w.set_column('R:R', 18)  # Server Name
+        w.set_column('S:S', 27)  # Data Location
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -278,6 +364,25 @@ class AnalysisSession(object):
                 w.write_string(row_number, 3, item.name, gray_field_format)  # cookie name
                 w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
                 w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
+
+            elif item.row_type[:5] == "cache":
+                w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
+                w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
+                try:
+                    w.write_string(row_number, 2, item.url, gray_url_format)  # URL
+                except Exception, e:
+                    print e, item.url, item.location
+                w.write_string(row_number, 3, str(item.name), gray_field_format)  # cached status // Normal (data cached)
+                # try:
+                #     w.write_string(row_number, 3, item.http_headers, gray_field_format)  # cookie name
+                # except Exception, e:
+                #     print e
+                w.write_string(row_number, 4, item.value, gray_value_format)  # content-type (size) // image/jpeg (2035 bytes)
+                w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
+                w.write(row_number, 15, item.etag, gray_value_format)  # ETag
+                w.write(row_number, 16, item.last_modified, gray_value_format)  # Last Modified
+                w.write(row_number, 17, item.server_name, gray_value_format)  # Server name
+                w.write(row_number, 18, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
 
             elif item.row_type[:13] == "local storage":
                 w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -703,15 +808,17 @@ class LoginItem(HistoryItem):
 
 
 class WebBrowser(object):
-    def __init__(self, profile_path, browser_name, version=None, timezone=None, structure=None, parsed_artifacts=None,
-                 artifacts_counts=None):
+    def __init__(self, profile_path, browser_name, version=None, display_version=None, timezone=None, structure=None,
+                 parsed_artifacts=None, artifacts_counts=None, artifacts_display=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.version = version
+        self.display_version = display_version
         self.timezone = timezone
         self.structure = structure
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_counts = artifacts_counts
+        self.artifacts_display = artifacts_display
 
         if self.version is None:
             self.version = []
@@ -721,6 +828,9 @@ class WebBrowser(object):
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
+
+        if self.artifacts_display is None:
+            self.artifacts_display = {}
 
     @staticmethod
     def format_processing_output(name, items):
@@ -769,12 +879,359 @@ class WebBrowser(object):
                     self.structure[database][str(table[0])].append(str(column[1]))
 
 
+class CacheAddressError(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
+
+class CacheAddress():
+    """
+    Object representing a Chrome Cache Address
+    """
+    SEPARATE_FILE = 0
+    RANKING_BLOCK = 1
+    BLOCK_256 = 2
+    BLOCK_1024 = 3
+    BLOCK_4096 = 4
+
+    typeArray = [("Separate file", 0),
+                 ("Ranking block file", 36),
+                 ("256 bytes block file", 256),
+                 ("1k bytes block file", 1024),
+                 ("4k bytes block file", 4096)]
+
+    def __init__(self, uint_32, path):
+        """
+        Parse the 32 bits of the uint_32
+        """
+        if uint_32 == 0:
+            raise CacheAddressError("Null Address")
+
+        #XXX Is self.binary useful ??
+        self.addr = uint_32
+        self.path = path
+
+        # Checking that the MSB is set
+        self.binary = bin(uint_32)
+        if len(self.binary) != 34:
+            raise CacheAddressError("Uninitialized Address")
+
+        self.blockType = int(self.binary[3:6], 2)
+
+        # If it is an address of a separate file
+        if self.blockType == CacheAddress.SEPARATE_FILE:
+            self.fileSelector = "f_%06x" % int(self.binary[6:], 2)
+        elif self.blockType == CacheAddress.RANKING_BLOCK:
+            self.fileSelector = "data_" + str(int(self.binary[10:18], 2))
+        else:
+            self.entrySize = CacheAddress.typeArray[self.blockType][1]
+            self.contiguousBlock = int(self.binary[8:10], 2)
+            self.fileSelector = "data_" + str(int(self.binary[10:18], 2))
+            self.blockNumber = int(self.binary[18:], 2)
+
+    def __str__(self):
+        string = hex(self.addr) + " ("
+        if self.blockType >= CacheAddress.BLOCK_256:
+            string += str(self.contiguousBlock) +\
+                      " contiguous blocks in "
+        string += CacheAddress.typeArray[self.blockType][0] +\
+                  " : " + self.fileSelector + ")"
+        return string
+
+
+class CacheData:
+    """
+    Retrieve data at the given address
+    Can save it to a separate file for export
+    """
+
+    HTTP_HEADER = 0
+    UNKNOWN = 1
+
+    def __init__(self, address, size, isHTTPHeader=False):
+        """
+        It is a lazy evaluation object : the file is open only if it is
+        needed. It can parse the HTTP header if asked to do so.
+        See net/http/http_util.cc LocateStartOfStatusLine and
+        LocateEndOfHeaders for details.
+        """
+        self.size = size
+        self.address = address
+        self.type = CacheData.UNKNOWN
+
+        if isHTTPHeader and\
+           self.address.blockType != CacheAddress.SEPARATE_FILE:
+            # Getting raw data
+            string = ""
+            block = open(os.path.join(self.address.path, self.address.fileSelector), 'rb')
+
+            # Offset in file
+            self.offset = 8192 + self.address.blockNumber*self.address.entrySize
+            block.seek(self.offset)
+            for _ in range(self.size):
+                string += struct.unpack('c', block.read(1))[0]
+            block.close()
+
+            # Finding the beginning of the request
+            start = re.search("HTTP", string)
+            if start is None:
+                return
+            else:
+                string = string[start.start():]
+
+            # Finding the end (some null characters : verified by experience)
+            end = re.search("\x00\x00", string)
+            if end is None:
+                return
+            else:
+                string = string[:end.end()-2]
+
+            # Creating the dictionary of headers
+            self.headers = {}
+            for line in string.split('\0'):
+                stripped = line.split(':')
+                self.headers[stripped[0].lower()] = \
+                    ':'.join(stripped[1:]).strip()
+            self.type = CacheData.HTTP_HEADER
+
+    def save(self, filename=None):
+        """Save the data to the specified filename"""
+        if self.address.blockType == CacheAddress.SEPARATE_FILE:
+            shutil.copy(self.address.path + self.address.fileSelector,
+                        filename)
+        else:
+            output = open(filename, 'wB')
+            block = open(self.address.path + self.address.fileSelector, 'rb')
+            block.seek(8192 + self.address.blockNumber*self.address.entrySize)
+            output.write(block.read(self.size))
+            block.close()
+            output.close()
+
+    def data(self):
+        """Returns a string representing the data"""
+        block = open(os.path.join(self.address.path, self.address.fileSelector), 'rb')
+        block.seek(8192 + self.address.blockNumber*self.address.entrySize)
+        data = block.read(self.size).decode('utf-8')
+        block.close()
+        return data
+
+    def __str__(self):
+        """
+        Display the type of cacheData
+        """
+        if self.type == CacheData.HTTP_HEADER:
+            if self.headers.has_key('content-type'):
+                return "HTTP Header %s" % self.headers['content-type']
+            else:
+                return "HTTP Header"
+        else:
+            return "Data"
+
+
+class CacheBlock:
+    """
+    Object representing a block of the cache. It can be the index file or any
+    other block type : 256B, 1024B, 4096B, Ranking Block.
+    See /net/disk_cache/disk_format.h for details.
+    """
+
+    INDEX_MAGIC = 0xC103CAC3
+    BLOCK_MAGIC = 0xC104CAC3
+    INDEX = 0
+    BLOCK = 1
+
+    def __init__(self, filename):
+        """
+        Parse the header of a cache file
+        """
+        header = open(filename, 'rb')
+
+        # Read Magic Number
+        magic = struct.unpack('I', header.read(4))[0]
+        if magic == CacheBlock.BLOCK_MAGIC:
+            self.type = CacheBlock.BLOCK
+            header.seek(2, 1)
+            self.version = struct.unpack('h', header.read(2))[0]
+            self.header = struct.unpack('h', header.read(2))[0]
+            self.nextFile = struct.unpack('h', header.read(2))[0]
+            self.blockSize = struct.unpack('I', header.read(4))[0]
+            self.entryCount = struct.unpack('I', header.read(4))[0]
+            self.entryMax = struct.unpack('I', header.read(4))[0]
+            self.empty = []
+            for _ in range(4):
+                self.empty.append(struct.unpack('I', header.read(4))[0])
+            self.position = []
+            for _ in range(4):
+                self.position.append(struct.unpack('I', header.read(4))[0])
+        elif magic == CacheBlock.INDEX_MAGIC:
+            self.type = CacheBlock.INDEX
+            header.seek(2, 1)
+            self.version = struct.unpack('h', header.read(2))[0]
+            self.entryCount = struct.unpack('I', header.read(4))[0]
+            self.byteCount = struct.unpack('I', header.read(4))[0]
+            self.lastFileCreated = "f_%06x" % \
+                                       struct.unpack('I', header.read(4))[0]
+            header.seek(4*2, 1)
+            self.tableSize = struct.unpack('I', header.read(4))[0]
+        else:
+            header.close()
+            raise Exception("Invalid Chrome Cache File")
+        header.close()
+
+
+class CacheItem(HistoryItem):
+    def __init__(self, url, date_created, key, value, http_headers):
+        super(CacheItem, self).__init__(u'cache', timestamp=date_created, name=key, value=value)
+        self.url = url
+        self.date_created = date_created
+        self.key = key
+        self.value = value
+        self.http_headers = http_headers
+
+
+class CacheEntry(HistoryItem):
+    """
+    See /net/disk_cache/disk_format.h for details.
+    """
+
+    STATE = ["Normal (data cached)",
+             "Evicted (data deleted)",
+             "Doomed (data to be deleted)"]
+
+    def __init__(self, address, row_type, timezone):
+        """
+        Parse a Chrome Cache Entry at the given address
+        """
+
+        super(CacheEntry, self).__init__(row_type, timestamp=None, name=None, value=None)
+
+        self.httpHeader = None
+        self.timezone = timezone
+        block = open(os.path.join(address.path, address.fileSelector), 'rb')
+
+        # Going to the right entry
+        block.seek(8192 + address.blockNumber*address.entrySize)
+
+        # Parsing basic fields
+        self.hash = struct.unpack('I', block.read(4))[0]
+        self.next = struct.unpack('I', block.read(4))[0]
+        self.rankingNode = struct.unpack('I', block.read(4))[0]
+        self.usageCounter = struct.unpack('I', block.read(4))[0]
+        self.reuseCounter = struct.unpack('I', block.read(4))[0]
+        self.state = struct.unpack('I', block.read(4))[0]
+        self.creationTime = to_datetime(struct.unpack('Q', block.read(8))[0], self.timezone)
+        self.keyLength = struct.unpack('I', block.read(4))[0]
+        self.keyAddress = struct.unpack('I', block.read(4))[0]
+
+        dataSize = []
+        for _ in range(4):
+            dataSize.append(struct.unpack('I', block.read(4))[0])
+
+        self.data = []
+        for index in range(4):
+            addr = struct.unpack('I', block.read(4))[0]
+            try:
+                addr = CacheAddress(addr, address.path)
+                self.data.append(CacheData(addr, dataSize[index], True))
+            except CacheAddressError:
+                pass
+
+        # Find the HTTP header if there is one
+        for data in self.data:
+            if data.type == CacheData.HTTP_HEADER:
+                self.httpHeader = data
+                break
+
+        self.flags = struct.unpack('I', block.read(4))[0]
+
+        # Skipping pad
+        block.seek(5*4, 1)
+
+        # Reading local key
+        if self.keyAddress == 0:
+            self.key = block.read(self.keyLength).decode('ascii')
+        # Key stored elsewhere
+        else:
+            addr = CacheAddress(self.keyAddress, address.path)
+
+            # It is probably an HTTP header
+            self.key = CacheData(addr, self.keyLength, True)
+
+        block.close()
+
+        # Hindsight HistoryItem fields
+        self.timestamp = self.creationTime
+        self.name = CacheEntry.STATE[self.state]
+        self.url = self.keyToStr()
+        self.value = ""
+        self.etag = ""
+        self.server_name = ""
+        self.last_modified = ""
+        self.file_size = 0
+        self.location = ""
+        for _ in self.data:
+            if _.type != 0:
+                self.file_size += _.size
+                # Check if we already have an address here; if so, add a text separator
+                if len(self.location) > 0:
+                    self.location += "; "
+                if _.address.blockType == 0:
+                    self.location += "{}".format(_.address.fileSelector)
+                else:
+                    self.location += "{} [{}]".format(_.address.fileSelector, _.offset)
+
+        if self.httpHeader is not None:
+            headers = self.httpHeader.__dict__['headers']
+            for header in headers:
+                try:
+                    headers[header] = headers[header].decode('utf-8')
+                except:
+                    pass
+            if self.state == 0:
+                self.value = "{} ({} bytes)".format(headers.get('content-type'), self.file_size)
+            self.server_name = headers.get('server')
+            self.etag = headers.get('etag')
+            self.last_modified = headers.get('last-modified')
+
+    def keyToStr(self):
+        """
+        Since the key can be a string or a CacheData object, this function is an
+        utility to display the content of the key whatever type is it.
+        """
+        if self.keyAddress == 0:
+            return self.key
+        else:
+            return self.key.data()
+
+    def __str__(self):
+
+        string = "Hash: 0x%08x" % self.hash + '\n'
+        if self.next != 0:
+            string += "Next: 0x%08x" % self.next + '\n'
+        string += "Usage Counter: %d" % self.usageCounter + '\n'\
+                  "Reuse Counter: %d" % self.reuseCounter + '\n'\
+                  "Creation Time: %s" % self.creationTime + '\n'
+        if self.keyAddress != 0:
+            string += "Key Address: 0x%08x" % self.keyAddress + '\n'
+        string += "Key: %s" % self.key + '\n'
+        if self.flags != 0:
+            string += "Flags: 0x%08x" % self.flags + '\n'
+        string += "State: %s" % CacheEntry.STATE[self.state]
+        for data in self.data:
+            string += "\nData (%d bytes) at 0x%08x : %s" % (data.size,
+                                                            data.address.addr,
+                                                            data)
+        return string
+
+
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, version=None, timezone=None, parsed_artifacts=None,
-                 installed_extensions=None, artifacts_counts=None, available_decrypts=None):
+                 installed_extensions=None, artifacts_counts=None, artifacts_display=None, available_decrypts=None):
         # TODO: try to fix this to use super()
         WebBrowser.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None,
-                            artifacts_counts=None)
+                            artifacts_counts=None, artifacts_display=None)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.timezone = timezone
@@ -797,6 +1254,9 @@ class Chrome(WebBrowser):
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
 
+        if self.artifacts_display is None:
+            self.artifacts_display = {}
+
         if self.available_decrypts is None:
             self.available_decrypts = {'windows': 0, 'mac': 0, 'linux': 0}
 
@@ -806,7 +1266,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 50)
+        possible_versions = range(1, 57)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -817,6 +1277,16 @@ class Chrome(WebBrowser):
                     possible_versions[:] = [x for x in possible_versions if x >= version]
                 else:
                     possible_versions[:] = [x for x in possible_versions if x < version]
+
+        def trim_greater_versions_if(column, table, version):
+            """Remove version numbers > 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
+            versions =< 'version' if 'column' is in 'table'.
+            """
+            if table:
+                if column in table:
+                    possible_versions[:] = [x for x in possible_versions if x <= version]
+                else:
+                    possible_versions[:] = [x for x in possible_versions if x > version]
 
         def trim_lesser_versions(version):
             """Remove version numbers > 'version' from 'possible_versions'"""
@@ -852,11 +1322,20 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
             if 'web_apps' not in self.structure['Web Data'].keys():
                 trim_lesser_versions(37)
+            if 'credit_cards' in self.structure['Web Data'].keys():
+                trim_lesser_versions_if('billing_address_id', self.structure['Web Data']['credit_cards'], 53)
 
         if 'Login Data' in self.structure.keys():
             if 'logins' in self.structure['Login Data'].keys():
                 trim_lesser_versions_if('display_name', self.structure['Login Data']['logins'], 39)
                 trim_lesser_versions_if('generation_upload_status', self.structure['Login Data']['logins'], 42)
+                trim_greater_versions_if('ssl_valid', self.structure['Login Data']['logins'], 53)
+
+        if 'Network Action Predictor' in self.structure.keys():
+            if 'resource_prefetch_predictor_url' in self.structure['Network Action Predictor'].keys():
+                trim_lesser_versions(22)
+                trim_lesser_versions_if('key', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 55)
+                trim_lesser_versions_if('proto', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 54)
 
         self.version = possible_versions
 
@@ -1182,7 +1661,7 @@ class Chrome(WebBrowser):
                     # If the cookie was created and accessed at the same time (only used once), or if the last accessed
                     # time is 0 (happens on iOS), don't create an accessed row
                     if new_row.creation_utc != new_row.last_access_utc and \
-                                    accessed_row.last_access_utc != to_datetime(0):
+                                    accessed_row.last_access_utc != to_datetime(0, self.timezone):
                                     # accessed_row.last_access_utc != datetime.datetime.utcfromtimestamp(0):
                         accessed_row.row_type = u'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
@@ -1337,7 +1816,6 @@ class Chrome(WebBrowser):
             logging.error(" - Error opening '{}'".format(bookmarks_path))
             self.artifacts_counts['Bookmarks'] = 'Failed'
             return
-
 
         # TODO: sync_id
         def process_bookmark_children(parent, children):
@@ -1601,7 +2079,7 @@ class Chrome(WebBrowser):
             prefs = json.loads(pref_file.read())
         except:
             logging.error(" - Error decoding Preferences file {}".format(pref_path))
-            self.artifacts_counts['Preferences'] = 'Failed'
+            self.artifacts_counts[preferences_file] = 'Failed'
             return
 
         if prefs:
@@ -1633,7 +2111,7 @@ class Chrome(WebBrowser):
                 append_group("Clearing Chrome Data")
                 if prefs['browser'].get('last_clear_browsing_data_time'):
                     check_and_append_pref(prefs['browser'], 'last_clear_browsing_data_time',
-                                          self.friendly_date(prefs['browser']['last_clear_browsing_data_time']),
+                                          friendly_date(prefs['browser']['last_clear_browsing_data_time']),
                                           "Last time the history was cleared")
                 check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
                 if prefs['browser'].get('clear_data'):
@@ -1671,7 +2149,7 @@ class Chrome(WebBrowser):
                             # Adding the space before the domain prevents Excel from freaking out...  idk.
                             append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
 
-        self.artifacts_counts['Preferences'] = len(results)
+        self.artifacts_counts[preferences_file] = len(results)
         logging.info(" - Parsed {} items".format(len(results)))
         presentation = {'title': 'Preferences',
                         'columns': [
@@ -1690,6 +2168,116 @@ class Chrome(WebBrowser):
                             ]}
 
         self.preferences = {'data': results, 'presentation': presentation}
+
+    def get_cache(self, path, dir_name, row_type=None):
+        """
+        read the index file to walk whole cache // from cacheParse.py
+
+        Reads the whole cache and store the collected data in a table
+        or find out if the given list of urls is in the cache. If yes it
+        return a list of the corresponding entries.
+        """
+
+        # Set up empty return array
+        results = []
+
+        path = os.path.join(path, dir_name)
+        logging.info("Cache items from {}:".format(path))
+
+        cacheBlock = CacheBlock(os.path.join(path, 'index'))
+
+        # Checking type
+        if cacheBlock.type != CacheBlock.INDEX:
+            raise Exception("Invalid Index File")
+
+        index = open(os.path.join(path, 'index'), 'rb')
+
+        # Skipping Header
+        index.seek(92 * 4)
+
+        for key in range(cacheBlock.tableSize):
+            raw = struct.unpack('I', index.read(4))[0]
+            if raw != 0:
+                entry = CacheEntry(CacheAddress(raw, path=path), row_type, self.timezone)
+
+                # Add the new row to the results array
+                results.append(entry)
+
+                # Checking if there is a next item in the bucket because
+                # such entries are not stored in the Index File so they will
+                # be ignored during iterative lookup in the hash table
+                while entry.next != 0:
+                    entry = CacheEntry(CacheAddress(entry.next, path=path), row_type, self.timezone)
+                    results.append(entry)
+
+        self.artifacts_counts[dir_name] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
+        self.parsed_artifacts.extend(results)
+
+    def get_application_cache(self, path, dir_name, row_type=None):
+        """
+        read the index file to walk whole cache // from cacheParse.py
+
+        Reads the whole cache and store the collected data in a table
+        or find out if the given list of urls is in the cache. If yes it
+        return a list of the corresponding entries.
+        """
+
+        # Set up empty return array
+        results = []
+
+        base_path = os.path.join(path, dir_name)
+        cache_path = os.path.join(base_path, 'Cache')
+        logging.info("Application Cache items from {}:".format(path))
+
+        # Connect to 'Index' sqlite db
+        db_path = os.path.join(base_path, 'Index')
+        index_db = sqlite3.connect(db_path)
+        logging.info(" - Reading from file '{}'".format(db_path))
+
+        # Use a dictionary cursor
+        index_db.row_factory = dict_factory
+        cursor = index_db.cursor()
+
+        cache_block = CacheBlock(os.path.join(cache_path, 'index'))
+
+        # Checking type
+        if cache_block.type != CacheBlock.INDEX:
+            raise Exception("Invalid Index File")
+
+        index = open(os.path.join(cache_path, 'index'), 'rb')
+
+        # Skipping Header
+        index.seek(92 * 4)
+
+        for key in range(cache_block.tableSize):
+            raw = struct.unpack('I', index.read(4))[0]
+            if raw != 0:
+                entry = CacheEntry(CacheAddress(raw, path=cache_path), row_type, self.timezone)
+                cursor.execute('''SELECT url from Entries WHERE response_id=?''', [entry.key])
+                index_url = cursor.fetchone()
+                if index_url:
+                    entry.url = index_url['url']
+
+                # Add the new row to the results array
+                results.append(entry)
+
+                # Checking if there is a next item in the bucket because
+                # such entries are not stored in the Index File so they will
+                # be ignored during iterative lookup in the hash table
+                while entry.next != 0:
+                    entry = CacheEntry(CacheAddress(entry.next, path=cache_path), row_type, self.timezone)
+                    cursor.execute('''SELECT url FROM Entries WHERE response_id=?''', [entry.key])
+                    index_url = cursor.fetchone()
+                    if index_url:
+                        entry.url = index_url['url']
+                    results.append(entry)
+
+        index_db.close()
+
+        self.artifacts_counts[dir_name] = len(results)
+        logging.info(" - Parsed {} items".format(len(results)))
+        self.parsed_artifacts.extend(results)
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
@@ -1710,13 +2298,13 @@ class Chrome(WebBrowser):
         self.determine_version()
 
         if len(self.version) > 1:
-            display_version = "%s-%s" % (self.version[0], self.version[-1])
+            self.display_version = "%s-%s" % (self.version[0], self.version[-1])
         else:
-            display_version = self.version[0]
+            self.display_version = self.version[0]
 
-        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
+        print self.format_processing_output("Detected {} version".format(self.browser_name), self.display_version)
 
-        logging.info("Detected {} version {}".format(self.browser_name, display_version))
+        logging.info("Detected {} version {}".format(self.browser_name, self.display_version))
 
         logging.info("Found the following supported files or directories:")
         for input_file in input_listing:
@@ -1733,7 +2321,8 @@ class Chrome(WebBrowser):
                     row_type = u'url ({})'.format(custom_type_m.group(1))
                 self.get_history(self.profile_path, input_file, self.version, row_type)
                 display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
-                print self.format_processing_output("{} records".format(display_type),
+                self.artifacts_display[input_file] = "{} records".format(display_type)
+                print self.format_processing_output(self.artifacts_display[input_file],
                                                     self.artifacts_counts[input_file])
 
                 row_type = u'download'
@@ -1741,44 +2330,85 @@ class Chrome(WebBrowser):
                     row_type = u'download ({})'.format(custom_type_m.group(1))
                 self.get_downloads(self.profile_path, input_file, self.version, row_type)
                 display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
-                print self.format_processing_output("{} records".format(display_type),
+                self.artifacts_display[input_file + '_downloads'] = "{} records".format(display_type)
+                print self.format_processing_output(self.artifacts_display[input_file + '_downloads'],
                                                     self.artifacts_counts[input_file + '_downloads'])
 
         if 'Archived History' in input_listing:
             self.get_history(self.profile_path, 'Archived History', self.version, u'url (archived)')
-            print self.format_processing_output("Archived URL records", self.artifacts_counts['Archived History'])
+            self.artifacts_display['Archived History'] = "Archived URL records"
+            print self.format_processing_output(self.artifacts_display['Archived History'],
+                                                self.artifacts_counts['Archived History'])
+        if 'Cache' in input_listing:
+            self.get_cache(self.profile_path, 'Cache', row_type=u'cache')
+            self.artifacts_display['Cache'] = "Cache records"
+            print self.format_processing_output(self.artifacts_display['Cache'],
+                                                self.artifacts_counts['Cache'])
+        if 'GPUCache' in input_listing:
+            self.get_cache(self.profile_path, 'GPUCache', row_type=u'cache (gpu)')
+            self.artifacts_display['GPUCache'] = "GPU Cache records"
+            print self.format_processing_output(self.artifacts_display['GPUCache'],
+                                                self.artifacts_counts['GPUCache'])
+
+        if 'Media Cache' in input_listing:
+            self.get_cache(self.profile_path, 'Media Cache', row_type=u'cache (media)')
+            self.artifacts_display['Media Cache'] = "Media Cache records"
+            print self.format_processing_output(self.artifacts_display['Media Cache'],
+                                                self.artifacts_counts['Media Cache'])
+
+        if 'Application Cache' in input_listing:
+            self.get_application_cache(self.profile_path, 'Application Cache', row_type=u'cache (application)')
+            self.artifacts_display['Application Cache'] = "Application Cache records"
+            print self.format_processing_output(self.artifacts_display['Application Cache'],
+                                                self.artifacts_counts['Application Cache'])
 
         if 'Cookies' in input_listing:
             self.get_cookies(self.profile_path, 'Cookies', self.version)
-            print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
+            self.artifacts_display['Cookies'] = "Cookie records"
+            print self.format_processing_output(self.artifacts_display['Cookies'],
+                                                self.artifacts_counts['Cookies'])
 
         if 'Web Data' in input_listing:
             self.get_autofill(self.profile_path, 'Web Data', self.version)
-            print self.format_processing_output("Autofill records", self.artifacts_counts['Autofill'])
+            self.artifacts_display['Autofill'] = "Autofill records"
+            print self.format_processing_output(self.artifacts_display['Autofill'],
+                                                self.artifacts_counts['Autofill'])
 
         if 'Bookmarks' in input_listing:
             self.get_bookmarks(self.profile_path, 'Bookmarks', self.version)
-            print self.format_processing_output("Bookmark records", self.artifacts_counts['Bookmarks'])
+            self.artifacts_display['Bookmarks'] = "Bookmark records"
+            print self.format_processing_output(self.artifacts_display['Bookmarks'],
+                                                self.artifacts_counts['Bookmarks'])
 
         if 'Local Storage' in input_listing:
             self.get_local_storage(self.profile_path, 'Local Storage')
-            print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
+            self.artifacts_display['Local Storage'] = "Local Storage records"
+            print self.format_processing_output(self.artifacts_display['Local Storage'],
+                                                self.artifacts_counts['Local Storage'])
 
         if 'Extensions' in input_listing:
             self.get_extensions(self.profile_path, 'Extensions')
-            print self.format_processing_output("Extensions", self.artifacts_counts['Extensions'])
+            self.artifacts_display['Extensions'] = "Extensions"
+            print self.format_processing_output(self.artifacts_display['Extensions'],
+                                                self.artifacts_counts['Extensions'])
 
         if 'Extension Cookies' in input_listing:
             self.get_cookies(self.profile_path, 'Extension Cookies', self.version)
-            print self.format_processing_output("Extension Cookie records", self.artifacts_counts['Extension Cookies'])
+            self.artifacts_display['Extension Cookies'] = "Extension Cookie records"
+            print self.format_processing_output(self.artifacts_display['Extension Cookies'],
+                                                self.artifacts_counts['Extension Cookies'])
 
         if 'Login Data' in input_listing:
             self.get_login_data(self.profile_path, 'Login Data', self.version)
-            print self.format_processing_output("Login Data records", self.artifacts_counts['Login Data'])
+            self.artifacts_display['Login Data'] = "Login Data records"
+            print self.format_processing_output(self.artifacts_display['Login Data'],
+                                                self.artifacts_counts['Login Data'])
 
         if 'Preferences' in input_listing:
             self.get_preferences(self.profile_path, 'Preferences')
-            print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
+            self.artifacts_display['Preferences'] = "Preference Items"
+            print self.format_processing_output(self.artifacts_display['Preferences'],
+                                                self.artifacts_counts['Preferences'])
 
         # Destroy the cached key so that json serialization doesn't
         # have a cardiac arrest on the non-unicode binary data.
@@ -1792,7 +2422,6 @@ class Brave(Chrome):
         Chrome.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None,
                         installed_extensions=None, artifacts_counts=None)
         self.browser_name = "Brave"
-        self.version = ["0.8"]
 
     def get_history(self, path, history_file, version, row_type):
         # Set up empty return array
@@ -1804,11 +2433,10 @@ class Brave(Chrome):
             with open(os.path.join(path, history_file), 'rb') as history_input:
                 history_raw = history_input.read()
                 history_json = json.loads(history_raw)
-                # print json.dumps(history_json, indent=2)
-                # print history_json['perWindowState'][0]['frames'][1]
-                # for i, window in enumerate(history_json['perWindowState']):
-                #     for f, frame in enumerate(history_json['perWindowState'][i]['frames']):
-                #         print history_json['perWindowState'][i]['frames'][f]['title']
+
+                for version_dict in history_json['about']['brave']['versionInformation']:
+                    if version_dict['name'] == u'Brave':
+                        self.display_version = version_dict['version']
 
                 for s, site in enumerate(history_json['sites']):
                     if history_json['sites'][s].get('location'):
@@ -1840,19 +2468,11 @@ class Brave(Chrome):
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
-        supported_subdirs = ['Local Storage', 'Extensions']
+        supported_subdirs = ['Local Storage', 'Extensions', 'Cache']
         supported_jsons = ['Bookmarks']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
         logging.debug("Supported items: " + str(supported_items))
-
         input_listing = os.listdir(self.profile_path)
-
-        # TODO: Hardcoded for now, will need to figure out detection once Brave matures
-        display_version = "0.8"
-
-        print self.format_processing_output("Detected {} version".format(self.browser_name), display_version)
-
-        logging.info("Detected {} version {}".format(self.browser_name, display_version))
 
         logging.info("Found the following supported files or directories:")
         for input_file in input_listing:
@@ -1867,8 +2487,10 @@ class Brave(Chrome):
                 custom_type_m = re.search(custom_type_re, input_file)
                 if custom_type_m:
                     row_type = u'url ({})'.format(custom_type_m.group(1))
-                self.get_history(args.input, input_file, self.version, row_type)
+                # self.get_history(args.input, input_file, self.version, row_type)
+                self.get_history(self.profile_path, input_file, self.version, row_type)
                 display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
+                self.artifacts_display[input_file] = "{} records".format(display_type)
                 print self.format_processing_output("{} records".format(display_type),
                                                     self.artifacts_counts[input_file])
 
@@ -1885,17 +2507,46 @@ class Brave(Chrome):
                         self.get_local_storage(partition_path, 'Local Storage')
                         print self.format_processing_output("Local Storage records ({})".format(partition), self.artifacts_counts['Local Storage'])
 
+        # Version information is moved to after parsing history, as we read the version from the same file rather than detecting via SQLite table attributes
+        print self.format_processing_output("Detected {} version".format(self.browser_name), self.display_version)
+        logging.info("Detected {} version {}".format(self.browser_name, self.display_version))
+
+        if 'Cache' in input_listing:
+            self.get_cache(self.profile_path, 'Cache', row_type=u'cache')
+            self.artifacts_display['Cache'] = "Cache records"
+            print self.format_processing_output(self.artifacts_display['Cache'],
+                                                self.artifacts_counts['Cache'])
+        if 'GPUCache' in input_listing:
+            self.get_cache(self.profile_path, 'GPUCache', row_type=u'cache (gpu)')
+            self.artifacts_display['GPUCache'] = "GPU Cache records"
+            print self.format_processing_output(self.artifacts_display['GPUCache'],
+                                                self.artifacts_counts['GPUCache'])
+
         if 'Cookies' in input_listing:
-            self.get_cookies(args.input, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
+            self.get_cookies(self.profile_path, 'Cookies', [47])  # Parse cookies like a modern Chrome version (v47)
+            self.artifacts_display['Cookies'] = "Cookie records"
             print self.format_processing_output("Cookie records", self.artifacts_counts['Cookies'])
 
         if 'Local Storage' in input_listing:
-            self.get_local_storage(args.input, 'Local Storage')
+            self.get_local_storage(self.profile_path, 'Local Storage')
+            self.artifacts_display['Local Storage'] = "Local Storage records"
             print self.format_processing_output("Local Storage records", self.artifacts_counts['Local Storage'])
 
+        if 'Web Data' in input_listing:
+            self.get_autofill(self.profile_path, 'Web Data', [47])  # Parse autofill like a modern Chrome version (v47)
+            self.artifacts_display['Autofill'] = "Autofill records"
+            print self.format_processing_output(self.artifacts_display['Autofill'],
+                                                self.artifacts_counts['Autofill'])
+
         if 'Preferences' in input_listing:
-            self.get_preferences(args.input, 'Preferences')
+            self.get_preferences(self.profile_path, 'Preferences')
+            self.artifacts_display['Preferences'] = "Preference Items"
             print self.format_processing_output("Preference Items", self.artifacts_counts['Preferences'])
+
+        if 'UserPrefs' in input_listing:
+            self.get_preferences(self.profile_path, 'UserPrefs')
+            self.artifacts_display['UserPrefs'] = "UserPrefs Items"
+            print self.format_processing_output("UserPrefs Items", self.artifacts_counts['UserPrefs'])
 
         # Destroy the cached key so that json serialization doesn't
         # have a cardiac arrest on the non-unicode binary data.
@@ -1924,6 +2575,8 @@ def to_epoch(timestamp):
 
 def to_datetime(timestamp, timezone=None):
     """Convert a variety of timestamp formats to a datetime object."""
+    if isinstance(timestamp, datetime.datetime):
+        return timestamp
     try:
         timestamp = float(timestamp)
     except:
@@ -1957,7 +2610,7 @@ def friendly_date(timestamp):
         return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def parse_arguments():
+def parse_arguments(analysis_session):
     description = '''
 Hindsight v%s - Internet history forensics for Google Chrome/Chromium.
 
@@ -1991,7 +2644,10 @@ The Chrome data folder default locations are:
 
     parser.add_argument('-i', '--input', help='Path to the Chrome(ium) "Default" directory', required=True)
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
-    # parser.add_argument('-f', '--format', choices=output_formats, default=output_formats[0], help='Output format')
+    parser.add_argument('-b', '--browser_type', help='Type of input files', default='Chrome',
+                        choices=['Chrome', 'Brave'])
+    parser.add_argument('-f', '--format', choices=analysis_session.available_output_formats,
+                        default=analysis_session.available_output_formats[-1], help='Output format')
     parser.add_argument('-m', '--mode', choices=['add', 'overwrite', 'exit'],
                         help='Output mode (what to do if output file already exists)')
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
@@ -2005,25 +2661,34 @@ The Chrome data folder default locations are:
 
     args = parser.parse_args()
 
+    if args.timezone:
+        try:
+            __import__('pytz')
+        except ImportError:
+            args.timezone = None
+        else:
+            try:
+                args.timezone = pytz.timezone(args.timezone)
+            except pytz.exceptions.UnknownTimeZoneError:
+                print("Couldn't understand timezone; using UTC.")
+                args.timezone = pytz.timezone('UTC')
 
-    # # Disable decryption on Linux unless explicitly enabled and supported
-    # if args.decrypt == 'linux' and cookie_decryption['linux'] == 1:
-    #     cookie_decryption['linux'] = 1
-    # else:
-    #     cookie_decryption['linux'] = 0
-    #
-    # # Disable decryption on Mac unless explicitly enabled and supported
-    # if args.decrypt == 'mac' and cookie_decryption['mac'] == 1:
-    #     cookie_decryption['mac'] = 1
-    # else:
-    #     cookie_decryption['mac'] = 0
+    # Disable decryption on Linux unless explicitly enabled and supported
+    if args.decrypt == 'linux' and analysis_session.available_decrypts['linux'] == 1:
+        analysis_session.available_decrypts['linux'] = 1
+    else:
+        analysis_session.available_decrypts['linux'] = 0
+
+    # Disable decryption on Mac unless explicitly enabled and supported
+    if args.decrypt == 'mac' and analysis_session.available_decrypts['mac'] == 1:
+        analysis_session.available_decrypts['mac'] = 1
+    else:
+        analysis_session.available_decrypts['mac'] = 0
 
     return args
 
 
 def main():
-    global args
-    args = parse_arguments()
 
     def write_excel(analysis_session):
         # Set up a StringIO object to save the XLSX content to before saving to disk
@@ -2040,7 +2705,7 @@ def main():
         with open(analysis_session.output_name + '.' + analysis_session.selected_output_format, 'wb') as file_output:
             shutil.copyfileobj(string_buffer, file_output)
 
-    def write_sqlite(browser):
+    def write_sqlite(analysis_session):
         output_file = args.output + '.sqlite'
         output_exists = None
 
@@ -2081,7 +2746,7 @@ def main():
 
             print("\n Writing \"%s.sqlite\"" % args.output)
 
-            for item in browser.parsed_artifacts:
+            for item in analysis_session.parsed_artifacts:
                 if item.row_type == "url" or item.row_type == "url (archived)":
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, visit_count, "
                               "typed_count, url_hidden, transition) "
@@ -2126,10 +2791,11 @@ def main():
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
                                item.interpretation))
 
-            for extension in browser.installed_extensions['data']:
-                c.execute("INSERT INTO installed_extensions (name, description, version, app_id) "
-                          "VALUES (?, ?, ?, ?)",
-                          (extension.name, extension.description, extension.version, extension.app_id))
+            if analysis_session.__dict__.get("installed_extensions"):
+                for extension in analysis_session.installed_extensions['data']:
+                    c.execute("INSERT INTO installed_extensions (name, description, version, app_id) "
+                              "VALUES (?, ?, ?, ?)",
+                              (extension.name, extension.description, extension.version, extension.app_id))
 
     def format_plugin_output(name, version, items):
         width = 80
@@ -2146,37 +2812,29 @@ def main():
             .format(name=name, left_width=int(left_side), content=content)
         return pretty_name
 
-    # Set up logging
-    logging.basicConfig(filename=args.log, level=logging.DEBUG, format='%(asctime)s.%(msecs).03d | %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
+    analysis_session = AnalysisSession()
+    global args
+    args = parse_arguments(analysis_session)
 
-    # Hindsight version info
-    print "\n Hindsight v%s" % __version__
-    logging.info('\n' + '#'*80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'
-                 .format(__version__) + '#'*80)
-    logging.debug("Options: " + str(args))
+    analysis_session.profile_path = args.input
+    if args.output:
+        analysis_session.output_name = args.output
+    analysis_session.selected_output_format = args.format
+    analysis_session.browser_type = args.browser_type
+    analysis_session.timezone = args.timezone
+    analysis_session.log_path = args.log
 
     # Analysis start time
     print format_meta_output("Start time", str(datetime.datetime.now())[:-3])
-    logging.info("Starting analysis")
 
     # Reading input directory
     print format_meta_output("Input directory", args.input)
     logging.info("Reading files from %s" % args.input)
     input_listing = os.listdir(args.input)
     logging.debug("Input directory contents: " + str(input_listing))
-    print format_meta_output("Output name", args.output)
+    print format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format))
 
     print("\n Processing:")
-    # # TODO: Detection of Chrome vs Brave; this is just a stopgap until creation of more robust browser selection method
-    # if "session-store-1" in input_listing:
-    #     target_browser = Brave(args.input)
-    #     target_browser.process()
-    # else:
-    #     target_browser = Chrome(args.input)
-    #     target_browser.process()
-
-    analysis_session = AnalysisSession(args.input, browser_type='Chrome', timezone=args.timezone, output_name=args.output)
     analysis_session.run()
 
     print("\n Running plugins:")
@@ -2229,12 +2887,12 @@ def main():
 
     elif args.format == 'json':
         logging.info("Writing output; JSON format selected")
-        output = open(args.output, 'wb')
-        output.write(json.dumps(target_browser, cls=MyEncoder, indent=4))
+        output = open("{}.json".format(analysis_session.output_name), 'wb')
+        output.write(json.dumps(analysis_session, cls=MyEncoder, indent=4))
 
     elif args.format == 'sqlite':
         logging.info("Writing output; SQLite format selected")
-        write_sqlite(target_browser)
+        write_sqlite(analysis_session)
 
     # Display and log finish time
     print "\n Finish time: ", str(datetime.datetime.now())[:-3]

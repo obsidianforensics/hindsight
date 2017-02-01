@@ -7,7 +7,7 @@
 #
 ###################################################################################################
 
-import urlparse
+
 
 # Config
 friendlyName = "Query String Parser"
@@ -19,12 +19,14 @@ version = "20150222"  # version of the plugin (use the date)
 parsedItems = 0  # count of items that the plugin parsed; initialized to 0
 
 
-def plugin(target_browser):
+def plugin(analysis_session=None):
+    import urlparse
 
     # Setting up our return variable
     global parsedItems
+    parsedItems = 0
 
-    for item in target_browser.parsed_artifacts:                # For each item that Hindsight has parsed,
+    for item in analysis_session.parsed_artifacts:              # For each item that Hindsight has parsed,
         if item.row_type.startswith(artifactTypes):             # if the row if of a supported type for this plugin, and
             if item.interpretation is None:                     # if there isn't already an interpretation,
                 parsed_url = urlparse.urlparse(item.url)

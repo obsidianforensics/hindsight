@@ -7,9 +7,6 @@
 #
 ###################################################################################################
 
-import re
-import urllib
-
 # Config
 friendlyName = u'Google Searches'
 description = u'Extracts parameters from Google search URLs'
@@ -21,18 +18,24 @@ version = u'20160912'
 parsedItems = 0
 
 
-def plugin(target_browser):
+def plugin(analysis_session=None):
+    import re
+    import urllib
+    if analysis_session is None:
+        return
+
     google_re = re.compile(r'^http(s)?://www\.google(\.[A-z]{2,3})?(\.com)?(\.[A-z]{2,3})?/(search\?|webhp\?|#q)(.*)$')
     extract_parameters_re = re.compile(r'(.+?)=(.+)')
     qdr_re = re.compile(r'(s|n|h|d|w|m|y)(\d{0,9})')
     tbs_qdr_re = re.compile(r'qdr:(s|n|h|d|w|m|y)(\d{0,9})')
     tbs_cd_re = re.compile(r'cd_min:(\d{1,2}/\d{1,2}/\d{2,4}),cd_max:(\d{1,2}/\d{1,2}/\d{2,4})')
     global parsedItems
+    parsedItems = 0
 
     time_abbr = {u's': u'second', u'n': u'minute', u'h': u'hour', u'd': u'day', 
                  u'w': u'week', u'm': u'month', u'y': u'year'}
 
-    for item in target_browser.parsed_artifacts:
+    for item in analysis_session.parsed_artifacts:
         if item.row_type.startswith(artifactTypes):
             m = re.search(google_re, item.url)
             if m:
