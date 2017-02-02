@@ -31,7 +31,7 @@
                     <option value="US/Pacific" selected="selected">Pacific [-8/-7]</option>
                     <option value="America/Anchorage">Alaska [-9/-8]</option>
                     <option value="Pacific/Honolulu">Hawaii [-10]</option>
-                    <option value="Pacific/Midway" disabled>Midway [-11]</option>
+                    <option value="Pacific/Midway">Midway [-11]</option>
                 </select>
             </td>
         </tr>
