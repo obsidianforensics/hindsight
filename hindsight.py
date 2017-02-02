@@ -853,7 +853,7 @@ class WebBrowser(object):
                 db = sqlite3.connect(database_path)
                 cursor = db.cursor()
             except sqlite3.OperationalError:
-                print "not a db"
+                print "Not a database"
 
             # Find the names of each table in the db
             try:
@@ -882,6 +882,7 @@ class WebBrowser(object):
 class CacheAddressError(Exception):
     def __init__(self, value):
         self.value = value
+
     def __str__(self):
         return repr(self.value)
 
