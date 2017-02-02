@@ -59,11 +59,12 @@ __email__ = "ryan@obsidianforensics.com"
 
 
 class AnalysisSession(object):
-    def __init__(self, profile_path=None, browser_type=None, available_input_types=None, version=None, display_version=None,
+    def __init__(self, profile_path=None, cache_path=None, browser_type=None, available_input_types=None, version=None, display_version=None,
                  output_name=None, log_path=None, timezone=None, available_output_formats=None,
                  selected_output_format=None, available_decrypts=None, selected_decrypts=None, parsed_artifacts=None, artifacts_display=None,
                  artifacts_counts=None, selected_plugins=None, plugin_results=None, hindsight_version=None):
         self.profile_path = profile_path
+        self.cache_path = cache_path
         self.browser_type = browser_type
         self.available_input_types = available_input_types
         self.version = version
@@ -162,7 +163,8 @@ class AnalysisSession(object):
         logging.info("Starting analysis")
 
         if self.browser_type == "Chrome":
-            browser_analysis = Chrome(self.profile_path, available_decrypts=self.available_decrypts, timezone=self.timezone)
+            browser_analysis = Chrome(self.profile_path, available_decrypts=self.available_decrypts,
+                                      cache_path=self.cache_path, timezone=self.timezone)
             browser_analysis.process()
             self.parsed_artifacts = browser_analysis.parsed_artifacts
             self.artifacts_counts = browser_analysis.artifacts_counts
@@ -808,10 +810,11 @@ class LoginItem(HistoryItem):
 
 
 class WebBrowser(object):
-    def __init__(self, profile_path, browser_name, version=None, display_version=None, timezone=None, structure=None,
+    def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None, timezone=None, structure=None,
                  parsed_artifacts=None, artifacts_counts=None, artifacts_display=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
+        self.cache_path = cache_path
         self.version = version
         self.display_version = display_version
         self.timezone = timezone
@@ -1228,13 +1231,16 @@ class CacheEntry(HistoryItem):
 
 
 class Chrome(WebBrowser):
-    def __init__(self, profile_path, browser_name=None, version=None, timezone=None, parsed_artifacts=None,
-                 installed_extensions=None, artifacts_counts=None, artifacts_display=None, available_decrypts=None):
+    def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
+                 parsed_artifacts=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
+                 available_decrypts=None):
         # TODO: try to fix this to use super()
-        WebBrowser.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None,
-                            artifacts_counts=None, artifacts_display=None)
+        WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
+                            parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
+                            artifacts_display=artifacts_display)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
+        self.cache_path = cache_path
         self.timezone = timezone
         self.installed_extensions = installed_extensions
         self.cached_key = None
@@ -2340,7 +2346,15 @@ class Chrome(WebBrowser):
             self.artifacts_display['Archived History'] = "Archived URL records"
             print self.format_processing_output(self.artifacts_display['Archived History'],
                                                 self.artifacts_counts['Archived History'])
-        if 'Cache' in input_listing:
+
+        if self.cache_path is not None:
+            c_path, c_dir = os.path.split(self.cache_path)
+            self.get_cache(c_path, c_dir, row_type=u'cache')
+            self.artifacts_display['Cache'] = "Cache records"
+            print self.format_processing_output(self.artifacts_display['Cache'],
+                                                self.artifacts_counts['Cache'])
+
+        elif 'Cache' in input_listing:
             self.get_cache(self.profile_path, 'Cache', row_type=u'cache')
             self.artifacts_display['Cache'] = "Cache records"
             print self.format_processing_output(self.artifacts_display['Cache'],

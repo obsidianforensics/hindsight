@@ -33,6 +33,17 @@
                                 return false;
                             }
                         }
+
+                        function cacheInput() {
+                            var x = document.forms["run"]["cache_path"].value;
+                            if (x == null || x == "" || x == "(optional - only needed if outside of the profile path)") {
+                                document.forms["run"]["cache_path"].value = ""
+                                document.forms["run"]["cache_path"].style.color = "black";
+                                document.forms["run"]["cache_path"].style.backgroundColor = "white";
+                                return false;
+                            }
+                        }
+
                         </script>
 
                         <div class="header-box">Inputs</div>
@@ -46,10 +57,19 @@
                                         <option value="Brave">Brave</option>
                                     </select>
                                 </td>
-                                <td>
+                                <td style="text-align: right;">
                                     % example_path = "C:\\Path\\To\\Input\\Data"
                                     % zexample_path = "Data"
-                                    &nbsp&nbsp <b>Input Path:</b> <input class="input-path" name="profile_path" type="text" onfocus=inputDefaults() size=60 value='C:\Path\To\Input\Data'/>
+                                    &nbsp&nbsp <b>Profile Path:</b> <input class="input-path" name="profile_path" type="text" onfocus=inputDefaults() size=60 value='C:\Path\To\Input\Data'/>&nbsp&nbsp&nbsp
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="input-option">
+                                </td>
+                                <td style="text-align: right;">
+                                    % example_path = "C:\\Path\\To\\Input\\Data"
+                                    % zexample_path = "Data"
+                                    &nbsp&nbsp <b>Cache Path:</b> <input class="input-path" name="cache_path" type="text" onfocus=cacheInput() size=60 value='(optional - only needed if outside of the profile path)'/>&nbsp&nbsp&nbsp
                                 </td>
                             </tr>
                             <tr id="description-Chrome">
