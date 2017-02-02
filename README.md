@@ -1,4 +1,4 @@
-hindsight
+<img src="./static/h.png" height="100px"/> Hindsight
 =========
 
 Internet history forensics for Google Chrome/Chromium
