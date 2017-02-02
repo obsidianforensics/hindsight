@@ -21,10 +21,10 @@ Command Line Options:
 | -h or --help   | Shows these options and the default Chrome data locations |
 | -t or --timezone | Display timezone for the timestamps in XLSX output |
 
-The Chrome data folder default locations are:
-* WinXP:   \[userdir\]\Local Settings\Application Data\Google\Chrome\User Data\Default\
-* Vista/7/8: \[userdir\]\AppData\Local\Google\Chrome\User Data\Default\
-* Linux:   \[userdir\]/.config/google-chrome/Default/
-* OS X:    \[userdir\]/Library/Application Support/Google/Chrome/Default/
-* iOS:   \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome\Default\
+The Chrome profile folder default locations are:
+* WinXP:   \[userdir\]\Local Settings\Application Data\Google\Chrome\User Data\Default
+* Vista/7/8: \[userdir\]\AppData\Local\Google\Chrome\User Data\Default
+* Linux:   \[userdir\]/.config/google-chrome/Default
+* OS X:    \[userdir\]/Library/Application Support/Google/Chrome/Default
+* iOS:   \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome\Default
 * Android: /userdata/data/com.android.chrome/app_chrome/Default
