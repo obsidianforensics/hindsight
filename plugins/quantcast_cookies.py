@@ -7,8 +7,6 @@
 #
 ###################################################################################################
 
-import re
-
 # Config
 friendlyName = "Quantcast Cookie Parser"
 description = "Parses Quantcast cookies"
@@ -16,20 +14,26 @@ artifactTypes = ["cookie (created)", "cookie (accessed)"]
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20140813"
+version = "20160907"
 parsedItems = 0
 
 
-def plugin(target_browser):
+def plugin(analysis_session=None):
+    import hindsight
+    import re
+    if analysis_session is None:
+        return
+
     timestamp_re = re.compile(r'^(P0)-(\d+)-(\d{10,13})$')
     global parsedItems
+    parsedItems = 0
 
-    for item in target_browser.parsed_artifacts:
+    for item in analysis_session.parsed_artifacts:
         if item.row_type in artifactTypes:
             if item.name == u'__qca':
                 m = re.search(timestamp_re, item.value)
                 if m:
-                    item.interpretation = target_browser.friendly_date(int(m.group(3))) \
+                    item.interpretation = hindsight.friendly_date(int(m.group(3))) \
                                           + u' [Quantcast Cookie Timestamp]'
                     parsedItems += 1
 

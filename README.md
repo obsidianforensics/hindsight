@@ -1,11 +1,19 @@
-hindsight
+<img src="./static/h.png" height="100px"/> Hindsight
 =========
 
 Internet history forensics for Google Chrome/Chromium
 
-Hindsight is a free tool for analyzing the browsing history of the Google Chrome web browser.  It can collect a number of different types of Chrome artifacts, including URLs, download history, bookmarks, autofill records, HTTP cookies, and Local Storage records (HTML5 cookies).  Once the data is extracted from each file, it is correlated with data from other history files and placed in a timeline.
+Hindsight is a free tool for analyzing web artifacts. It started with the browsing history of the Google Chrome web browser and has expanded to support other Chromium-based applications (with more to come!). Hindsight can parse a number of different types of web artifacts, including URLs, download history, cache records, bookmarks, autofill records, preferences, browser extensions, HTTP cookies, and Local Storage records (HTML5 cookies). Once the data is extracted from each file, it is correlated with data from other history files and placed in a timeline.
 
-There is a user guide in the documentation folder that covers many topics, but the info below should get you started:
+It has a simple web UI - to start it, run "hindsight_gui.py" and visit http://localhost:8080 in a browser:  
+
+<img src="documentation/interface.png"/>
+
+The only field you are required to complete is "Profile Path". This is the location of the Chrome profile you want to analyze (the default profile paths for different OSes is listed at the bottom of this page). Click "Run" and you'll be taken to the results page in where you can save the results to a spreadsheet (or other formats). 
+
+## Command Line
+
+There also is command line version of Hindsight - hindsight.py or hindsight.exe. The user guide in the documentation folder covers many topics, but the info below should get you started with the command line version:
 
 Example usage:  \> C:\\hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
 
@@ -21,10 +29,18 @@ Command Line Options:
 | -h or --help   | Shows these options and the default Chrome data locations |
 | -t or --timezone | Display timezone for the timestamps in XLSX output |
 
-The Chrome data folder default locations are:
-* WinXP:   \[userdir\]\Local Settings\Application Data\Google\Chrome\User Data\Default\
-* Vista/7/8: \[userdir\]\AppData\Local\Google\Chrome\User Data\Default\
-* Linux:   \[userdir\]/.config/google-chrome/Default/
-* OS X:    \[userdir\]/Library/Application Support/Google/Chrome/Default/
-* iOS:   \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome\Default\
+## Default Profile Paths
+
+The Chrome default profile folder default locations are:
+* WinXP:   \[userdir\]\Local Settings\Application Data\Google\Chrome\User Data\Default
+* Vista/7/8: \[userdir\]\AppData\Local\Google\Chrome\User Data\Default
+* Linux:   \[userdir\]/.config/google-chrome/Default
+* OS X:    \[userdir\]/Library/Application Support/Google/Chrome/Default
+* iOS:   \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome\Default
 * Android: /userdata/data/com.android.chrome/app_chrome/Default
+
+## Feature Requests
+
+Please visit [FeatHub](http://feathub.com/obsidianforensics/hindsight) to request new features or vote on existing requests. 
+
+[![Feature Requests](http://feathub.com/obsidianforensics/hindsight?format=svg)](http://feathub.com/obsidianforensics/hindsight)

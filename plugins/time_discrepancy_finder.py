@@ -14,7 +14,7 @@
 #
 ###################################################################################################
 
-import re
+
 
 # Config
 friendlyName = "Time Discrepancy Finder"
@@ -23,13 +23,20 @@ artifactTypes = ("cookie (created)", "url")
 remoteLookups = 0
 browser = "any"
 browserVersion = 1
-version = "20160707"
+version = "20170129"
 parsedItems = 0
 
 
-def plugin(target_browser):
+def plugin(analysis_session=None):
+    import hindsight
+    import pytz
+    import re
+    if analysis_session is None:
+        return
 
     global parsedItems
+    parsedItems = 0
+
     cookie_set = [
         # website                   # cookie name            # regex for timestamp
         {'.pubmatic.com/':          {'name': '_curtime',     'regex': r'(\d{10})'}},
@@ -64,7 +71,7 @@ def plugin(target_browser):
         r'google\..*&n=(\d{13})'
     ]
 
-    for item in target_browser.parsed_artifacts:
+    for item in analysis_session.parsed_artifacts:
         if item.row_type.startswith(artifactTypes):
             if item.row_type == u'cookie (created)':
                 for site in cookie_set:
@@ -72,7 +79,7 @@ def plugin(target_browser):
                         if site[site.keys()[0]]['name'] == item.name:
                             m = re.search(site[site.keys()[0]]['regex'], item.value)
                             if m:
-                                server = target_browser.to_datetime(m.group(1))
+                                server = hindsight.to_datetime(m.group(1), pytz.utc)
                                 local = item.timestamp
                                 delta = abs(server - local)
                                 item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
@@ -82,7 +89,7 @@ def plugin(target_browser):
                 for site in url_set:
                     m = re.search(site, item.url)
                     if m:
-                        server = target_browser.to_datetime(m.group(1))
+                        server = hindsight.to_datetime(m.group(1), pytz.utc)
                         local = item.timestamp
                         delta = abs(server - local)
                         item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \

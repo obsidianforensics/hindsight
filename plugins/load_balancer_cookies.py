@@ -17,59 +17,57 @@
 #
 ###################################################################################################
 
-import re
-import struct
-from string import maketrans
-
 # Config
-friendlyName = "Load Balancer Cookie Decoder"
-description = "Decodes persistence cookies set by load balancers"
+friendlyName = u"Load Balancer Cookie Decoder"
+description = u"Decodes persistence cookies set by load balancers"
 artifactTypes = (u'cookie',)  # Artifacts that this plugin processes
 remoteLookups = 0  # if this plugin will query online sources/databases
 browser = []  # browsers that the plugin applies to; empty list if no restrictions
 browserVersion = []  # browser versions that the plugin applies to; empty list if no restrictions
-version = "20160621"  # version of the plugin (use the date)
+version = u"20160621"  # version of the plugin (use the date)
 parsedItems = 0  # count of items that the plugin parsed; initialized to 0
 
 
-def nsc_decode_service_name(service_name):
-    """Decrypts the Caesar Substitution Cipher Encryption used on the NetScaler Cookie Name"""
-    # This decrypts the Caesar Substitution Cipher Encryption used on the NetScaler Cookie Name
-    service_name_s = str(service_name)
-    trans = maketrans('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
-                      'zabcdefghijklmnopqrstuvwxyZABCDEFGHIJKLMNOPQRSTUVWXY')
-    real_name = service_name_s.translate(trans)
-    return real_name
+def plugin(analysis_session=None):
+    import re
+    import struct
+    from string import maketrans
+    if analysis_session is None:
+        return
 
+    def nsc_decode_service_name(service_name):
+        """Decrypts the Caesar Substitution Cipher Encryption used on the NetScaler Cookie Name"""
+        # This decrypts the Caesar Substitution Cipher Encryption used on the NetScaler Cookie Name
+        service_name_s = str(service_name)
+        trans = maketrans('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+                          'zabcdefghijklmnopqrstuvwxyZABCDEFGHIJKLMNOPQRSTUVWXY')
+        real_name = service_name_s.translate(trans)
+        return real_name
 
-def nsc_decode_server_ip(server_ip):
-    """Decrypts the XOR encryption used for the NetScaler Server IP"""
-    ip_key = 0x03081e11
-    decoded_ip = hex(server_ip ^ ip_key)
-    t = decoded_ip[2:10].zfill(8)
-    real_ip = '.'.join(str(int(i, 16)) for i in([t[i:i+2] for i in range(0, len(t), 2)]))
-    return real_ip
+    def nsc_decode_server_ip(server_ip):
+        """Decrypts the XOR encryption used for the NetScaler Server IP"""
+        ip_key = 0x03081e11
+        decoded_ip = hex(server_ip ^ ip_key)
+        t = decoded_ip[2:10].zfill(8)
+        real_ip = '.'.join(str(int(i, 16)) for i in ([t[i:i + 2] for i in range(0, len(t), 2)]))
+        return real_ip
 
+    def nsc_decode_server_port(server_port):
+        """Decrypts the XOR encryption used on the NetScaler Server Port"""
+        port_key = 0x3630
+        decoded_port = server_port ^ port_key  # No need to convert to hex since an integer will do for port
+        real_port = str(decoded_port)
+        return real_port
 
-def nsc_decode_server_port(server_port):
-    """Decrypts the XOR encryption used on the NetScaler Server Port"""
-    port_key = 0x3630
-    decoded_port = server_port ^ port_key  # No need to convert to hex since an integer will do for port
-    real_port = str(decoded_port)
-    return real_port
+    def big_ip_decode_cookie(encoded_string):
+        (host, port, end) = encoded_string.split('.')
 
+        # Hexadecimal details:
+        (a, b, c, d) = [ord(i) for i in struct.pack("<I", int(host))]
+        (v) = [ord(j) for j in struct.pack("<H", int(port))]
+        p = "0x%02X%02X" % (v[0], v[1])
+        return "{}.{}.{}.{}".format(a, b, c, d), int(p, 16)
 
-def big_ip_decode_cookie(encoded_string):
-    (host, port, end) = encoded_string.split('.')
-
-    # Hexadecimal details:
-    (a, b, c, d) = [ord(i) for i in struct.pack("<I", int(host))]
-    (v) = [ord(j) for j in struct.pack("<H", int(port))]
-    p = "0x%02X%02X" % (v[0],v[1])
-    return "{}.{}.{}.{}".format(a,b,c,d), int(p,16)
-
-
-def plugin(target_browser):
     # NetScaler regexes
     nsc_cookie_name_re = re.compile(r'^NSC_([a-zA-Z0-9\-_\.\*\+]*)')
     nsc_cookie_value_re = re.compile(r'[0-9a-f]{8}([0-9a-f]{8}).{24}([0-9a-f]{4})$')
@@ -79,9 +77,10 @@ def plugin(target_browser):
 
     # Setting up our return variable
     global parsedItems
+    parsedItems = 0
 
     # For each item that Hindsight has parsed,
-    for item in target_browser.parsed_artifacts:
+    for item in analysis_session.parsed_artifacts:
         # if the row if of a supported type for this plugin, and
         if item.row_type.startswith(artifactTypes):
             # if there isn't already an interpretation,

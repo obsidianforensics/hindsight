@@ -10,31 +10,36 @@
 #
 ###################################################################################################
 
-import re
-import urllib
 
 # Config
 friendlyName = "Google Analytics Cookie Parser"
 description = "Parses Google Analytics cookies"
-artifactTypes = (u'cookie (created)', u'cookie (accessed)')
+artifactTypes = u'cookie'
 remoteLookups = 0
-browser = "Chrome"
+browser = "all"
 browserVersion = 1
-version = "20140813"
+version = "20170130"
 parsedItems = 0
 
 
-def plugin(target_browser):
-    utma_re = re.compile(r'(\d+)\.(\d+)\.(\d{10})\.(\d{10})\.(\d{10})\.(\d+)')  #
+def plugin(analysis_session=None):
+    import hindsight
+    import re
+    import urllib
+
+    utma_re = re.compile(r'(\d+)\.(\d+)\.(\d{10})\.(\d{10})\.(\d{10})\.(\d+)')
     utmb_re = re.compile(r'(\d+)\.(\d+)\.\d+\.(\d{10})')
     utmc_re = re.compile(r'(\d+)')
     utmv_re = re.compile(r'(\d+)\.\|?(.*)')
     utmz_re = re.compile(r'(\d+)\.(\d{10})\.(\d+)\.(\d+)')
     utmz_parameters_re = re.compile(r'(\d+)\.(\d{10})\.(\d+)\.(\d+)\.(.*)')
     utmz_extract_parameters_re = re.compile(r'(.+?)=(.+)')
-    global parsedItems
+    ga_re = re.compile(r'GA1\.\d+\.(\d+)\.(\d{10})$')
 
-    for item in target_browser.parsed_artifacts:
+    global parsedItems
+    parsedItems = 0
+
+    for item in analysis_session.parsed_artifacts:
         if item.row_type.startswith(artifactTypes):
             if item.name == u'__utma':
                 # TODO: consider adding in extra rows for each timestamp in cookie?
@@ -43,8 +48,8 @@ def plugin(target_browser):
                     item.interpretation = u'Domain Hash: {} | Unique Visitor ID: {} | First Visit: {} | ' \
                                           u'Previous Visit: {} | Last Visit: {} | Number of Sessions: {} | ' \
                                           u'[Google Analytics Cookie]'\
-                        .format(m.group(1), m.group(2), target_browser.friendly_date(m.group(3)),
-                                target_browser.friendly_date(m.group(4)), target_browser.friendly_date(m.group(5)), 
+                        .format(m.group(1), m.group(2), hindsight.friendly_date(m.group(3)),
+                                hindsight.friendly_date(m.group(4)), hindsight.friendly_date(m.group(5)),
                                 m.group(6))
                     parsedItems += 1
             if item.name == u'__utmb':
@@ -52,7 +57,7 @@ def plugin(target_browser):
                 if m:
                     item.interpretation = u'Domain Hash: {} | Pages Viewed: {} | Last Visit: {} | ' \
                                           u'[Google Analytics Cookie]' \
-                                          .format(m.group(1), m.group(2), target_browser.friendly_date(m.group(3)))
+                                          .format(m.group(1), m.group(2), hindsight.friendly_date(m.group(3)))
                     parsedItems += 1
             if item.name == u'__utmc':
                 m = re.search(utmc_re, item.value)
@@ -69,7 +74,7 @@ def plugin(target_browser):
                 m = re.search(utmz_re, item.value)
                 if m:
                     derived = u'Domain Hash: {} | Last Visit: {} | Sessions: {} | Sources: {} | ' \
-                              .format(m.group(1), target_browser.friendly_date(m.group(2)), m.group(3), m.group(4))
+                              .format(m.group(1), hindsight.friendly_date(m.group(2)), m.group(3), m.group(4))
                     parsedItems += 1
                     p = re.search(utmz_parameters_re, item.value)
 
@@ -122,6 +127,12 @@ def plugin(target_browser):
 
                     derived += u'[Google Analytics Cookie] '
                     item.interpretation = derived
+            if item.name == u'_ga':
+                m = re.search(ga_re, item.value)
+                if m:
+                    item.interpretation = u'Client ID: {}.{} | First Visit: {} | [Google Analytics Cookie]' \
+                        .format(m.group(1), m.group(2), hindsight.friendly_date(m.group(2)))
+                    parsedItems += 1
 
     # Description of what the plugin did
     return u'{} cookies parsed'.format(parsedItems)
