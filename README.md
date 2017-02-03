@@ -41,4 +41,6 @@ The Chrome default profile folder default locations are:
 
 ## Feature Requests
 
+Please visit [FeatHub](http://feathub.com/obsidianforensics/hindsight) to request new features or vote on existing requests. 
+
 [![Feature Requests](http://feathub.com/obsidianforensics/hindsight?format=svg)](http://feathub.com/obsidianforensics/hindsight)
