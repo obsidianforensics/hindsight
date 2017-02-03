@@ -11,6 +11,8 @@ It has a simple web UI - to start it, run "hindsight_gui.py" and visit http://lo
 
 The only field you are required to complete is "Profile Path". This is the location of the Chrome profile you want to analyze (the default profile paths for different OSes is listed at the bottom of this page). Click "Run" and you'll be taken to the results page in where you can save the results to a spreadsheet (or other formats). 
 
+## Command Line
+
 There also is command line version of Hindsight - hindsight.py or hindsight.exe. The user guide in the documentation folder covers many topics, but the info below should get you started with the command line version:
 
 Example usage:  \> C:\\hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
@@ -27,6 +29,8 @@ Command Line Options:
 | -h or --help   | Shows these options and the default Chrome data locations |
 | -t or --timezone | Display timezone for the timestamps in XLSX output |
 
+## Default Profile Paths
+
 The Chrome default profile folder default locations are:
 * WinXP:   \[userdir\]\Local Settings\Application Data\Google\Chrome\User Data\Default
 * Vista/7/8: \[userdir\]\AppData\Local\Google\Chrome\User Data\Default
@@ -34,3 +38,7 @@ The Chrome default profile folder default locations are:
 * OS X:    \[userdir\]/Library/Application Support/Google/Chrome/Default
 * iOS:   \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome\Default
 * Android: /userdata/data/com.android.chrome/app_chrome/Default
+
+## Feature Requests
+
+[![Feature Requests](http://feathub.com/obsidianforensics/hindsight?format=svg)](http://feathub.com/obsidianforensics/hindsight)
