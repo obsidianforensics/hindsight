@@ -2696,6 +2696,8 @@ The Chrome data folder default locations are:
                              'buggy and enabling this may cause problems. Only use "--decrypt linux" on data from a '
                              'Linux system, and only use "--decrypt mac" when running Hindsight on the same Mac the '
                              'Chrome data is from.')
+    parser.add_argument('-c', '--cache', help='Path to the cache directory; only needed if the directory is outside '
+                                              'the given "input" directory. Mac systems are setup this way by default.')
 
     args = parser.parse_args()
 
@@ -2857,6 +2859,10 @@ def main():
     analysis_session.profile_path = args.input
     if args.output:
         analysis_session.output_name = args.output
+
+    if args.cache:
+        analysis_session.cache_path = args.cache
+
     analysis_session.selected_output_format = args.format
     analysis_session.browser_type = args.browser_type
     analysis_session.timezone = args.timezone
