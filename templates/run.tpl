@@ -9,6 +9,20 @@
                     document.forms["run"]["profile_path"].style.backgroundColor = "#81d742";
                     return false;
                 }
+                var y = document.forms["run"]["cache_path"].value;
+                if (y == null || y == "" || y == "(optional - only needed if outside of the profile path)") {
+                    document.forms["run"]["cache_path"].value = null
+                }
+            }
+
+            function cacheInput() {
+                var x = document.forms["run"]["cache_path"].value;
+                if (x == null || x == "" || x == "(optional - only needed if outside of the profile path)") {
+                    document.forms["run"]["cache_path"].value = ""
+                    document.forms["run"]["cache_path"].style.color = "black";
+                    document.forms["run"]["cache_path"].style.backgroundColor = "white";
+                    return false;
+                }
             }
         </script>
         <form action="/run" name="run" method="post" onsubmit="return validateForm();">

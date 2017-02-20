@@ -58,8 +58,6 @@
                                     </select>
                                 </td>
                                 <td style="text-align: right;">
-                                    % example_path = "C:\\Path\\To\\Input\\Data"
-                                    % zexample_path = "Data"
                                     &nbsp&nbsp <b>Profile Path:</b> <input class="input-path" name="profile_path" type="text" onfocus=inputDefaults() size=60 value='C:\Path\To\Input\Data'/>&nbsp&nbsp&nbsp
                                 </td>
                             </tr>
@@ -67,8 +65,6 @@
                                 <td class="input-option">
                                 </td>
                                 <td style="text-align: right;">
-                                    % example_path = "C:\\Path\\To\\Input\\Data"
-                                    % zexample_path = "Data"
                                     &nbsp&nbsp <b>Cache Path:</b> <input class="input-path" name="cache_path" type="text" onfocus=cacheInput() size=60 value='(optional - only needed if outside of the profile path)'/>&nbsp&nbsp&nbsp
                                 </td>
                             </tr>

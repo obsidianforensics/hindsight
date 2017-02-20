@@ -15,7 +15,6 @@
 ###################################################################################################
 
 
-
 # Config
 friendlyName = "Time Discrepancy Finder"
 description = "Attempts to find discrepancies between server-side and local timestamps"
@@ -85,6 +84,7 @@ def plugin(analysis_session=None):
                                 item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
                                                       u'Difference: {} [Time Discrepancy]'.format(server, local, delta)
                                 parsedItems += 1
+
             elif item.row_type == u'url' or item.row_type == u'url (archived)':
                 for site in url_set:
                     m = re.search(site, item.url)

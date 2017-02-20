@@ -54,7 +54,7 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "2.0b1"
+__version__ = "2.0b2"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -182,7 +182,7 @@ class AnalysisSession(object):
                     pass
 
         elif self.browser_type == "Brave":
-            browser_analysis = Brave(self.profile_path)
+            browser_analysis = Brave(self.profile_path, timezone=self.timezone)
             browser_analysis.process()
             self.parsed_artifacts = browser_analysis.parsed_artifacts
             self.artifacts_counts = browser_analysis.artifacts_counts
@@ -241,6 +241,7 @@ class AnalysisSession(object):
         gray_url_format = workbook.add_format({'font_color': 'gray', 'align': 'left'})
         gray_field_format = workbook.add_format({'font_color': 'gray', 'align': 'left'})
         gray_value_format = workbook.add_format({'font_color': 'gray', 'align': 'left', 'num_format': '0'})
+        gray_wrap_format = workbook.add_format({'font_color': 'gray', 'align': 'left', 'text_wrap': True})
         red_type_format = workbook.add_format({'font_color': 'red', 'align': 'left'})
         red_date_format = workbook.add_format({'font_color': 'red', 'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
         red_url_format = workbook.add_format({'font_color': 'red', 'align': 'left'})
@@ -256,7 +257,7 @@ class AnalysisSession(object):
         w.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
         w.merge_range('H1:L1', 'URL Specific', center_header_format)
         w.merge_range('M1:P1', 'Download Specific', center_header_format)
-        w.merge_range('Q1:S1', 'Cache Specific', center_header_format)
+        w.merge_range('Q1:T1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, "Type", header_format)
@@ -278,6 +279,7 @@ class AnalysisSession(object):
         w.write(1, 16, "Last Modified", header_format)
         w.write(1, 17, "Server Name", header_format)
         w.write(1, 18, "Data Location [Offset]", header_format)
+        w.write(1, 19, "All HTTP Headers", header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -302,112 +304,121 @@ class AnalysisSession(object):
         # Cache Specific
         w.set_column('R:R', 18)  # Server Name
         w.set_column('S:S', 27)  # Data Location
+        w.set_column('T:T', 27)  # HTTP Headers
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
         for item in self.parsed_artifacts:
-            if item.row_type[:3] == "url":
-                w.write_string(row_number, 0, item.row_type, black_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), black_date_format)  # date
-                w.write_string(row_number, 2, item.url, black_url_format)  # URL
-                w.write_string(row_number, 3, item.name, black_field_format)  # Title
-                w.write(row_number, 4, "", black_value_format)  # Indexed Content
-                w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
-                w.write(row_number, 6, item.visit_source, black_type_format)  # Source
-                w.write(row_number, 7, item.visit_duration, black_flag_format)  # Duration
-                w.write(row_number, 8, item.visit_count, black_flag_format)  # Visit Count
-                w.write(row_number, 9, item.typed_count, black_flag_format)  # Typed Count
-                w.write(row_number, 10, item.hidden, black_flag_format)  # Hidden
-                w.write(row_number, 11, item.transition_friendly, black_trans_format)  # Transition
+            try:
+                if item.row_type[:3] == "url":
+                    w.write_string(row_number, 0, item.row_type, black_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), black_date_format)  # date
+                    w.write_string(row_number, 2, item.url, black_url_format)  # URL
+                    w.write_string(row_number, 3, item.name, black_field_format)  # Title
+                    w.write(row_number, 4, "", black_value_format)  # Indexed Content
+                    w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
+                    w.write(row_number, 6, item.visit_source, black_type_format)  # Source
+                    w.write(row_number, 7, item.visit_duration, black_flag_format)  # Duration
+                    w.write(row_number, 8, item.visit_count, black_flag_format)  # Visit Count
+                    w.write(row_number, 9, item.typed_count, black_flag_format)  # Typed Count
+                    w.write(row_number, 10, item.hidden, black_flag_format)  # Hidden
+                    w.write(row_number, 11, item.transition_friendly, black_trans_format)  # Transition
 
-            elif item.row_type[:8] == "autofill":
-                w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
-                w.write_string(row_number, 3, item.name, red_field_format)  # autofill field
-                w.write_string(row_number, 4, item.value, red_value_format)  # autofill value
-                w.write_string(row_number, 6, " ", red_type_format)  # blank
+                elif item.row_type[:8] == "autofill":
+                    w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
+                    w.write_string(row_number, 3, item.name, red_field_format)  # autofill field
+                    w.write_string(row_number, 4, item.value, red_value_format)  # autofill value
+                    w.write_string(row_number, 6, " ", red_type_format)  # blank
 
-            elif item.row_type[:8] == "download":
-                w.write_string(row_number, 0, item.row_type, green_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), green_date_format)  # date
-                w.write_string(row_number, 2, item.url, green_url_format)  # download URL
-                w.write_string(row_number, 3, item.status_friendly, green_field_format)  # % complete
-                w.write_string(row_number, 4, item.value, green_value_format)  # download path
-                w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
-                w.write(row_number, 6, "", green_type_format)  # Safe Browsing
-                w.write(row_number, 12, item.interrupt_reason_friendly, green_value_format)  # download path
-                w.write(row_number, 13, item.danger_type_friendly, green_value_format)  # download path
-                open_friendly = ""
-                if item.opened == 1:
-                    open_friendly = u"Yes"
-                elif item.opened == 0:
-                    open_friendly = u"No"
-                w.write_string(row_number, 14, open_friendly, green_value_format)  # opened
-                w.write(row_number, 15, item.etag, green_value_format)  # ETag
-                w.write(row_number, 16, item.last_modified, green_value_format)  # Last Modified
+                elif item.row_type[:8] == "download":
+                    w.write_string(row_number, 0, item.row_type, green_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), green_date_format)  # date
+                    w.write_string(row_number, 2, item.url, green_url_format)  # download URL
+                    w.write_string(row_number, 3, item.status_friendly, green_field_format)  # % complete
+                    w.write_string(row_number, 4, item.value, green_value_format)  # download path
+                    w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
+                    w.write(row_number, 6, "", green_type_format)  # Safe Browsing
+                    w.write(row_number, 12, item.interrupt_reason_friendly, green_value_format)  # download path
+                    w.write(row_number, 13, item.danger_type_friendly, green_value_format)  # download path
+                    open_friendly = ""
+                    if item.opened == 1:
+                        open_friendly = u"Yes"
+                    elif item.opened == 0:
+                        open_friendly = u"No"
+                    w.write_string(row_number, 14, open_friendly, green_value_format)  # opened
+                    w.write(row_number, 15, item.etag, green_value_format)  # ETag
+                    w.write(row_number, 16, item.last_modified, green_value_format)  # Last Modified
 
-            elif item.row_type[:15] == "bookmark folder":
-                w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
-                w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
-                w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
+                elif item.row_type[:15] == "bookmark folder":
+                    w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
+                    w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
+                    w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
 
-            elif item.row_type[:8] == "bookmark":
-                w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
-                w.write_string(row_number, 2, item.url, red_url_format)  # URL
-                w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
-                w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
+                elif item.row_type[:8] == "bookmark":
+                    w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
+                    w.write_string(row_number, 2, item.url, red_url_format)  # URL
+                    w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
+                    w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
 
-            elif item.row_type[:6] == "cookie":
-                w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
-                w.write_string(row_number, 2, item.url, gray_url_format)  # URL
-                w.write_string(row_number, 3, item.name, gray_field_format)  # cookie name
-                w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
-                w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
-
-            elif item.row_type[:5] == "cache":
-                w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
-                try:
+                elif item.row_type[:6] == "cookie":
+                    w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
                     w.write_string(row_number, 2, item.url, gray_url_format)  # URL
-                except Exception, e:
-                    print e, item.url, item.location
-                w.write_string(row_number, 3, str(item.name), gray_field_format)  # cached status // Normal (data cached)
-                # try:
-                #     w.write_string(row_number, 3, item.http_headers, gray_field_format)  # cookie name
-                # except Exception, e:
-                #     print e
-                w.write_string(row_number, 4, item.value, gray_value_format)  # content-type (size) // image/jpeg (2035 bytes)
-                w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
-                w.write(row_number, 15, item.etag, gray_value_format)  # ETag
-                w.write(row_number, 16, item.last_modified, gray_value_format)  # Last Modified
-                w.write(row_number, 17, item.server_name, gray_value_format)  # Server name
-                w.write(row_number, 18, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
+                    w.write_string(row_number, 3, item.name, gray_field_format)  # cookie name
+                    w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
+                    w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
 
-            elif item.row_type[:13] == "local storage":
-                w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
-                w.write_string(row_number, 2, item.url, gray_url_format)  # URL
-                w.write_string(row_number, 3, item.name, gray_field_format)  # cookie name
-                w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
-                w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
-                w.write_string(row_number, 6, " ", gray_type_format)  # blank
+                elif item.row_type[:5] == "cache":
+                    w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
+                    try:
+                        w.write_string(row_number, 2, item.url, gray_url_format)  # URL
+                    except Exception, e:
+                        print e, item.url, item.location
+                    w.write_string(row_number, 3, str(item.name), gray_field_format)  # cached status // Normal (data cached)
+                    w.write_string(row_number, 4, item.value, gray_value_format)  # content-type (size) // image/jpeg (2035 bytes)
+                    w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
+                    w.write(row_number, 15, item.etag, gray_value_format)  # ETag
+                    w.write(row_number, 16, item.last_modified, gray_value_format)  # Last Modified
+                    w.write(row_number, 17, item.server_name, gray_value_format)  # Server name
+                    w.write(row_number, 18, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
+                    header_str = ""
+                    if item.http_headers_dict:
+                        for key, value in item.http_headers_dict.iteritems():
+                            if key and value:
+                                header_str += u"{}: {}\n".format(key, value)
+                            elif key:
+                                header_str += u"{}\n".format(key)
+                    w.write(row_number, 19, header_str.rstrip(), gray_value_format)  # Cached data location // data_2 [1542523]
 
-            elif item.row_type[:5] == "login":
-                w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
-                w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
-                w.write_string(row_number, 2, item.url, red_url_format)  # URL
-                w.write_string(row_number, 3, item.name, red_field_format)  # form field name
-                w.write_string(row_number, 4, item.value, red_value_format)  # username or pw value
-                w.write_string(row_number, 6, " ", red_type_format)  # blank
+                elif item.row_type[:13] == "local storage":
+                    w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
+                    w.write_string(row_number, 2, item.url, gray_url_format)  # URL
+                    w.write_string(row_number, 3, item.name, gray_field_format)  # cookie name
+                    w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
+                    w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
+                    w.write_string(row_number, 6, " ", gray_type_format)  # blank
+
+                elif item.row_type[:5] == "login":
+                    w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
+                    w.write_string(row_number, 2, item.url, red_url_format)  # URL
+                    w.write_string(row_number, 3, item.name, red_field_format)  # form field name
+                    w.write_string(row_number, 4, item.value, red_value_format)  # username or pw value
+                    w.write_string(row_number, 6, " ", red_type_format)  # blank
+
+            except Exception, e:
+                logging.error("Failed to write row to XLSX: {}".format(e))
 
             row_number += 1
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
-        w.autofilter(1, 0, row_number, 16)  # Add autofilter
+        w.autofilter(1, 0, row_number, 19)  # Add autofilter
 
         for item in self.__dict__:
             try:
@@ -1112,6 +1123,7 @@ class CacheEntry(HistoryItem):
         super(CacheEntry, self).__init__(row_type, timestamp=None, name=None, value=None)
 
         self.httpHeader = None
+        self.http_headers_dict = None
         self.timezone = timezone
         block = open(os.path.join(address.path, address.fileSelector), 'rb')
 
@@ -1146,7 +1158,13 @@ class CacheEntry(HistoryItem):
         for data in self.data:
             if data.type == CacheData.HTTP_HEADER:
                 self.httpHeader = data
-                break
+                header_dict = data.__dict__['headers']
+                for header in header_dict:
+                    try:
+                        header_dict[header] = header_dict[header].decode('utf-8')
+                    except:
+                        pass
+                self.http_headers_dict = header_dict
 
         self.flags = struct.unpack('I', block.read(4))[0]
 
@@ -1186,18 +1204,19 @@ class CacheEntry(HistoryItem):
                 else:
                     self.location += "{} [{}]".format(_.address.fileSelector, _.offset)
 
-        if self.httpHeader is not None:
-            headers = self.httpHeader.__dict__['headers']
-            for header in headers:
-                try:
-                    headers[header] = headers[header].decode('utf-8')
-                except:
-                    pass
+        # if self.httpHeader is not None:
+        #     headers = self.httpHeader.__dict__['headers']
+        #     for header in headers:
+        #         try:
+        #             headers[header] = headers[header].decode('utf-8')
+        #         except:
+        #             pass
+        if self.http_headers_dict is not None:
             if self.state == 0:
-                self.value = "{} ({} bytes)".format(headers.get('content-type'), self.file_size)
-            self.server_name = headers.get('server')
-            self.etag = headers.get('etag')
-            self.last_modified = headers.get('last-modified')
+                self.value = "{} ({} bytes)".format(self.http_headers_dict.get('content-type'), self.file_size)
+            self.server_name = self.http_headers_dict.get('server')
+            self.etag = self.http_headers_dict.get('etag')
+            self.last_modified = self.http_headers_dict.get('last-modified')
 
     def keyToStr(self):
         """
@@ -1236,7 +1255,7 @@ class Chrome(WebBrowser):
                  available_decrypts=None):
         # TODO: try to fix this to use super()
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
-                            parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
+                            timezone=timezone, parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
                             artifacts_display=artifacts_display)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
@@ -2347,7 +2366,7 @@ class Chrome(WebBrowser):
             print self.format_processing_output(self.artifacts_display['Archived History'],
                                                 self.artifacts_counts['Archived History'])
 
-        if self.cache_path is not None:
+        if self.cache_path is not None and self.cache_path != '':
             c_path, c_dir = os.path.split(self.cache_path)
             self.get_cache(c_path, c_dir, row_type=u'cache')
             self.artifacts_display['Cache'] = "Cache records"
@@ -2433,8 +2452,8 @@ class Chrome(WebBrowser):
 
 
 class Brave(Chrome):
-    def __init__(self, profile_path):
-        Chrome.__init__(self, profile_path, browser_name=None, version=None, parsed_artifacts=None,
+    def __init__(self, profile_path, timezone=None):
+        Chrome.__init__(self, profile_path, browser_name=None, version=None, timezone=timezone, parsed_artifacts=None,
                         installed_extensions=None, artifacts_counts=None)
         self.browser_name = "Brave"
 
@@ -2590,32 +2609,36 @@ def to_epoch(timestamp):
 
 def to_datetime(timestamp, timezone=None):
     """Convert a variety of timestamp formats to a datetime object."""
-    if isinstance(timestamp, datetime.datetime):
-        return timestamp
+
     try:
-        timestamp = float(timestamp)
-    except:
-        timestamp = 0
-
-    if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
-        # Webkit
-        new_timestamp = datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
-    elif 1900000000000 > timestamp > 2000000000:  # 2030 > ts > 1970
-        # Epoch milliseconds
-        new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
-    elif 1900000000 > timestamp >= 0:  # 2030 > ts > 1970
-        # Epoch
-        new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp))
-    else:
-        new_timestamp = datetime.datetime.utcfromtimestamp(0)
-
-    if timezone is not None:
+        if isinstance(timestamp, datetime.datetime):
+            return timestamp
         try:
-            return new_timestamp.replace(tzinfo=pytz.utc).astimezone(timezone)
-        except NameError:
+            timestamp = float(timestamp)
+        except:
+            timestamp = 0
+
+        if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
+            # Webkit
+            new_timestamp = datetime.datetime.utcfromtimestamp((float(timestamp) / 1000000) - 11644473600)
+        elif 1900000000000 > timestamp > 2000000000:  # 2030 > ts > 1970
+            # Epoch milliseconds
+            new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp) / 1000)
+        elif 1900000000 > timestamp >= 0:  # 2030 > ts > 1970
+            # Epoch
+            new_timestamp = datetime.datetime.utcfromtimestamp(float(timestamp))
+        else:
+            new_timestamp = datetime.datetime.utcfromtimestamp(0)
+
+        if timezone is not None:
+            try:
+                return new_timestamp.replace(tzinfo=pytz.utc).astimezone(timezone)
+            except NameError:
+                return new_timestamp
+        else:
             return new_timestamp
-    else:
-        return new_timestamp
+    except Exception, e:
+        print e
 
 
 def friendly_date(timestamp):
