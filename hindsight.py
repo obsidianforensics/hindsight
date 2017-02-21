@@ -38,13 +38,13 @@ except ImportError:
     print "Couldn't import module 'keyring'; cookie decryption on Mac OS disabled.\n"
 # Linux / Mac OS
 try:
-    from Crypto.Cipher import AES
+    from Cryptodome.Cipher import AES
 except ImportError:
-    print "Couldn't import module 'AES from Crypto.Cipher'; cookie decryption on Mac OS / Linux disabled.\n"
+    print "Couldn't import module 'AES from Cryptodome.Cipher'; cookie decryption on Mac OS / Linux disabled.\n"
 try:
-    from Crypto.Protocol.KDF import PBKDF2
+    from Cryptodome.Protocol.KDF import PBKDF2
 except ImportError:
-    print "Couldn't import module 'PBKDF2 from Crypto.Protocol.KDF'; cookie decryption on OSX/Linux disabled.\n"
+    print "Couldn't import module 'PBKDF2 from Cryptodome.Protocol.KDF'; cookie decryption on OSX/Linux disabled.\n"
 
 # Try to import module for timezone support
 try:
@@ -118,13 +118,13 @@ class AnalysisSession(object):
             self.available_decrypts['mac'] = 1
 
         # Linux / Mac OS
-        if 'Crypto.Cipher.AES' in sys.modules:
+        if 'Cryptodome.Cipher.AES' in sys.modules:
             self.available_decrypts['linux'] = 1
         else:
             self.available_decrypts['linux'] = 0
             self.available_decrypts['mac'] = 0
 
-        if 'Crypto.Protocol.KDF' not in sys.modules:
+        if 'Cryptodome.Protocol.KDF' not in sys.modules:
             self.available_decrypts['linux'] = 0
             self.available_decrypts['mac'] = 0
 
@@ -2884,35 +2884,48 @@ def main():
     print("\n Running plugins:")
     logging.info("Plugins:")
 
-    plugin_path = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])), 'plugins')
-    sys.path.insert(0, plugin_path)
+    # Useful when Hindsight is run from a different directory than where the file is located
+    real_path = os.path.dirname(os.path.realpath(sys.argv[0]))
+    if real_path not in sys.path:
+        sys.path.insert(0, real_path)
 
-    # Get list of available plugins and run them
-    try:
-        plugin_listing = os.listdir(plugin_path)
+    # Loop through all paths, to pick up all potential locations for plugins
+    for potential_path in sys.path:
+        # If a subdirectory exists called 'plugins' at the current path, continue on
+        potential_plugin_path = os.path.join(potential_path, 'plugins')
+        if os.path.isdir(potential_plugin_path):
+            try:
+                # Insert the current plugin location to the system path, so we can import plugin modules by name
+                sys.path.insert(0, potential_plugin_path)
 
-        logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
-        for plugin in plugin_listing:
-            if plugin[-3:] == ".py":
-                plugin = plugin.replace(".py", "")
-                logging.debug("Loading '{}'".format(plugin))
-                try:
-                    module = __import__(plugin)
-                except ImportError, e:
-                    logging.error(" - Error: {}".format(e))
-                    print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
-                    continue
-                try:
-                    logging.info("Running '{}' plugin".format(module.friendlyName))
-                    parsed_items = module.plugin(analysis_session)
-                    print format_plugin_output(module.friendlyName, module.version, parsed_items)
-                    logging.info(" - Completed; {}".format(parsed_items))
-                except Exception, e:
-                    print format_plugin_output(module.friendlyName, module.version, 'failed')
-                    logging.info(" - Failed; {}".format(e))
-    except Exception as e:
-        logging.debug(' - Error loading plugins ({})'.format(e))
-        print '  - Error loading plugins'
+                # Get list of available plugins and run them
+                plugin_listing = os.listdir(potential_plugin_path)
+
+                logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
+                for plugin in plugin_listing:
+                    if plugin[-3:] == ".py":
+                        plugin = plugin.replace(".py", "")
+                        logging.debug("Loading '{}'".format(plugin))
+                        try:
+                            module = __import__(plugin)
+                        except ImportError, e:
+                            logging.error(" - Error: {}".format(e))
+                            print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+                            continue
+                        try:
+                            logging.info("Running '{}' plugin".format(module.friendlyName))
+                            parsed_items = module.plugin(analysis_session)
+                            print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                            logging.info(" - Completed; {}".format(parsed_items))
+                        except Exception, e:
+                            print format_plugin_output(module.friendlyName, module.version, 'failed')
+                            logging.info(" - Failed; {}".format(e))
+            except Exception as e:
+                logging.debug(' - Error loading plugins ({})'.format(e))
+                print '  - Error loading plugins'
+            finally:
+                # Remove the current plugin location from the system path, so we don't loop over it again
+                sys.path.remove(potential_plugin_path)
 
     # Check if output directory exists; attempt to create if it doesn't
     if os.path.dirname(analysis_session.output_name) != "" and not os.path.exists(os.path.dirname(analysis_session.output_name)):
