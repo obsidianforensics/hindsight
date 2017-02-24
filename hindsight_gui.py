@@ -3,50 +3,68 @@ import bottle
 import json
 import os
 import sys
+import webbrowser
 
 # This will be the main hindsight.AnalysisSession object that all the work will be done on
 analysis_session = None
 
 
 def get_plugins_info():
-    # Get the path the 'plugins' folder and insert it into the system path
-    plugin_path = os.path.join(os.path.dirname(os.path.realpath(sys.argv[0])), 'plugins')
-    sys.path.insert(0, plugin_path)
 
     plugin_descriptions = []
 
-    # Get list of available plugins
-    plugin_listing = os.listdir(plugin_path)
+    # Useful when Hindsight is run from a different directory than where the file is located
+    real_path = os.path.dirname(os.path.realpath(sys.argv[0]))
+    if real_path not in sys.path:
+        sys.path.insert(0, real_path)
 
-    for plugin in plugin_listing:
-        if plugin[-3:] == ".py":
-            description = {'file_name': plugin, 'friendly_name': None, 'version': None, 'error': None, 'error_msg': None}
-            plugin = plugin.replace(".py", "")
+    # Loop through all paths, to pick up all potential locations for plugins
+    for potential_path in sys.path:
+        # If a subdirectory exists called 'plugins' at the current path, continue on
+        potential_plugin_path = os.path.join(potential_path, 'plugins')
+        if os.path.isdir(potential_plugin_path):
             try:
-                module = __import__(plugin)
-                description['friendly_name'] = module.friendlyName
-                description['version'] = module.version
-                try:
-                    module.plugin()
-                except ImportError, e:
-                    description['error'] = 'import'
-                    description['error_msg'] = e
-                    continue
+                # Insert the current plugin location to the system path, so we can import plugin modules by name
+                sys.path.insert(0, potential_plugin_path)
 
-            except Exception, e:
-                description['error'] = 'other'
-                description['error_msg'] = e
-                continue
+                # Get list of available plugins and run them
+                plugin_listing = os.listdir(potential_plugin_path)
 
+                for plugin in plugin_listing:
+                    if plugin[-3:] == ".py":
+                        description = {'file_name': plugin, 'friendly_name': None, 'version': None, 'error': None, 'error_msg': None}
+                        plugin = plugin.replace(".py", "")
+                        try:
+                            module = __import__(plugin)
+                            description['friendly_name'] = module.friendlyName
+                            description['version'] = module.version
+                            try:
+                                module.plugin()
+                            except ImportError, e:
+                                description['error'] = 'import'
+                                description['error_msg'] = e
+                                continue
+
+                        except Exception, e:
+                            description['error'] = 'other'
+                            description['error_msg'] = e
+                            continue
+
+                        finally:
+                            plugin_descriptions.append(description)
+            except Exception as e:
+                # logging.debug(' - Error loading plugins ({})'.format(e))
+                print '  - Error loading plugins'
             finally:
-                plugin_descriptions.append(description)
+                # Remove the current plugin location from the system path, so we don't loop over it again
+                sys.path.remove(potential_plugin_path)
     return plugin_descriptions
 
 
 # Static Routes
 @bottle.get('/static/<filename:re:.*\.(png|css|ico|svg|json|eot|svg|ttf|woff|woff2)>')
 def images(filename):
-    return bottle.static_file(filename, root='static')
+    return bottle.static_file(filename, root=STATIC_PATH)
 
 
 @bottle.route('/')
@@ -57,7 +75,7 @@ def main_screen():
     bottle_args = analysis_session.__dict__
     plugins_info = get_plugins_info()
     bottle_args['plugins_info'] = plugins_info
-    return bottle.template('templates/run.tpl', bottle_args)
+    return bottle.template(os.path.join('templates', 'run.tpl'), bottle_args)
 
 
 @bottle.route('/run', method='POST')
@@ -131,6 +149,25 @@ def generate_json():
 
 
 def main():
+
+    print hindsight.banner
+
+    global STATIC_PATH
+    STATIC_PATH = 'static'
+
+    # Loop through all paths in system path, to pick up all potential locations for templates and static files.
+    # Paths can get weird when the program is run from a different directory, or when the packaged exe is unpacked.
+    for potential_path in sys.path:
+        potential_template_path = potential_path
+        if os.path.isdir(potential_template_path):
+            # Insert the current plugin location to the system path, so bottle can find the templates
+            bottle.TEMPLATE_PATH.insert(0, potential_template_path)
+
+        potential_static_path = os.path.join(potential_path, 'static')
+        if os.path.isdir(potential_static_path):
+            STATIC_PATH = potential_static_path
+
+    webbrowser.open("http://localhost:8080")
     bottle.run(host='localhost', port=8080, debug=True)
 
 if __name__ == "__main__":

@@ -2650,10 +2650,10 @@ def friendly_date(timestamp):
 
 def parse_arguments(analysis_session):
     description = '''
-Hindsight v%s - Internet history forensics for Google Chrome/Chromium.
+Hindsight v{} - Internet history forensics for Google Chrome/Chromium.
 
 This script parses the files in the Chrome data folder, runs various plugins
-   against the data, and then outputs the results in a spreadsheet. ''' % __version__
+   against the data, and then outputs the results in a spreadsheet. '''.format(__version__)
 
     epi = '''
 Example:  C:\>hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\
@@ -2726,6 +2726,21 @@ The Chrome data folder default locations are:
         analysis_session.available_decrypts['mac'] = 0
 
     return args
+
+banner = '''
+################################################################################
+
+                   _     _           _     _       _     _
+                  | |   (_)         | |   (_)     | |   | |
+                  | |__  _ _ __   __| |___ _  __ _| |__ | |_
+                  | '_ \| | '_ \ / _` / __| |/ _` | '_ \| __|
+                  | | | | | | | | (_| \__ \ | (_| | | | | |_
+                  |_| |_|_|_| |_|\__,_|___/_|\__, |_| |_|\__|
+                                              __/ |
+                        by @_RyanBenson      |___/   v{}
+
+################################################################################
+'''.format(__version__)
 
 
 def main():
@@ -2852,6 +2867,8 @@ def main():
             .format(name=name, left_width=int(left_side), content=content)
         return pretty_name
 
+    print banner
+
     analysis_session = AnalysisSession()
     global args
     args = parse_arguments(analysis_session)
@@ -2889,6 +2906,7 @@ def main():
     if real_path not in sys.path:
         sys.path.insert(0, real_path)
 
+    print sys.path
     # Loop through all paths, to pick up all potential locations for plugins
     for potential_path in sys.path:
         # If a subdirectory exists called 'plugins' at the current path, continue on
