@@ -150,7 +150,6 @@ def generate_sqlite():
     return str_io.read()
 
 
-
 @bottle.route('/xlsx')
 def generate_xlsx():
     import StringIO

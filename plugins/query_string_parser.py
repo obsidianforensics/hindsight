@@ -7,15 +7,13 @@
 #
 ###################################################################################################
 
-
-
 # Config
 friendlyName = "Query String Parser"
 description = "Extracts the query string from a URL and prints each field and value."
-artifactTypes = ("url",)  # Artifacts that this plugin processes
+artifactTypes = ("url", "cache")  # Artifacts that this plugin processes
 remoteLookups = 0  # if this plugin will query online sources/databases
 browser = "all"  # browsers that the plugin applies to
-version = "20150222"  # version of the plugin (use the date)
+version = "20170225"  # version of the plugin (use the date)
 parsedItems = 0  # count of items that the plugin parsed; initialized to 0
 
 

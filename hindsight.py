@@ -93,7 +93,7 @@ class AnalysisSession(object):
             self.artifacts_counts = {}
 
         if self.available_output_formats is None:
-            self.available_output_formats = ['json', 'sqlite']
+            self.available_output_formats = ['sqlite']
 
         if self.available_decrypts is None:
             self.available_decrypts = {'windows': 0, 'mac': 0, 'linux': 0}
@@ -2760,8 +2760,6 @@ The Chrome data folder default locations are:
                         choices=['Chrome', 'Brave'])
     parser.add_argument('-f', '--format', choices=analysis_session.available_output_formats,
                         default=analysis_session.available_output_formats[-1], help='Output format')
-    parser.add_argument('-m', '--mode', choices=['add', 'overwrite', 'exit'],
-                        help='Output mode (what to do if output file already exists)')
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
                         default='hindsight.log')
     parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
