@@ -34,7 +34,7 @@
                     <table width=100%>
                     <tr>
                       <td align="left" width=50%><input type="button" value="Save XLSX" class="button" onclick="location.href='/xlsx';" style="width:100%" /></td>
-                      <td align="right" width=50%><input type="button" value="Save JSON" class="button" onclick="location.href='/json';" style="width:100%" /></td>
+                      <td align="right" width=50%><input type="button" value="Save SQLite DB" class="button" onclick="location.href='/sqlite';" style="width:100%" /></td>
                     </tr>
                     <tr>
                       <td colspan=2>
