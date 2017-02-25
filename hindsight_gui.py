@@ -18,6 +18,8 @@ def get_plugins_info():
     if real_path not in sys.path:
         sys.path.insert(0, real_path)
 
+    completed_plugins = []
+
     # Loop through all paths, to pick up all potential locations for plugins
     for potential_path in sys.path:
         # If a subdirectory exists called 'plugins' at the current path, continue on
@@ -34,6 +36,11 @@ def get_plugins_info():
                     if plugin[-3:] == ".py":
                         description = {'file_name': plugin, 'friendly_name': None, 'version': None, 'error': None, 'error_msg': None}
                         plugin = plugin.replace(".py", "")
+
+                        # Check to see if we've already run this plugin (likely from a different path)
+                        if plugin in completed_plugins:
+                            continue
+
                         try:
                             module = __import__(plugin)
                             description['friendly_name'] = module.friendlyName
@@ -52,6 +59,8 @@ def get_plugins_info():
 
                         finally:
                             plugin_descriptions.append(description)
+                            completed_plugins.append(plugin)
+
             except Exception as e:
                 # logging.debug(' - Error loading plugins ({})'.format(e))
                 print '  - Error loading plugins'
@@ -167,7 +176,7 @@ def main():
         if os.path.isdir(potential_static_path):
             STATIC_PATH = potential_static_path
 
-    webbrowser.open("http://localhost:8080")
+    # webbrowser.open("http://localhost:8080")
     bottle.run(host='localhost', port=8080, debug=True)
 
 if __name__ == "__main__":

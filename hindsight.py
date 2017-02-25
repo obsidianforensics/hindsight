@@ -54,7 +54,7 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "2.0b2"
+__version__ = "2.0b3"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -1655,11 +1655,11 @@ class Chrome(WebBrowser):
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
+                            cookie_value = self.decrypt_cookie(row.get('encrypted_value')).decode('utf-8')
                         else:
-                            cookie_value = row.get('value').decode()
+                            cookie_value = row.get('value').decode('utf-8')
                     else:
-                        cookie_value = row.get('value')
+                        cookie_value = row.get('value').decode('utf-8')
 
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
                     new_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
@@ -2906,7 +2906,8 @@ def main():
     if real_path not in sys.path:
         sys.path.insert(0, real_path)
 
-    print sys.path
+    completed_plugins = []
+
     # Loop through all paths, to pick up all potential locations for plugins
     for potential_path in sys.path:
         # If a subdirectory exists called 'plugins' at the current path, continue on
@@ -2923,6 +2924,11 @@ def main():
                 for plugin in plugin_listing:
                     if plugin[-3:] == ".py":
                         plugin = plugin.replace(".py", "")
+
+                        # Check to see if we've already run this plugin (likely from a different path)
+                        if plugin in completed_plugins:
+                            continue
+
                         logging.debug("Loading '{}'".format(plugin))
                         try:
                             module = __import__(plugin)
@@ -2935,6 +2941,7 @@ def main():
                             parsed_items = module.plugin(analysis_session)
                             print format_plugin_output(module.friendlyName, module.version, parsed_items)
                             logging.info(" - Completed; {}".format(parsed_items))
+                            completed_plugins.append(plugin)
                         except Exception, e:
                             print format_plugin_output(module.friendlyName, module.version, 'failed')
                             logging.info(" - Failed; {}".format(e))
