@@ -125,13 +125,30 @@ def display_results():
 
 @bottle.route('/sqlite')
 def generate_sqlite():
+    temp_output = '.tempdb'
+    try:
+        os.remove(temp_output)
+    except:
+        # temp file deletion failed
+        pass
+
+    analysis_session.generate_sqlite(output_object=temp_output)
     import StringIO
-    strIO = StringIO.StringIO()
-    strIO.write(analysis_session.generate_sqlite())
-    strIO.seek(0)
-    bottle.response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
-    bottle.response.headers['Content-Disposition'] = 'attachment; filename=text.xls'
-    return strIO.read()
+    str_io = StringIO.StringIO()
+    with open(temp_output, 'rb') as f:
+        str_io.write(f.read())
+
+    try:
+        os.remove(temp_output)
+    except:
+        # temp file deletion failed
+        pass
+
+    bottle.response.headers['Content-Type'] = 'application/x-sqlite3'
+    bottle.response.headers['Content-Disposition'] = 'attachment; filename={}.sqlite'.format(analysis_session.output_name)
+    str_io.seek(0)
+    return str_io.read()
+
 
 
 @bottle.route('/xlsx')

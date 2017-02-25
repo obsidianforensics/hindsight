@@ -385,14 +385,7 @@ class AnalysisSession(object):
                     w.write(row_number, 16, item.last_modified, gray_value_format)  # Last Modified
                     w.write(row_number, 17, item.server_name, gray_value_format)  # Server name
                     w.write(row_number, 18, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
-                    header_str = ""
-                    if item.http_headers_dict:
-                        for key, value in item.http_headers_dict.iteritems():
-                            if key and value:
-                                header_str += u"{}: {}\n".format(key, value)
-                            elif key:
-                                header_str += u"{}\n".format(key)
-                    w.write(row_number, 19, header_str.rstrip(), gray_value_format)  # Cached data location // data_2 [1542523]
+                    w.write(row_number, 19, item.http_headers_str, gray_value_format)  # Cached data location // data_2 [1542523]
 
                 elif item.row_type[:13] == "local storage":
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -451,6 +444,84 @@ class AnalysisSession(object):
                 pass
 
         workbook.close()
+
+    def generate_sqlite(self, output_file_path='.temp_db'):
+
+        output_db = sqlite3.connect(output_file_path)
+
+        with output_db:
+            c = output_db.cursor()
+            c.execute("CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, "
+                      "interpretation TEXT, source TEXT, visit_duration TEXT, visit_count INT, typed_count INT, "
+                      "url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
+                      "last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)")
+
+            c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT)")
+
+            for item in self.parsed_artifacts:
+                if item.row_type[:3] == "url":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, source, visit_duration, visit_count, "
+                              "typed_count, url_hidden, transition) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, item.visit_source,
+                               item.visit_duration, item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+
+                if item.row_type == "autofill":
+                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation))
+
+                if item.row_type == "download":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, "
+                              "interrupt_reason, danger_type, opened, etag, last_modified) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
+                               item.interpretation, item.interrupt_reason_friendly, item.danger_type_friendly,
+                               item.opened, item.etag, item.last_modified))
+
+                if item.row_type == "bookmark":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+                if item.row_type == "bookmark folder":
+                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.name, item.value,
+                               item.interpretation))
+
+                if item.row_type[:6] == "cookie":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+                if item.row_type == "local storage":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+                if item.row_type[:5] == "cache":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, etag, last_modified, "
+                              "server_name, data_location)"
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, str(item.name), item.value,
+                               item.interpretation, item.etag, item.last_modified, item.server_name, item.location))
+
+                if item.row_type[:5] == "login":
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+            if self.__dict__.get("installed_extensions"):
+                for extension in self.installed_extensions['data']:
+                    c.execute("INSERT INTO installed_extensions (name, description, version, app_id) "
+                              "VALUES (?, ?, ?, ?)",
+                              (extension.name, extension.description, extension.version, extension.app_id))
+
 
 
 class MyEncoder(json.JSONEncoder):
@@ -1158,10 +1229,10 @@ class CacheEntry(HistoryItem):
         for data in self.data:
             if data.type == CacheData.HTTP_HEADER:
                 self.httpHeader = data
-                header_dict = data.__dict__['headers']
-                for header in header_dict:
+                header_dict = {}
+                for header in data.__dict__['headers']:
                     try:
-                        header_dict[header] = header_dict[header].decode('utf-8')
+                        header_dict[header.decode('utf-8')] = data.__dict__['headers'][header].decode('utf-8')
                     except:
                         pass
                 self.http_headers_dict = header_dict
@@ -1204,19 +1275,20 @@ class CacheEntry(HistoryItem):
                 else:
                     self.location += "{} [{}]".format(_.address.fileSelector, _.offset)
 
-        # if self.httpHeader is not None:
-        #     headers = self.httpHeader.__dict__['headers']
-        #     for header in headers:
-        #         try:
-        #             headers[header] = headers[header].decode('utf-8')
-        #         except:
-        #             pass
+        self.http_headers_str = ""
         if self.http_headers_dict is not None:
             if self.state == 0:
                 self.value = "{} ({} bytes)".format(self.http_headers_dict.get('content-type'), self.file_size)
             self.server_name = self.http_headers_dict.get('server')
             self.etag = self.http_headers_dict.get('etag')
             self.last_modified = self.http_headers_dict.get('last-modified')
+
+            for key, value in self.http_headers_dict.iteritems():
+                if key and value:
+                    self.http_headers_str += u"{}: {}\n".format(key, value)
+                elif key:
+                    self.http_headers_str += u"{}\n".format(key)
+            self.http_headers_str = self.http_headers_str.rstrip()
 
     def keyToStr(self):
         """
@@ -1655,11 +1727,13 @@ class Chrome(WebBrowser):
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
+                            # print type(self.decrypt_cookie(row.get('encrypted_value'))), self.decrypt_cookie(row.get('encrypted_value'))
                             cookie_value = self.decrypt_cookie(row.get('encrypted_value')).decode('utf-8')
                         else:
-                            cookie_value = row.get('value').decode('utf-8')
+                            cookie_value = row.get('value')
                     else:
-                        cookie_value = row.get('value').decode('utf-8')
+                        cookie_value = row.get('value')
+                        # print type(cookie_value), cookie_value
 
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
                     new_row = CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
@@ -1698,8 +1772,8 @@ class Chrome(WebBrowser):
                 logging.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
-            except:
-                self.artifacts_counts[database] = 'Failed'
+            except Exception, e:
+                self.artifacts_counts[database] = 'Failed - {}'.format(e)
                 logging.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_login_data(self, path, database, version):
@@ -1877,8 +1951,8 @@ class Chrome(WebBrowser):
         logging.info(" - Reading from {}".format(ls_path))
 
         local_storage_listing = os.listdir(ls_path)
-        logging.debug(" - All {} files in Local Storage directory: {}"
-                      .format(len(local_storage_listing), str(local_storage_listing)))
+        logging.debug(" - {} files in Local Storage directory"
+                      .format(len(local_storage_listing)))
         filtered_listing = []
 
         for ls_file in local_storage_listing:
@@ -2761,96 +2835,12 @@ def main():
             shutil.copyfileobj(string_buffer, file_output)
 
     def write_sqlite(analysis_session):
-        output_file = args.output + '.sqlite'
-        output_exists = None
+        output_file = analysis_session.output_name + '.sqlite'
 
-        if os.path.exists(output_file):
-            if os.path.getsize(output_file) > 0:
-                output_exists = 1
-                print "\nDatabase file \"%s\" already exists.\n" % output_file
-                if not args.mode:
-                    args.mode = raw_input('Would you like to (A)dd to it, (O)verwrite it, or (E)xit? ')
-                add_re = re.compile(r'(^a$|add)', re.IGNORECASE)
-                over_re = re.compile(r'(^o$|overwrite)', re.IGNORECASE)
-                exit_re = re.compile(r'(^e$|exit)', re.IGNORECASE)
-                if re.search(exit_re, args.mode):
-                    print "Exiting... "
-                    sys.exit()
-                elif re.search(over_re, args.mode):
-                    os.remove(output_file)
-                    print "Deleted old \"%s\"" % output_file
-                    args.mode = 'overwrite'
-                elif re.search(add_re, args.mode):
-                    args.mode = 'add'
-                    print "Adding more records to existing \"%s\"" % output_file
-                else:
-                    print "Did not understand response.  Exiting... "
-                    sys.exit()
-
-        output_db = sqlite3.connect(output_file)
-
-        with output_db:
-            c = output_db.cursor()
-            if args.mode == 'overwrite' or not output_exists:
-                c.execute("CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, "
-                          "interpretation TEXT, safe TEXT, visit_count INT, typed_count INT, url_hidden INT, "
-                          "transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
-                          "last_modified TEXT)")
-
-                c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT)")
-
-            print("\n Writing \"%s.sqlite\"" % args.output)
-
-            for item in analysis_session.parsed_artifacts:
-                if item.row_type == "url" or item.row_type == "url (archived)":
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, visit_count, "
-                              "typed_count, url_hidden, transition) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
-                               item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
-
-                if item.row_type == "autofill":
-                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation))
-
-                if item.row_type == "download":
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, "
-                              "interrupt_reason, danger_type, opened, etag, last_modified) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
-                               item.interpretation, item.interrupt_reason_friendly, item.danger_type_friendly,
-                               item.opened, item.etag, item.last_modified))
-
-                if item.row_type == "bookmark":
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
-
-                if item.row_type == "bookmark folder":
-                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.name, item.value,
-                               item.interpretation))
-
-                if item.row_type == "cookie (created)" or item.row_type == "cookie (accessed)":
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
-
-                if item.row_type == "local storage":
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
-
-            if analysis_session.__dict__.get("installed_extensions"):
-                for extension in analysis_session.installed_extensions['data']:
-                    c.execute("INSERT INTO installed_extensions (name, description, version, app_id) "
-                              "VALUES (?, ?, ?, ?)",
-                              (extension.name, extension.description, extension.version, extension.app_id))
+        if not os.path.exists(output_file):
+            analysis_session.generate_sqlite(output_file)
+        else:
+            print "\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file)
 
     def format_plugin_output(name, version, items):
         width = 80
@@ -2974,6 +2964,7 @@ def main():
 
     elif args.format == 'sqlite':
         logging.info("Writing output; SQLite format selected")
+        print("\n Writing {}.sqlite".format(analysis_session.output_name))
         write_sqlite(analysis_session)
 
     # Display and log finish time
