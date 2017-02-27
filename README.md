@@ -7,7 +7,7 @@ Hindsight is a free tool for analyzing web artifacts. It started with the browsi
 
 It has a simple web UI - to start it, run "hindsight_gui.py" and visit http://localhost:8080 in a browser:  
 
-<img src="documentation/interface.png"/>
+<img src="documentation/interface-v2.gif"/>
 
 The only field you are required to complete is "Profile Path". This is the location of the Chrome profile you want to analyze (the default profile paths for different OSes is listed at the bottom of this page). Click "Run" and you'll be taken to the results page in where you can save the results to a spreadsheet (or other formats). 
 

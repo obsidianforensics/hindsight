@@ -54,7 +54,7 @@ except ImportError:
         .format(time.tzname[time.daylight])
 
 __author__ = "Ryan Benson"
-__version__ = "2.0b3"
+__version__ = "2.0.0"
 __email__ = "ryan@obsidianforensics.com"
 
 
@@ -948,7 +948,7 @@ class WebBrowser(object):
                 print "\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files " \
                       "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
                       "Chrome installation while it is running.  Please close Chrome and try again."
-                exit()
+                sys.exit(1)
             except:
                 logging.error(" - Couldn't connect to {}".format(database_path))
                 return

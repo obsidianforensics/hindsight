@@ -32,7 +32,7 @@ VSVersionInfo(
         u'040904B0',
         [StringStruct(u'Comments', u'Internet history forensics for Google Chrome/Chromium'),
         StringStruct(u'CompanyName', u'Obsidian Forensics'),
-        StringStruct(u'FileDescription', u'Internet history forensics for Google Chrome/Chromium'),
+        StringStruct(u'FileDescription', u'Hindsight'),
         StringStruct(u'LegalCopyright', u'Copyright© 2012 - 2017  Ryan Benson'),
         StringStruct(u'ProductName', u'Hindsight'),
         StringStruct(u'FileVersion', u'2.0.0'),

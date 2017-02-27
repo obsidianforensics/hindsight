@@ -8,3 +8,4 @@ protobuf>=3.2.0
 scipy>=0.18.1
 xlsxwriter>=0.8.4
 bottle>=0.12.9
+jsonpath_rw==1.4.0
