@@ -6,8 +6,10 @@ block_cipher = None
 a = Analysis(['..\\hindsight.py'],
              pathex=['..'],
              binaries=[],
-             datas=[('..\\plugins', 'plugins'), ('..\\hindsight.py', 'hindsight.py')],
-             hiddenimports=["hindsight", "pycryptodome"],
+             datas=[('..\\pyhindsight\\plugins', 'plugins'), ('..\\hindsight.py', 'hindsight.py')],
+             hiddenimports=["pycryptodome", "pyhindsight", "pyhindsight.plugins.chrome_extensions", "pyhindsight.plugins.generic_timestamps",
+             "pyhindsight.plugins.google_analytics", "pyhindsight.plugins.google_searches", "pyhindsight.plugins.load_balancer_cookies",
+             "pyhindsight.plugins.quantcast_cookies", "pyhindsight.plugins.query_string_parser", "pyhindsight.plugins.time_discrepancy_finder"],
              hookspath=[],
              runtime_hooks=[],
              excludes=[],
@@ -27,4 +29,4 @@ exe = EXE(pyz,
           upx=True,
           console=True,
           version='file_version_info_cmd.txt',
-          icon='..\\static\\h.ico')
+          icon='..\\pyhindsight\\static\\h.ico')

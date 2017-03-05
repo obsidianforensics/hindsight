@@ -1,24 +1,58 @@
-import hindsight
-import bottle
 import json
 import os
 import sys
-import webbrowser
+import logging
+import bottle
+import importlib
+import pyhindsight
+import pyhindsight.plugins
+from pyhindsight.analysis import AnalysisSession
+from pyhindsight.utils import banner, MyEncoder
 
-# This will be the main hindsight.AnalysisSession object that all the work will be done on
+# This will be the main pyhindsight.AnalysisSession object that all the work will be done on
 analysis_session = None
+STATIC_PATH = 'static'
 
 
 def get_plugins_info():
 
     plugin_descriptions = []
+    completed_plugins = []
+
+    # First run built-in plugins that ship with Hindsight
+    logging.info(" Built-in Plugins:")
+    for plugin in pyhindsight.plugins.__all__:
+        # Check to see if we've already run this plugin (likely from a different path)
+        if plugin in completed_plugins:
+            continue
+
+        description = {'file_name': plugin, 'friendly_name': None, 'version': None, 'error': None,
+                       'error_msg': None, 'parent_path': None}
+
+        try:
+            module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
+            description['friendly_name'] = module.friendlyName
+            description['version'] = module.version
+            try:
+                module.plugin()
+            except ImportError, e:
+                description['error'] = 'import'
+                description['error_msg'] = e
+                continue
+
+        except Exception, e:
+            description['error'] = 'other'
+            description['error_msg'] = e
+            continue
+
+        finally:
+            plugin_descriptions.append(description)
+            completed_plugins.append(plugin)
 
     # Useful when Hindsight is run from a different directory than where the file is located
     real_path = os.path.dirname(os.path.realpath(sys.argv[0]))
     if real_path not in sys.path:
         sys.path.insert(0, real_path)
-
-    completed_plugins = []
 
     # Loop through all paths, to pick up all potential locations for plugins
     for potential_path in sys.path:
@@ -33,8 +67,10 @@ def get_plugins_info():
                 plugin_listing = os.listdir(potential_plugin_path)
 
                 for plugin in plugin_listing:
-                    if plugin[-3:] == ".py":
-                        description = {'file_name': plugin, 'friendly_name': None, 'version': None, 'error': None, 'error_msg': None}
+                    if plugin[-3:] == ".py" and plugin[0] != '_':
+
+                        description = {'file_name': plugin, 'friendly_name': None, 'version': None, 'error': None,
+                                       'error_msg': None, 'parent_path': potential_plugin_path}
                         plugin = plugin.replace(".py", "")
 
                         # Check to see if we've already run this plugin (likely from a different path)
@@ -80,10 +116,10 @@ def images(filename):
 def main_screen():
 
     global analysis_session
-    analysis_session = hindsight.AnalysisSession()
+    analysis_session = AnalysisSession()
     bottle_args = analysis_session.__dict__
-    plugins_info = get_plugins_info()
-    bottle_args['plugins_info'] = plugins_info
+    analysis_session.plugin_descriptions = get_plugins_info()
+    bottle_args['plugins_info'] = analysis_session.plugin_descriptions
     return bottle.template(os.path.join('templates', 'run.tpl'), bottle_args)
 
 
@@ -97,6 +133,15 @@ def do_run():
     analysis_session.browser_type = bottle.request.forms.get('browser_type')
     analysis_session.timezone = bottle.request.forms.get('timezone')
     analysis_session.log_path = bottle.request.forms.get('log_path')
+
+    # Set up logging
+    logging.basicConfig(filename=analysis_session.log_path, level=logging.DEBUG,
+                        format='%(asctime)s.%(msecs).03d | %(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S')
+    # Hindsight version info
+    logging.info(
+        '\n' + '#' * 80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'
+        .format(pyhindsight.__version__) + '#' * 80)
 
     if 'windows' in ui_selected_decrypts:
         analysis_session.available_decrypts['windows'] = 1
@@ -132,7 +177,7 @@ def generate_sqlite():
         # temp file deletion failed
         pass
 
-    analysis_session.generate_sqlite(output_object=temp_output)
+    analysis_session.generate_sqlite(temp_output)
     import StringIO
     str_io = StringIO.StringIO()
     with open(temp_output, 'rb') as f:
@@ -166,7 +211,7 @@ def generate_xlsx():
 def generate_json():
     import StringIO
     strIO = StringIO.StringIO()
-    strIO.write(json.dumps(analysis_session, cls=hindsight.MyEncoder, indent=4))
+    strIO.write(json.dumps(analysis_session, cls=MyEncoder, indent=4))
     strIO.seek(0)
     bottle.response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
     bottle.response.headers['Content-Disposition'] = 'attachment; filename={}.json'.format(analysis_session.output_name)
@@ -175,10 +220,12 @@ def generate_json():
 
 def main():
 
-    print hindsight.banner
-
+    print banner
     global STATIC_PATH
-    STATIC_PATH = 'static'
+
+    # Get the hindsight module's path on disk to add to sys.path, so we can find templates and static files
+    module_path = os.path.dirname(pyhindsight.__file__)
+    sys.path.insert(0, module_path)
 
     # Loop through all paths in system path, to pick up all potential locations for templates and static files.
     # Paths can get weird when the program is run from a different directory, or when the packaged exe is unpacked.
