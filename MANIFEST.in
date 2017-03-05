@@ -1,0 +1,5 @@
+recursive-include pyhindsight/plugins *.py
+recursive-include pyhindsight/static *
+recursive-include pyhindsight/templates *.tpl
+include hindsight.py
+include hindsight_gui.py
