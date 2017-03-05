@@ -26,7 +26,7 @@
     <header class="top-bar">
         <table class="top-bar-table">
             <tr>
-                <td><a href="/"><span class="logo-text">Hindsight </span><span class="logo-version">v{{hindsight_version}}</span></a></td>
+                <td><a href="/"><span class="logo-text">Hindsight&nbsp</span><span class="logo-version">v{{hindsight_version}}</span></a></td>
                 <td align="right">
                     <span class="social-logos logo-bars">
                         <a href="https://github.com/obsidianforensics/hindsight" target="_blank"><img class="social-logo" src="static/github.png" title="View the code on GitHub"></a> |
