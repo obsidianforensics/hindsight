@@ -4,7 +4,7 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   scripts=['hindsight.py', 'hindsight_gui.py'],
-  version='2.0.0',
+  version='2.0.4',
   description='Internet history forensics for Google Chrome/Chromium',
   url='https://github.com/obsidianforensics/hindsight',
   author='Ryan Benson',
@@ -17,6 +17,7 @@ setup(
     'pytz>=2016.4',
     'pycryptodomex>=3.4.3',
     'xlsxwriter>=0.8.4',
+    # 'pypiwin32>=219',
     'bottle>=0.12.9'
   ]
 )

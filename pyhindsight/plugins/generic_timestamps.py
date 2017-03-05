@@ -19,7 +19,7 @@ parsedItems = 0
 
 
 def plugin(analysis_session=None):
-    import hindsight
+    from pyhindsight.utils import friendly_date
     import re
     if analysis_session is None:
         return
@@ -35,10 +35,10 @@ def plugin(analysis_session=None):
                 m = re.search(timestamp_re, item.value)
                 ls_m = re.search(ls_timestamp_re, item.value)
                 if m:
-                    item.interpretation = hindsight.friendly_date(int(m.group(0))) + u' [potential timestamp]'
+                    item.interpretation = friendly_date(int(m.group(0))) + u' [potential timestamp]'
                     parsedItems += 1
                 elif ls_m:
-                    item.interpretation = hindsight.friendly_date(int(ls_m.group(1))) + u' [potential timestamp]'
+                    item.interpretation = friendly_date(int(ls_m.group(1))) + u' [potential timestamp]'
                     parsedItems += 1
 
     # Description of what the plugin did
