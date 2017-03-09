@@ -1002,13 +1002,17 @@ class Chrome(WebBrowser):
         path = os.path.join(path, dir_name)
         logging.info("Cache items from {}:".format(path))
 
-        cacheBlock = CacheBlock(os.path.join(path, 'index'))
+        try:
+            cacheBlock = CacheBlock(os.path.join(path, 'index'))
+            # Checking type
+            if cacheBlock.type != CacheBlock.INDEX:
+                raise Exception("Invalid Index File")
 
-        # Checking type
-        if cacheBlock.type != CacheBlock.INDEX:
-            raise Exception("Invalid Index File")
-
-        index = open(os.path.join(path, 'index'), 'rb')
+            index = open(os.path.join(path, 'index'), 'rb')
+        except:
+            logging.error(" - Error reading cache index file {}".format(os.path.join(path, 'index')))
+            self.artifacts_counts[dir_name] = 'Failed'
+            return
 
         # Skipping Header
         index.seek(92 * 4)
@@ -1016,17 +1020,20 @@ class Chrome(WebBrowser):
         for key in range(cacheBlock.tableSize):
             raw = struct.unpack('I', index.read(4))[0]
             if raw != 0:
-                entry = CacheEntry(CacheAddress(raw, path=path), row_type, self.timezone)
+                try:
+                    entry = CacheEntry(CacheAddress(raw, path=path), row_type, self.timezone)
 
-                # Add the new row to the results array
-                results.append(entry)
-
-                # Checking if there is a next item in the bucket because
-                # such entries are not stored in the Index File so they will
-                # be ignored during iterative lookup in the hash table
-                while entry.next != 0:
-                    entry = CacheEntry(CacheAddress(entry.next, path=path), row_type, self.timezone)
+                    # Add the new row to the results array
                     results.append(entry)
+
+                    # Checking if there is a next item in the bucket because
+                    # such entries are not stored in the Index File so they will
+                    # be ignored during iterative lookup in the hash table
+                    while entry.next != 0:
+                        entry = CacheEntry(CacheAddress(entry.next, path=path), row_type, self.timezone)
+                        results.append(entry)
+                except Exception, e:
+                    logging.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
 
         self.artifacts_counts[dir_name] = len(results)
         logging.info(" - Parsed {} items".format(len(results)))
