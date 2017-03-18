@@ -776,9 +776,13 @@ class Chrome(WebBrowser):
                             except KeyError:
                                 try:
                                     name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
-                                except:
-                                    logging.warning(" - Error reading 'name' for {}".format(app_id))
-                                    name = "<error>"
+                                except KeyError:
+                                    try:
+                                        # Google Wallet / Chrome Payments is weird/hidden - name is saved different than other extensions
+                                        name = decoded_locale_messages["app_name"]["message"]
+                                    except:
+                                        logging.warning(" - Error reading 'name' for {}".format(app_id))
+                                        name = "<error>"
                     else:
                         try:
                             name = decoded_manifest["name"]
@@ -799,9 +803,13 @@ class Chrome(WebBrowser):
                                 except KeyError:
                                     try:
                                         description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
-                                    except:
-                                        description = "<error>"
-                                        logging.error(" - Error reading 'message' for {}".format(app_id))
+                                    except KeyError:
+                                        try:
+                                            # Google Wallet / Chrome Payments is weird/hidden - name is saved different than other extensions
+                                            description = decoded_locale_messages["app_description"]["message"]
+                                        except:
+                                            description = "<error>"
+                                            logging.error(" - Error reading 'message' for {}".format(app_id))
                         else:
                             try:
                                 description = decoded_manifest["description"]
