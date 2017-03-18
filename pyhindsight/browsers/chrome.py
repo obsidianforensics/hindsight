@@ -85,7 +85,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 57)
+        possible_versions = range(1, 58)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -108,8 +108,8 @@ class Chrome(WebBrowser):
                     possible_versions[:] = [x for x in possible_versions if x > version]
 
         def trim_lesser_versions(version):
-            """Remove version numbers > 'version' from 'possible_versions'"""
-            possible_versions[:] = [x for x in possible_versions if x > version]
+            """Remove version numbers < 'version' from 'possible_versions'"""
+            possible_versions[:] = [x for x in possible_versions if x >= version]
 
         if 'History' in self.structure.keys():
             if 'visits' in self.structure['History'].keys():
@@ -139,8 +139,10 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('date_created', self.structure['Web Data']['autofill'], 35)
             if 'autofill_profiles' in self.structure['Web Data'].keys():
                 trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
+            if 'autofill_sync_metadata' in self.structure['Web Data'].keys():
+                trim_lesser_versions(57)
             if 'web_apps' not in self.structure['Web Data'].keys():
-                trim_lesser_versions(37)
+                trim_lesser_versions(38)
             if 'credit_cards' in self.structure['Web Data'].keys():
                 trim_lesser_versions_if('billing_address_id', self.structure['Web Data']['credit_cards'], 53)
 
