@@ -1055,22 +1055,31 @@ class Chrome(WebBrowser):
         cache_path = os.path.join(base_path, 'Cache')
         logging.info("Application Cache items from {}:".format(path))
 
-        # Connect to 'Index' sqlite db
-        db_path = os.path.join(base_path, 'Index')
-        index_db = sqlite3.connect(db_path)
-        logging.info(" - Reading from file '{}'".format(db_path))
+        try:
+            # Connect to 'Index' sqlite db
+            db_path = os.path.join(base_path, 'Index')
+            index_db = sqlite3.connect(db_path)
+            logging.info(" - Reading from file '{}'".format(db_path))
 
-        # Use a dictionary cursor
-        index_db.row_factory = WebBrowser.dict_factory
-        cursor = index_db.cursor()
+            # Use a dictionary cursor
+            index_db.row_factory = WebBrowser.dict_factory
+            cursor = index_db.cursor()
+        except:
+            logging.error(" - Error opening Application Cache Index SQLite DB {}".format(db_path))
+            self.artifacts_counts[dir_name] = 'Failed'
+            return
 
-        cache_block = CacheBlock(os.path.join(cache_path, 'index'))
+        try:
+            cache_block = CacheBlock(os.path.join(cache_path, 'index'))
+            # Checking type
+            if cache_block.type != CacheBlock.INDEX:
+                raise Exception("Invalid Index File")
 
-        # Checking type
-        if cache_block.type != CacheBlock.INDEX:
-            raise Exception("Invalid Index File")
-
-        index = open(os.path.join(cache_path, 'index'), 'rb')
+            index = open(os.path.join(cache_path, 'index'), 'rb')
+        except:
+            logging.error(" - Error reading cache index file {}".format(os.path.join(path, 'index')))
+            self.artifacts_counts[dir_name] = 'Failed'
+            return
 
         # Skipping Header
         index.seek(92 * 4)
@@ -1078,25 +1087,28 @@ class Chrome(WebBrowser):
         for key in range(cache_block.tableSize):
             raw = struct.unpack('I', index.read(4))[0]
             if raw != 0:
-                entry = CacheEntry(CacheAddress(raw, path=cache_path), row_type, self.timezone)
-                cursor.execute('''SELECT url from Entries WHERE response_id=?''', [entry.key])
-                index_url = cursor.fetchone()
-                if index_url:
-                    entry.url = index_url['url']
-
-                # Add the new row to the results array
-                results.append(entry)
-
-                # Checking if there is a next item in the bucket because
-                # such entries are not stored in the Index File so they will
-                # be ignored during iterative lookup in the hash table
-                while entry.next != 0:
-                    entry = CacheEntry(CacheAddress(entry.next, path=cache_path), row_type, self.timezone)
-                    cursor.execute('''SELECT url FROM Entries WHERE response_id=?''', [entry.key])
+                try:
+                    entry = CacheEntry(CacheAddress(raw, path=cache_path), row_type, self.timezone)
+                    cursor.execute('''SELECT url from Entries WHERE response_id=?''', [entry.key])
                     index_url = cursor.fetchone()
                     if index_url:
                         entry.url = index_url['url']
+
+                    # Add the new row to the results array
                     results.append(entry)
+
+                    # Checking if there is a next item in the bucket because
+                    # such entries are not stored in the Index File so they will
+                    # be ignored during iterative lookup in the hash table
+                    while entry.next != 0:
+                        entry = CacheEntry(CacheAddress(entry.next, path=cache_path), row_type, self.timezone)
+                        cursor.execute('''SELECT url FROM Entries WHERE response_id=?''', [entry.key])
+                        index_url = cursor.fetchone()
+                        if index_url:
+                            entry.url = index_url['url']
+                        results.append(entry)
+                except Exception, e:
+                    logging.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
 
         index_db.close()
 
