@@ -56,9 +56,6 @@ class Chrome(WebBrowser):
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
 
-        # if self.storage is None:
-        #     self.storage = []
-
         if self.installed_extensions is None:
             self.installed_extensions = []
 
@@ -1193,7 +1190,6 @@ class Chrome(WebBrowser):
             "local_path": "File System\\{}\\{}".format(node["origin_id"], node["type"])
         }
         if node.get("fs_path"):
-            # output_row["local_path"]([node["fs_path"]["dir"], node["fs_path"]["id"]])
             output_row["local_path"] += "\\{}\\{}".format(node["fs_path"]["dir"], node["fs_path"]["id"])
 
         output_list.append(output_row)
