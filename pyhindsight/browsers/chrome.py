@@ -32,7 +32,7 @@ except ImportError:
 
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
-                 parsed_artifacts=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
+                 parsed_artifacts=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
                  available_decrypts=None):
         # TODO: try to fix this to use super()
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
@@ -45,6 +45,7 @@ class Chrome(WebBrowser):
         self.installed_extensions = installed_extensions
         self.cached_key = None
         self.available_decrypts = available_decrypts
+        self.storage = storage
 
         if self.version is None:
             self.version = []
@@ -54,6 +55,9 @@ class Chrome(WebBrowser):
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
+
+        # if self.storage is None:
+        #     self.storage = []
 
         if self.installed_extensions is None:
             self.installed_extensions = []
@@ -689,7 +693,7 @@ class Chrome(WebBrowser):
                         return raw_data
                     elif type(raw_data) is buffer:
                         try:
-                            # When Javascript used localStorage, it saves everything in UTF-16
+                            # When Javascript uses localStorage, it saves everything in UTF-16
                             uni = unicode(raw_data, 'utf-16', errors='replace')
                             # However, some websites use custom compression to squeeze more data in, and just pretend
                             # it's UTF-16, which can result in "characters" that are illegal in XML. We need to remove
@@ -1013,11 +1017,19 @@ class Chrome(WebBrowser):
         logging.info("Cache items from {}:".format(path))
 
         try:
+            logging.debug(" - Found cache index file")
             cacheBlock = CacheBlock(os.path.join(path, 'index'))
+
             # Checking type
             if cacheBlock.type != CacheBlock.INDEX:
-                raise Exception("Invalid Index File")
+                logging.error(" - 'index' block file is invalid (has wrong magic type)")
+                self.artifacts_counts[dir_name] = 'Failed'
+                return
+            logging.debug(" - Parsed index block file (version {})".format(cacheBlock.version))
+        except:
+            logging.error(" - Failed to parse index block file")
 
+        try:
             index = open(os.path.join(path, 'index'), 'rb')
         except:
             logging.error(" - Error reading cache index file {}".format(os.path.join(path, 'index')))
@@ -1032,10 +1044,12 @@ class Chrome(WebBrowser):
             if raw != 0:
                 try:
                     entry = CacheEntry(CacheAddress(raw, path=path), row_type, self.timezone)
-
                     # Add the new row to the results array
                     results.append(entry)
+                except Exception, e:
+                    logging.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
 
+                try:
                     # Checking if there is a next item in the bucket because
                     # such entries are not stored in the Index File so they will
                     # be ignored during iterative lookup in the hash table
@@ -1043,7 +1057,7 @@ class Chrome(WebBrowser):
                         entry = CacheEntry(CacheAddress(entry.next, path=path), row_type, self.timezone)
                         results.append(entry)
                 except Exception, e:
-                    logging.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
+                    logging.error(" - Error parsing cache entry {}: {}".format(entry.next, str(e)))
 
         self.artifacts_counts[dir_name] = len(results)
         logging.info(" - Parsed {} items".format(len(results)))
@@ -1065,9 +1079,9 @@ class Chrome(WebBrowser):
         cache_path = os.path.join(base_path, 'Cache')
         logging.info("Application Cache items from {}:".format(path))
 
+        # Connect to 'Index' sqlite db
+        db_path = os.path.join(base_path, 'Index')
         try:
-            # Connect to 'Index' sqlite db
-            db_path = os.path.join(base_path, 'Index')
             index_db = sqlite3.connect(db_path)
             logging.info(" - Reading from file '{}'".format(db_path))
 
@@ -1126,9 +1140,176 @@ class Chrome(WebBrowser):
         logging.info(" - Parsed {} items".format(len(results)))
         self.parsed_artifacts.extend(results)
 
+    def get_fs_path_leveldb(self, lvl_db_path):
+        import leveldb
+        db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
+        nodes = {}
+        pairs = list(db.RangeIter())
+        for pair in pairs:
+            # Each origin value should be a tuple of length 2; if not, log it and skip it.
+            if not isinstance(pair, tuple) or len(pair) is not 2:
+                logging.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
+                continue
+            fs_path_re = re.compile(b"\x00(?P<dir>\d\d)\\\\(?P<id>\d{8})\x00")
+            m = fs_path_re.search(pair[1])
+            if m:
+                nodes[pair[0]] = {"dir": m.group("dir"), "id": m.group("id")}
+        return nodes
+
+    def get_prefixed_leveldb_pairs(self, lvl_db_path, prefix=""):
+        """Given a path to a LevelDB and a prefix string, return all pairs starting"""
+        import leveldb
+        db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
+        cleaned_pairs = []
+        pairs = list(db.RangeIter())
+        for pair in pairs:
+            # Each origin value should be a tuple of length 2; if not, log it and skip it.
+            if not isinstance(pair, tuple) or len(pair) is not 2:
+                logging.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
+                continue
+            if pair[0].startswith(prefix):
+                # Split the tuple in the origin domain and origin ID, and remove the prefix from the domain
+                (key, value) = pair
+                key = key[len(prefix):]
+                cleaned_pairs.append({"key": key, "value": value})
+
+        return cleaned_pairs
+
+    def build_logical_fs_path(self, node, parent_path=None):
+        if not parent_path:
+            parent_path = []
+
+        parent_path.append(node["name"])
+        node["path"] = parent_path
+        for child_node in node["children"].itervalues():
+            self.build_logical_fs_path(child_node, parent_path=list(node["path"]))
+
+    def flatten_nodes_to_list(self, output_list, node):
+        output_row = {
+            "type": node["type"],
+            "display_type": node["display_type"],
+            "origin": node["path"][0],
+            "logical_path": "\\".join(node["path"][1:]),
+            "local_path": "File System\\{}\\{}".format(node["origin_id"], node["type"])
+        }
+        if node.get("fs_path"):
+            # output_row["local_path"]([node["fs_path"]["dir"], node["fs_path"]["id"]])
+            output_row["local_path"] += "\\{}\\{}".format(node["fs_path"]["dir"], node["fs_path"]["id"])
+
+        output_list.append(output_row)
+        for child_node in node["children"].itervalues():
+            self.flatten_nodes_to_list(output_list, child_node)
+
+    def get_file_system(self, path, dir_name):
+        try:
+            import leveldb
+        except ImportError:
+            self.artifacts_counts['File System'] = 0
+            logging.info("File System: Failed to parse; couldn't import leveldb.")
+            return
+
+        results = {}
+        result_list = []
+        result_count = 0
+        logging.info("File System:")
+
+        # Grab listing of 'File System' directory
+        fs_root_path = os.path.join(path, dir_name)
+        logging.info(" - Reading from {}".format(fs_root_path))
+        fs_root_listing = os.listdir(fs_root_path)
+        logging.debug(" - {count} files in File System directory: {list}".format(list=str(fs_root_listing),
+                                                                                 count=len(fs_root_listing)))
+        # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to web origin (https_www.google.com_0)
+        if 'Origins' in fs_root_listing:
+            lvl_db_path = os.path.join(fs_root_path, 'Origins')
+            origins = self.get_prefixed_leveldb_pairs(lvl_db_path, "ORIGIN:")
+            for origin in origins:
+                origin_domain = origin["key"]
+                origin_id = origin["value"]
+                origin_root_path = os.path.join(fs_root_path, origin_id)
+                t_tree = {}
+                p_tree = {}
+
+                if os.path.isdir(origin_root_path):
+                    origin_t_path = os.path.join(origin_root_path, 't')
+                    if os.path.isdir(origin_t_path):
+                        logging.debug(" - Found 'temporary' data directory for origin {}".format(origin_domain))
+                        origin_t_paths_path = os.path.join(origin_t_path, 'Paths')
+                        if os.path.isdir(origin_t_paths_path):
+                            try:
+                                t_items = self.get_prefixed_leveldb_pairs(origin_t_paths_path, "CHILD_OF:")
+                                t_fs_paths = self.get_fs_path_leveldb(origin_t_paths_path)
+                                t_nodes = {"0": {"name": origin_domain, "type": "t", "display_type": "file system (temporary)",
+                                                 "origin_id": origin_id, "fs_path": t_fs_paths.get('0'), "children": {}}}
+                                for item in t_items:
+                                    (parent, name) = item["key"].split(":")
+                                    t_nodes[item["value"]] = {"name": name, "type": "t", "display_type": "file system (temporary)",
+                                                              "origin_id": origin_id, "parent": parent, "fs_path": t_fs_paths.get(item["value"]),
+                                                              "children": {}}
+                                    result_count += 1
+
+                                for id in t_nodes:
+                                    if t_nodes[id].get("parent"):
+                                        t_nodes[t_nodes[id].get("parent")]["children"][id] = t_nodes[id]
+                                    else:
+                                        t_tree[id] = t_nodes[id]
+
+                                self.build_logical_fs_path(t_tree["0"])
+                                self.flatten_nodes_to_list(result_list, t_tree["0"])
+                            except Exception as e:
+                                logging.error(" - Error accessing LevelDB {}: {}".format(origin_t_paths_path, str(e)))
+
+                    origin_p_path = os.path.join(origin_root_path, 'p')
+                    if os.path.isdir(origin_p_path):
+                        logging.debug(" - Found 'persistent' data directory for origin {}".format(origin_domain))
+                        origin_p_paths_path = os.path.join(origin_p_path, 'Paths')
+                        if os.path.isdir(origin_p_paths_path):
+                            try:
+                                p_items = self.get_prefixed_leveldb_pairs(origin_p_paths_path, "CHILD_OF:")
+                                p_fs_paths = self.get_fs_path_leveldb(origin_p_paths_path)
+                                p_nodes = {"0": {"name": origin_domain, "type": "p", "display_type": "file system (persistent)",
+                                                 "origin_id": origin_id, "fs_path": p_fs_paths.get('0'), "children": {}}}
+                                for item in p_items:
+                                    (parent, name) = item["key"].split(":")
+                                    p_nodes[item["value"]] = {"name": name, "type": "p", "display_type": "file system (persistent)",
+                                                              "origin_id": origin_id, "parent": parent, "fs_path": p_fs_paths.get(item["value"]),
+                                                              "children": {}}
+                                    result_count += 1
+
+                                for id in p_nodes:
+                                    if p_nodes[id].get("parent"):
+                                        p_nodes[p_nodes[id].get("parent")]["children"][id] = p_nodes[id]
+                                    else:
+                                        p_tree[id] = p_nodes[id]
+
+                                self.build_logical_fs_path(p_tree["0"])
+                                self.flatten_nodes_to_list(result_list, p_tree["0"])
+                            except Exception as e:
+                                logging.error(" - Error accessing LevelDB {}: {}".format(origin_p_paths_path, str(e)))
+
+        logging.info(" - Parsed {} items".format(len(result_list)))
+        self.artifacts_counts['File System'] = len(result_list)
+
+        presentation = {'title': 'Storage',
+                        'columns': [
+                            {'display_name': 'Storage Type',
+                             'data_name': 'display_type',
+                             'display_width': 26},
+                            {'display_name': 'Origin',
+                             'data_name': 'origin',
+                             'display_width': 50},
+                            {'display_name': 'Logical Path / Key',
+                             'data_name': 'logical_path',
+                             'display_width': 50},
+                            {'display_name': 'Local Path',
+                             'data_name': 'local_path',
+                             'display_width': 36}
+                        ]}
+        self.storage = {'data': result_list, 'presentation': presentation}
+
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
-        supported_subdirs = ['Local Storage', 'Extensions']
+        supported_subdirs = ['Local Storage', 'Extensions', 'File System']
         supported_jsons = ['Bookmarks']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
         logging.debug("Supported items: " + str(supported_items))
@@ -1264,6 +1445,12 @@ class Chrome(WebBrowser):
             self.artifacts_display['Preferences'] = "Preference Items"
             print self.format_processing_output(self.artifacts_display['Preferences'],
                                                 self.artifacts_counts['Preferences'])
+
+        if 'File System' in input_listing:
+            self.get_file_system(self.profile_path, 'File System')
+            self.artifacts_display['File System'] = "File System Items"
+            print self.format_processing_output(self.artifacts_display['File System'],
+                                                self.artifacts_counts['File System'])
 
         # Destroy the cached key so that json serialization doesn't
         # have a cardiac arrest on the non-unicode binary data.
@@ -1617,8 +1804,7 @@ class CacheData:
         self.address = address
         self.type = CacheData.UNKNOWN
 
-        if isHTTPHeader and\
-           self.address.blockType != CacheAddress.SEPARATE_FILE:
+        if isHTTPHeader and self.address.blockType != CacheAddress.SEPARATE_FILE:
             # Getting raw data
             string = ""
             block = open(os.path.join(self.address.path, self.address.fileSelector), 'rb')
@@ -1667,10 +1853,14 @@ class CacheData:
 
     def data(self):
         """Returns a string representing the data"""
-        block = open(os.path.join(self.address.path, self.address.fileSelector), 'rb')
-        block.seek(8192 + self.address.blockNumber*self.address.entrySize)
-        data = block.read(self.size).decode('utf-8')
-        block.close()
+        try:
+            block = open(os.path.join(self.address.path, self.address.fileSelector), 'rb')
+            block.seek(8192 + self.address.blockNumber*self.address.entrySize)
+            data = block.read(self.size).decode('utf-8', errors="replace")
+            block.close()
+        except:
+            logging.error(" - Error decoding cached URL")
+            data = "<error>"
         return data
 
     def __str__(self):
@@ -1727,8 +1917,7 @@ class CacheBlock:
             self.version = struct.unpack('h', header.read(2))[0]
             self.entryCount = struct.unpack('I', header.read(4))[0]
             self.byteCount = struct.unpack('I', header.read(4))[0]
-            self.lastFileCreated = "f_%06x" % \
-                                       struct.unpack('I', header.read(4))[0]
+            self.lastFileCreated = "f_%06x" % struct.unpack('I', header.read(4))[0]
             header.seek(4*2, 1)
             self.tableSize = struct.unpack('I', header.read(4))[0]
         else:
