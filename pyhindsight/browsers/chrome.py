@@ -1147,7 +1147,7 @@ class Chrome(WebBrowser):
             if not isinstance(pair, tuple) or len(pair) is not 2:
                 logging.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
                 continue
-            fs_path_re = re.compile(b"\x00(?P<dir>\d\d)\\\\(?P<id>\d{8})\x00")
+            fs_path_re = re.compile(b"\x00(?P<dir>\d\d)(\\\\|/)(?P<id>\d{8})\x00")
             m = fs_path_re.search(pair[1])
             if m:
                 nodes[pair[0]] = {"dir": m.group("dir"), "id": m.group("id")}
