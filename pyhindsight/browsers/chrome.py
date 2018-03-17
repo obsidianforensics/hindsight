@@ -86,7 +86,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 65)
+        possible_versions = range(1, 66)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
