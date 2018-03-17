@@ -273,6 +273,11 @@ class AnalysisSession(object):
         green_url_format = workbook.add_format({'font_color': 'green', 'align': 'left'})
         green_field_format = workbook.add_format({'font_color': 'green', 'align': 'left'})
         green_value_format = workbook.add_format({'font_color': 'green', 'align': 'left'})
+        blue_type_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
+        blue_date_format = workbook.add_format({'font_color': 'blue', 'num_format': 'yyyy-mm-dd hh:mm:ss.000'})
+        blue_url_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
+        blue_field_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
+        blue_value_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
 
         # Title bar
         w.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
@@ -331,7 +336,7 @@ class AnalysisSession(object):
         row_number = 2
         for item in self.parsed_artifacts:
             try:
-                if item.row_type[:3] == "url":
+                if item.row_type.startswith("url"):
                     w.write_string(row_number, 0, item.row_type, black_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), black_date_format)  # date
                     w.write_string(row_number, 2, item.url, black_url_format)  # URL
@@ -345,14 +350,14 @@ class AnalysisSession(object):
                     w.write(row_number, 10, item.hidden, black_flag_format)  # Hidden
                     w.write(row_number, 11, item.transition_friendly, black_trans_format)  # Transition
 
-                elif item.row_type[:8] == "autofill":
+                elif item.row_type.startswith("autofill"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
                     w.write_string(row_number, 3, item.name, red_field_format)  # autofill field
                     w.write_string(row_number, 4, item.value, red_value_format)  # autofill value
                     w.write_string(row_number, 6, " ", red_type_format)  # blank
 
-                elif item.row_type[:8] == "download":
+                elif item.row_type.startswith("download"):
                     w.write_string(row_number, 0, item.row_type, green_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), green_date_format)  # date
                     w.write_string(row_number, 2, item.url, green_url_format)  # download URL
@@ -371,20 +376,20 @@ class AnalysisSession(object):
                     w.write(row_number, 15, item.etag, green_value_format)  # ETag
                     w.write(row_number, 16, item.last_modified, green_value_format)  # Last Modified
 
-                elif item.row_type[:15] == "bookmark folder":
+                elif item.row_type.startswith("bookmark folder"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
                     w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
                     w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
 
-                elif item.row_type[:8] == "bookmark":
+                elif item.row_type.startswith("bookmark"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
                     w.write_string(row_number, 2, item.url, red_url_format)  # URL
                     w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
                     w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
 
-                elif item.row_type[:6] == "cookie":
+                elif item.row_type.startswith("cookie"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
                     w.write_string(row_number, 2, item.url, gray_url_format)  # URL
@@ -392,7 +397,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
 
-                elif item.row_type[:5] == "cache":
+                elif item.row_type.startswith("cache"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
                     try:
@@ -408,7 +413,7 @@ class AnalysisSession(object):
                     w.write(row_number, 18, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
                     w.write(row_number, 19, item.http_headers_str, gray_value_format)  # Cached data location // data_2 [1542523]
 
-                elif item.row_type[:13] == "local storage":
+                elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
                     w.write_string(row_number, 2, item.url, gray_url_format)  # URL
@@ -417,13 +422,21 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write_string(row_number, 6, " ", gray_type_format)  # blank
 
-                elif item.row_type[:5] == "login":
+                elif item.row_type.startswith("login"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
                     w.write_string(row_number, 2, item.url, red_url_format)  # URL
                     w.write_string(row_number, 3, item.name, red_field_format)  # form field name
                     w.write_string(row_number, 4, item.value, red_value_format)  # username or pw value
                     w.write_string(row_number, 6, " ", red_type_format)  # blank
+
+                elif item.row_type.startswith("preference"):
+                    w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), blue_date_format)  # date
+                    w.write_string(row_number, 2, item.url, blue_url_format)  # URL
+                    w.write_string(row_number, 3, item.name, blue_field_format)  # form field name
+                    w.write_string(row_number, 4, item.value, blue_value_format)  # username or pw value
+                    w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
 
             except Exception, e:
                 logging.error("Failed to write row to XLSX: {}".format(e))

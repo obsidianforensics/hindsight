@@ -218,3 +218,12 @@ class WebBrowser(object):
             self.name = name
             self.value = value
             self.count = count
+
+    class PreferenceItem(HistoryItem):
+        def __init__(self, url, timestamp, key, value, interpretation):
+            super(WebBrowser.PreferenceItem, self).__init__(u'preference', timestamp=timestamp, name=key, value=value)
+            self.url = url
+            self.timestamp = timestamp
+            self.key = key
+            self.value = value
+            self.interpretation = interpretation

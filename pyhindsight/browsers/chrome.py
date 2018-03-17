@@ -905,7 +905,116 @@ class Chrome(WebBrowser):
                 'value': value,
                 'description': description})
 
+        def expand_language_code(code):
+            # From https://cs.chromium.org/chromium/src/components/translate/core/browser/translate_language_list.cc
+            codes = {
+                  "af": "Afrikaans",
+                  "am": "Amharic",
+                  "ar": "Arabic",
+                  "az": "Azerbaijani",
+                  "be": "Belarusian",
+                  "bg": "Bulgarian",
+                  "bn": "Bengali",
+                  "bs": "Bosnian",
+                  "ca": "Catalan",
+                  "ceb": "Cebuano",
+                  "co": "Corsican",
+                  "cs": "Czech",
+                  "cy": "Welsh",
+                  "da": "Danish",
+                  "de": "German",
+                  "el": "Greek",
+                  "en": "English",
+                  "eo": "Esperanto",
+                  "es": "Spanish",
+                  "et": "Estonian",
+                  "eu": "Basque",
+                  "fa": "Persian",
+                  "fi": "Finnish",
+                  "fy": "Frisian",
+                  "fr": "French",
+                  "ga": "Irish",
+                  "gd": "Scots Gaelic",
+                  "gl": "Galician",
+                  "gu": "Gujarati",
+                  "ha": "Hausa",
+                  "haw": "Hawaiian",
+                  "hi": "Hindi",
+                  "hr": "Croatian",
+                  "ht": "Haitian Creole",
+                  "hu": "Hungarian",
+                  "hy": "Armenian",
+                  "id": "Indonesian",
+                  "ig": "Igbo",
+                  "is": "Icelandic",
+                  "it": "Italian",
+                  "iw": "Hebrew",
+                  "ja": "Japanese",
+                  "ka": "Georgian",
+                  "kk": "Kazakh",
+                  "km": "Khmer",
+                  "kn": "Kannada",
+                  "ko": "Korean",
+                  "ku": "Kurdish",
+                  "ky": "Kyrgyz",
+                  "la": "Latin",
+                  "lb": "Luxembourgish",
+                  "lo": "Lao",
+                  "lt": "Lithuanian",
+                  "lv": "Latvian",
+                  "mg": "Malagasy",
+                  "mi": "Maori",
+                  "mk": "Macedonian",
+                  "ml": "Malayalam",
+                  "mn": "Mongolian",
+                  "mr": "Marathi",
+                  "ms": "Malay",
+                  "mt": "Maltese",
+                  "my": "Burmese",
+                  "ne": "Nepali",
+                  "nl": "Dutch",
+                  "no": "Norwegian",
+                  "ny": "Nyanja",
+                  "pa": "Punjabi",
+                  "pl": "Polish",
+                  "ps": "Pashto",
+                  "pt": "Portuguese",
+                  "ro": "Romanian",
+                  "ru": "Russian",
+                  "sd": "Sindhi",
+                  "si": "Sinhala",
+                  "sk": "Slovak",
+                  "sl": "Slovenian",
+                  "sm": "Samoan",
+                  "sn": "Shona",
+                  "so": "Somali",
+                  "sq": "Albanian",
+                  "sr": "Serbian",
+                  "st": "Southern Sotho",
+                  "su": "Sundanese",
+                  "sv": "Swedish",
+                  "sw": "Swahili",
+                  "ta": "Tamil",
+                  "te": "Telugu",
+                  "tg": "Tajik",
+                  "th": "Thai",
+                  "tl": "Tagalog",
+                  "tr": "Turkish",
+                  "uk": "Ukrainian",
+                  "ur": "Urdu",
+                  "uz": "Uzbek",
+                  "vi": "Vietnamese",
+                  "yi": "Yiddish",
+                  "xh": "Xhosa",
+                  "yo": "Yoruba",
+                  "zh-CN": "Chinese (Simplified)",
+                  "zh-TW": "Chinese (Traditional)",
+                  "zu": "Zulu"
+                }
+            return codes.get(code, code)
+
         results = []
+        timestamped_preference_items = []
         logging.info("Preferences:")
         prefs = None
 
@@ -915,77 +1024,206 @@ class Chrome(WebBrowser):
             logging.info(" - Reading from {}".format(pref_path))
             pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
             prefs = json.loads(pref_file.read())
+
         except:
             logging.error(" - Error decoding Preferences file {}".format(pref_path))
             self.artifacts_counts[preferences_file] = 'Failed'
             return
 
-        if prefs:
-            # Account Information
-            if prefs.get('account_info'):
-                append_group("Account Information")
-                for account in prefs['account_info']:
-                    append_pref('account_id: {}'.format(account['account_id']), 'email: {}'.format(account['email']))
+        if not prefs:
+            logging.error(" - Error loading Preferences file {}".format(pref_path))
+            self.artifacts_counts[preferences_file] = 'Failed'
+            return
 
-            # Local file paths
-            append_group("Local file paths")
-            if prefs.get('download'):
-                check_and_append_pref(prefs['download'], 'default_directory')
-            if prefs.get('printing'):
-                if prefs.get('print_preview_sticky_settings'):
-                    check_and_append_pref(prefs['printing']['print_preview_sticky_settings'], 'savePath')
-            if prefs.get('savefile'):
-                check_and_append_pref(prefs['savefile'], 'default_directory')
-            if prefs.get('selectfile'):
-                check_and_append_pref(prefs['selectfile'], 'last_directory')
+        # Account Information
+        if prefs.get('account_info'):
+            append_group("Account Information")
+            for account in prefs['account_info']:
+                for account_item in account.keys():
+                    append_pref(account_item, account[account_item])
 
-            # Autofill
-            if prefs.get('autofill'):
-                append_group("Autofill")
-                check_and_append_pref(prefs['autofill'], 'enabled')
+        # Local file paths
+        append_group("Local file paths")
+        if prefs.get('download'):
+            check_and_append_pref(prefs['download'], 'default_directory')
+        if prefs.get('printing'):
+            if prefs.get('print_preview_sticky_settings'):
+                check_and_append_pref(prefs['printing']['print_preview_sticky_settings'], 'savePath')
+        if prefs.get('savefile'):
+            check_and_append_pref(prefs['savefile'], 'default_directory')
+        if prefs.get('selectfile'):
+            check_and_append_pref(prefs['selectfile'], 'last_directory')
 
-            # Clearing Chrome Data
-            if prefs.get('browser'):
-                append_group("Clearing Chrome Data")
-                if prefs['browser'].get('last_clear_browsing_data_time'):
-                    check_and_append_pref(prefs['browser'], 'last_clear_browsing_data_time',
-                                          friendly_date(prefs['browser']['last_clear_browsing_data_time']),
-                                          "Last time the history was cleared")
-                check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
-                if prefs['browser'].get('clear_data'):
-                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
-                                          description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
-                                                      "4: the beginning of time")
-                    check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
-                    check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
+        # Autofill
+        if prefs.get('autofill'):
+            append_group("Autofill")
+            check_and_append_pref(prefs['autofill'], 'enabled')
 
-            append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
-                                                 "useful in some cases.")
-            # There are per_host_zoom_levels keys in two locations: profile.per_host_zoom_levels and
-            # partition.per_host_zoom_levels.[integer].
-            if prefs.get('profile'):
-                if prefs['profile'].get('per_host_zoom_levels'):
-                    for zoom in prefs['profile']['per_host_zoom_levels'].keys():
-                        check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
+        # Clearing Chrome Data
+        if prefs.get('browser'):
+            append_group("Clearing Chrome Data")
+            if prefs['browser'].get('last_clear_browsing_data_time'):
+                check_and_append_pref(prefs['browser'], 'last_clear_browsing_data_time',
+                                      friendly_date(prefs['browser']['last_clear_browsing_data_time']),
+                                      "Last time the history was cleared")
+            check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
+            if prefs['browser'].get('clear_data'):
+                check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
+                                      description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
+                                                  "4: the beginning of time")
+                check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
+                check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
+                check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
+                check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
+                check_and_append_pref(prefs['browser']['clear_data'], 'browsing_history')
+                check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
+                check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
 
-            if prefs.get('partition'):
-                if prefs['partition'].get('per_host_zoom_levels'):
-                    for number in prefs['partition']['per_host_zoom_levels'].keys():
-                        for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
-                            check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
+        append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
+                                             "useful in some cases.")
+        # There are per_host_zoom_levels keys in at least two locations: profile.per_host_zoom_levels and
+        # partition.per_host_zoom_levels.[integer].
+        if prefs.get('profile'):
+            if prefs['profile'].get('per_host_zoom_levels'):
+                for zoom in prefs['profile']['per_host_zoom_levels'].keys():
+                    check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
 
-            if prefs.get('profile'):
-                if prefs['profile'].get('content_settings'):
-                    if prefs['profile']['content_settings'].get('pattern_pairs'):
-                        append_group("Profile Content Settings", "These settings persist even when the history is "
-                                                                 "cleared, and may be useful in some cases.")
-                        for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
-                            # Adding the space before the domain prevents Excel from freaking out...  idk.
-                            append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
+        if prefs.get('partition'):
+            if prefs['partition'].get('per_host_zoom_levels'):
+                for number in prefs['partition']['per_host_zoom_levels'].keys():
+                    for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
+                        check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
+
+        if prefs.get('profile'):
+            if prefs['profile'].get('content_settings'):
+                if prefs['profile']['content_settings'].get('pattern_pairs'):
+                    append_group("Profile Content Settings", "These settings persist even when the history is "
+                                                             "cleared, and may be useful in some cases.")
+                    for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
+                        # Adding the space before the domain prevents Excel from freaking out...  idk.
+                        append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
+
+                if prefs['profile']['content_settings'].get('exceptions'):
+                    if prefs['profile']['content_settings']['exceptions'].get('media_engagement'):
+                        # Example (from in Preferences file):
+                        # "http://obsidianforensics.com:80,*": {
+                        #     "last_modified": "13160264938091184",
+                        #     "setting": {
+                        #         "hasHighScore": false,
+                        #         "lastMediaPlaybackTime": 0.0,
+                        #         "mediaPlaybacks": 0,
+                        #         "visits": 1
+                        #     }
+                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['media_engagement'].iteritems():
+                            if pref_data.get("last_modified"):
+                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                  key="media_engagement [in {}.profile.content_settings.exceptions]"
+                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
+                                timestamped_preference_items.append(pref_item)
+
+                    if prefs['profile']['content_settings']['exceptions'].get('notifications'):
+                        # Example (from in Preferences file):
+                        # "https://www.youtube.com:443,*": {
+                        #     "last_modified": "13161568350592864",
+                        #     "setting": 1
+                        # }
+                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['notifications'].iteritems():
+                            if pref_data.get("last_modified"):
+                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                  key="notifications [in {}.profile.content_settings.exceptions]"
+                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
+                                timestamped_preference_items.append(pref_item)
+
+                    if prefs['profile']['content_settings']['exceptions'].get('permission_autoblocking_data'):
+                        # Example (from in Preferences file):
+                        # "https://www.mapquest.com:443,*": {
+                        #     "last_modified": "13161750781018557",  # This can be 0, or not exist at all
+                        #       "setting": {
+                        #           "Geolocation": {
+                        #               "ignore_count": 1
+                        #  }}},
+                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['permission_autoblocking_data'].iteritems():
+                            if pref_data.get("last_modified") and pref_data.get("last_modified") != "0":
+                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                  key="permission_autoblocking_data [in {}.profile.content_settings.exceptions]"
+                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
+                                timestamped_preference_items.append(pref_item)
+
+                    if prefs['profile']['content_settings']['exceptions'].get('site_engagement'):
+                        # Example (from in Preferences file):
+                        # "http://aboutdfir.com:80,*": {
+                        #     "last_modified": "13162626153701643",
+                        #     "setting": {
+                        #         "lastEngagementTime": 13162626153701620.0,
+                        #         "lastShortcutLaunchTime": 0.0,
+                        #         "pointsAddedToday": 4.5,
+                        #         "rawScore": 4.5
+                        #     }
+                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['site_engagement'].iteritems():
+                            if pref_data.get("last_modified"):
+                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                  key="site_engagement [in {}.profile.content_settings.exceptions]"
+                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
+                                timestamped_preference_items.append(pref_item)
+
+                    if prefs['profile']['content_settings']['exceptions'].get('sound'):
+                        # Example (from in Preferences file):
+                        # "http://obsidianforensics.com:80,*": {
+                        #     "last_modified": "13162624224060055",
+                        #     "setting": 2
+                        # }
+                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['sound'].iteritems():
+                            if pref_data.get("last_modified"):
+                                interpretation = ""
+                                if pref_data.get("setting") is 2:
+                                    interpretation = "Muted site"
+                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                  key="sound [in {}.profile.content_settings.exceptions]"
+                                                                  .format(preferences_file), value=str(pref_data),
+                                                                  interpretation=interpretation)
+                                timestamped_preference_items.append(pref_item)
+
+        if prefs.get('extensions'):
+            if prefs['extensions'].get('autoupdate'):
+                # Example (from in Preferences file):
+                # "extensions": {
+                #     ...
+                #     "autoupdate": {
+                #         "last_check": "13162668769688981",
+                #         "next_check": "13162686093672995"
+                #     },
+                if prefs['extensions']['autoupdate'].get('last_check'):
+                    pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
+                                                      key="autoupdate.last_check [in {}.extensions]".format(preferences_file),
+                                                      value=prefs['extensions']['autoupdate']['last_check'], interpretation="")
+                    timestamped_preference_items.append(pref_item)
+
+        if prefs.get('signin'):
+            if prefs['signin'].get('signedin_time'):
+                # Example (from in Preferences file):
+                # "signin": {
+                #     "signedin_time": "13196354823425155"
+                #  },
+                pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['signin']['signedin_time'], self.timezone),
+                                                  key="signedin_time [in {}.signin]".format(preferences_file),
+                                                  value=prefs['signin']['signedin_time'], interpretation="")
+                timestamped_preference_items.append(pref_item)
+
+        if prefs.get('translate_last_denied_time_for_language'):
+            for lang_code, timestamp in prefs['translate_last_denied_time_for_language'].iteritems():
+                # Example (from in Preferences file):
+                # "translate_last_denied_time_for_language": {
+                #    "iw": [1492489197120.853],
+                #    "mt": [1487824811164.411],
+                #    "pt": [1502849632254.548]
+                #  },
+                pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(timestamp[0], self.timezone),
+                                                  key="translate_last_denied_time_for_language [in {}]".format(preferences_file),
+                                                  value="{}: {}".format(lang_code, timestamp),
+                                                  interpretation="Declined to translate page from {}".format(expand_language_code(lang_code)))
+                timestamped_preference_items.append(pref_item)
+
+        self.parsed_artifacts.extend(timestamped_preference_items)
 
         self.artifacts_counts[preferences_file] = len(results)
         logging.info(" - Parsed {} items".format(len(results)))
