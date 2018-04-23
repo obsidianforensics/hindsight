@@ -3,6 +3,8 @@ import os
 import sys
 import logging
 
+log = logging.getLogger(__name__)
+
 
 class WebBrowser(object):
     def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None, timezone=None, structure=None,
@@ -30,10 +32,6 @@ class WebBrowser(object):
 
         if self.artifacts_display is None:
             self.artifacts_display = {}
-
-        # if self.logger is None:
-        #     self.logger = logging.basicConfig(level=logging.INFO, format='%(asctime)s.%(msecs).03d | %(message)s',
-        #                                       datefmt='%Y-%m-%d %H:%M:%S')
 
     @staticmethod
     def format_processing_output(name, items):
@@ -69,7 +67,7 @@ class WebBrowser(object):
                       "Chrome installation while it is running.  Please close Chrome and try again."
                 sys.exit(1)
             except:
-                logging.error(" - Couldn't connect to {}".format(database_path))
+                log.error(" - Couldn't connect to {}".format(database_path))
                 return
 
             # For each table, find all the columns in it

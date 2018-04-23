@@ -24,8 +24,8 @@ from pyhindsight.utils import banner, MyEncoder, format_meta_output, format_plug
 try:
     import pytz
 except ImportError:
-    print "Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({})."\
-        .format(time.tzname[time.daylight])
+    print("Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({})."
+          .format(time.tzname[time.daylight]))
 
 
 def parse_arguments(analysis_session):
@@ -120,7 +120,7 @@ def main():
         string_buffer.seek(0)
 
         # Write the StringIO object to a file on disk named what the user specified
-        with open(analysis_session.output_name + '.' + analysis_session.selected_output_format, 'wb') as file_output:
+        with open("{}.{}".format(os.path.join(real_path, analysis_session.output_name), analysis_session.selected_output_format), 'wb') as file_output:
             shutil.copyfileobj(string_buffer, file_output)
 
     def write_sqlite(analysis_session):
@@ -129,9 +129,12 @@ def main():
         if not os.path.exists(output_file):
             analysis_session.generate_sqlite(output_file)
         else:
-            print "\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file)
+            print("\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file))
 
-    print banner
+    print(banner)
+
+    # Useful when Hindsight is run from a different directory than where the file is located
+    real_path = os.path.dirname(os.path.realpath(sys.argv[0]))
 
     # Set up the AnalysisSession object, and transfer the relevant input arguments to it
     analysis_session = AnalysisSession()
@@ -146,64 +149,67 @@ def main():
     analysis_session.selected_output_format = args.format
     analysis_session.browser_type = args.browser_type
     analysis_session.timezone = args.timezone
+
+    if args.log == 'hindsight.log':
+        args.log = os.path.join(real_path, args.log)
     analysis_session.log_path = args.log
 
     # Set up logging
-    logging.basicConfig(filename=analysis_session.log_path, level=logging.DEBUG, format='%(asctime)s.%(msecs).03d | %(message)s',
+    logging.basicConfig(filename=analysis_session.log_path, level=logging.DEBUG,
+                        format='%(asctime)s.%(msecs).03d | %(levelname).01s | %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
+    log = logging.getLogger(__name__)
 
     # Hindsight version info
-    logging.info(
+    log.info(
         '\n' + '#' * 80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'
         .format(pyhindsight.__version__) + '#' * 80)
 
     # Analysis start time
-    print format_meta_output("Start time", str(datetime.datetime.now())[:-3])
+    print(format_meta_output("Start time", str(datetime.datetime.now())[:-3]))
 
     # Read the input directory
-    print format_meta_output("Input directory", args.input)
-    logging.info("Reading files from %s" % args.input)
+    print(format_meta_output("Input directory", args.input))
+    log.info("Reading files from %s" % args.input)
     input_listing = os.listdir(args.input)
-    logging.debug("Input directory contents: " + str(input_listing))
-    print format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format))
+    log.debug("Input directory contents: " + str(input_listing))
+    print(format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format)))
 
     # Run the AnalysisSession
     print("\n Processing:")
     analysis_session.run()
 
     print("\n Running plugins:")
-    logging.info("Plugins:")
+    log.info("Plugins:")
     completed_plugins = []
 
     # First run built-in plugins that ship with Hindsight
-    logging.info(" Built-in Plugins:")
+    log.info(" Built-in Plugins:")
     for plugin in pyhindsight.plugins.__all__:
         # Check to see if we've already run this plugin (likely from a different path)
         if plugin in completed_plugins:
             continue
 
-        logging.debug(" - Loading '{}'".format(plugin))
+        log.debug(" - Loading '{}'".format(plugin))
         try:
             module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
         except ImportError, e:
-            logging.error(" - Error: {}".format(e))
-            print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+            log.error(" - Error: {}".format(e))
+            print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
             continue
         try:
-            logging.info(" - Running '{}' plugin".format(module.friendlyName))
+            log.info(" - Running '{}' plugin".format(module.friendlyName))
             parsed_items = module.plugin(analysis_session)
-            print format_plugin_output(module.friendlyName, module.version, parsed_items)
-            logging.info(" - Completed; {}".format(parsed_items))
+            print(format_plugin_output(module.friendlyName, module.version, parsed_items))
+            log.info(" - Completed; {}".format(parsed_items))
             completed_plugins.append(plugin)
         except Exception, e:
-            print format_plugin_output(module.friendlyName, module.version, 'failed')
-            logging.info(" - Failed; {}".format(e))
+            print(format_plugin_output(module.friendlyName, module.version, 'failed'))
+            log.info(" - Failed; {}".format(e))
 
     # Then look for any custom user-provided plugins in a 'plugins' directory
-    logging.info(" Custom Plugins:")
+    log.info(" Custom Plugins:")
 
-    # Useful when Hindsight is run from a different directory than where the file is located
-    real_path = os.path.dirname(os.path.realpath(sys.argv[0]))
     if real_path not in sys.path:
         sys.path.insert(0, real_path)
 
@@ -212,7 +218,7 @@ def main():
         # If a subdirectory exists called 'plugins' or 'pyhindsight/plugins' at the current path, continue on
         for potential_plugin_path in [os.path.join(potential_path, 'plugins'), os.path.join(potential_path, 'pyhindsight', 'plugins')]:
             if os.path.isdir(potential_plugin_path):
-                logging.info(" Found custom plugin directory {}:".format(potential_plugin_path))
+                log.info(" Found custom plugin directory {}:".format(potential_plugin_path))
                 try:
                     # Insert the current plugin location to the system path, so we can import plugin modules by name
                     sys.path.insert(0, potential_plugin_path)
@@ -220,35 +226,35 @@ def main():
                     # Get list of available plugins and run them
                     plugin_listing = os.listdir(potential_plugin_path)
 
-                    logging.debug(" - Contents of plugin folder: " + str(plugin_listing))
+                    log.debug(" - Contents of plugin folder: " + str(plugin_listing))
                     for plugin in plugin_listing:
                         if plugin[-3:] == ".py" and plugin[0] != '_':
                             plugin = plugin.replace(".py", "")
 
                             # Check to see if we've already run this plugin (likely from a different path)
                             if plugin in completed_plugins:
-                                logging.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
+                                log.debug(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
                                 continue
 
-                            logging.debug(" - Loading '{}'".format(plugin))
+                            log.debug(" - Loading '{}'".format(plugin))
                             try:
                                 module = __import__(plugin)
                             except ImportError, e:
-                                logging.error(" - Error: {}".format(e))
-                                print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+                                log.error(" - Error: {}".format(e))
+                                print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
                                 continue
                             try:
-                                logging.info(" - Running '{}' plugin".format(module.friendlyName))
+                                log.info(" - Running '{}' plugin".format(module.friendlyName))
                                 parsed_items = module.plugin(analysis_session)
-                                print format_plugin_output(module.friendlyName, module.version, parsed_items)
-                                logging.info(" - Completed; {}".format(parsed_items))
+                                print(format_plugin_output(module.friendlyName, module.version, parsed_items))
+                                log.info(" - Completed; {}".format(parsed_items))
                                 completed_plugins.append(plugin)
                             except Exception, e:
-                                print format_plugin_output(module.friendlyName, module.version, 'failed')
-                                logging.info(" - Failed; {}".format(e))
+                                print(format_plugin_output(module.friendlyName, module.version, 'failed'))
+                                log.info(" - Failed; {}".format(e))
                 except Exception as e:
-                    logging.debug(' - Error loading plugins ({})'.format(e))
-                    print '  - Error loading plugins'
+                    log.debug(' - Error loading plugins ({})'.format(e))
+                    print('  - Error loading plugins')
                 finally:
                     # Remove the current plugin location from the system path, so we don't loop over it again
                     sys.path.remove(potential_plugin_path)
@@ -259,28 +265,29 @@ def main():
 
     # Get desired output type form args.format and call the correct output creation function
     if analysis_session.selected_output_format == 'xlsx':
-        logging.info("Writing output; XLSX format selected")
+        log.info("Writing output; XLSX format selected")
         try:
             print("\n Writing {}.xlsx".format(analysis_session.output_name))
             write_excel(analysis_session)
         except IOError:
             type, value, traceback = sys.exc_info()
-            print value, "- is the file open?  If so, please close it and try again."
-            logging.error("Error writing XLSX file; type: {}, value: {}, traceback: {}".format(type, value, traceback))
+            print(value, "- is the file open?  If so, please close it and try again.")
+            log.error("Error writing XLSX file; type: {}, value: {}, traceback: {}".format(type, value, traceback))
 
     elif args.format == 'json':
-        logging.info("Writing output; JSON format selected")
+        log.info("Writing output; JSON format selected")
         output = open("{}.json".format(analysis_session.output_name), 'wb')
         output.write(json.dumps(analysis_session, cls=MyEncoder, indent=4))
 
     elif args.format == 'sqlite':
-        logging.info("Writing output; SQLite format selected")
+        log.info("Writing output; SQLite format selected")
         print("\n Writing {}.sqlite".format(analysis_session.output_name))
         write_sqlite(analysis_session)
 
     # Display and log finish time
-    print "\n Finish time: ", str(datetime.datetime.now())[:-3]
-    logging.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
+    print("\n Finish time: ", str(datetime.datetime.now())[:-3])
+    log.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
+
 
 if __name__ == "__main__":
     main()

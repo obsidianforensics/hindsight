@@ -20,7 +20,7 @@ def get_plugins_info():
     completed_plugins = []
 
     # First run built-in plugins that ship with Hindsight
-    logging.info(" Built-in Plugins:")
+    # log.info(" Built-in Plugins:")
     for plugin in pyhindsight.plugins.__all__:
         # Check to see if we've already run this plugin (likely from a different path)
         if plugin in completed_plugins:
@@ -98,7 +98,7 @@ def get_plugins_info():
                             completed_plugins.append(plugin)
 
             except Exception as e:
-                # logging.debug(' - Error loading plugins ({})'.format(e))
+                # log.debug(' - Error loading plugins ({})'.format(e))
                 print '  - Error loading plugins'
             finally:
                 # Remove the current plugin location from the system path, so we don't loop over it again
@@ -136,10 +136,12 @@ def do_run():
 
     # Set up logging
     logging.basicConfig(filename=analysis_session.log_path, level=logging.DEBUG,
-                        format='%(asctime)s.%(msecs).03d | %(message)s',
+                        format='%(asctime)s.%(msecs).03d | %(levelname).01s | %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
+    log = logging.getLogger(__name__)
+
     # Hindsight version info
-    logging.info(
+    log.info(
         '\n' + '#' * 80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'
         .format(pyhindsight.__version__) + '#' * 80)
 
@@ -203,7 +205,7 @@ def generate_xlsx():
     # strIO.write()
     strIO.seek(0)
     bottle.response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
-    bottle.response.headers['Content-Disposition'] = 'attachment; filename={}.xlsx'.format(analysis_session.output_name)
+    bottle.response.headers['Content-Disposition'] = 'attachment; filename="{}.xlsx"'.format(analysis_session.output_name)
     return strIO.read()
 
 
@@ -220,7 +222,7 @@ def generate_json():
 
 def main():
 
-    print banner
+    print(banner)
     global STATIC_PATH
 
     # Get the hindsight module's path on disk to add to sys.path, so we can find templates and static files
@@ -241,6 +243,7 @@ def main():
 
     # webbrowser.open("http://localhost:8080")
     bottle.run(host='localhost', port=8080, debug=True)
+
 
 if __name__ == "__main__":
     main()

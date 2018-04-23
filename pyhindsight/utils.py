@@ -89,6 +89,7 @@ def friendly_date(timestamp):
     else:
         return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
+
 banner = '''
 ################################################################################
 

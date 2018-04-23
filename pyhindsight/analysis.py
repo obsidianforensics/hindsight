@@ -11,6 +11,8 @@ from pyhindsight.browsers.brave import Brave
 from pyhindsight.utils import friendly_date, format_meta_output, format_plugin_output
 import pyhindsight.plugins
 
+log = logging.getLogger(__name__)
+
 
 class AnalysisSession(object):
     def __init__(self, profile_path=None, cache_path=None, browser_type=None, available_input_types=None,
@@ -65,7 +67,7 @@ class AnalysisSession(object):
             import xlsxwriter
             self.available_output_formats.append('xlsx')
         except ImportError:
-            logging.warning("Couldn't import module 'xlsxwriter'; XLSX output disabled.")
+            log.warning("Couldn't import module 'xlsxwriter'; XLSX output disabled.")
 
         # Set output name to default if not set by user
         if self.output_name is None:
@@ -78,7 +80,7 @@ class AnalysisSession(object):
             self.available_decrypts['windows'] = 1
         except ImportError:
             self.available_decrypts['windows'] = 0
-            logging.warning("Couldn't import module 'win32crypt'; cookie decryption on Windows disabled.")
+            log.warning("Couldn't import module 'win32crypt'; cookie decryption on Windows disabled.")
 
         # Mac OS
         try:
@@ -86,7 +88,7 @@ class AnalysisSession(object):
             self.available_decrypts['mac'] = 1
         except ImportError:
             self.available_decrypts['mac'] = 0
-            logging.warning("Couldn't import module 'keyring'; cookie decryption on Mac OS disabled.")
+            log.warning("Couldn't import module 'keyring'; cookie decryption on Mac OS disabled.")
 
         # Linux / Mac OS
         try:
@@ -96,7 +98,7 @@ class AnalysisSession(object):
         except ImportError:
             self.available_decrypts['linux'] = 0
             self.available_decrypts['mac'] = 0
-            logging.warning("Couldn't import module 'Cryptodome'; cookie decryption on Linux/Mac OS disabled.")
+            log.warning("Couldn't import module 'Cryptodome'; cookie decryption on Linux/Mac OS disabled.")
 
     def run(self):
         if self.selected_output_format is None:
@@ -116,10 +118,10 @@ class AnalysisSession(object):
         else:
             self.timezone = None
 
-        logging.debug("Options: " + str(self.__dict__))
+        log.debug("Options: " + str(self.__dict__))
 
         # Analysis start time
-        logging.info("Starting analysis")
+        log.info("Starting analysis")
 
         if self.browser_type == "Chrome":
             browser_analysis = Chrome(self.profile_path, available_decrypts=self.available_decrypts,
@@ -159,40 +161,40 @@ class AnalysisSession(object):
                     pass
 
     def run_plugins(self):
-        logging.info("Selected plugins: " + str(self.selected_plugins))
+        log.info("Selected plugins: " + str(self.selected_plugins))
         completed_plugins = []
 
         for plugin in self.selected_plugins:
 
             # First check built-in plugins that ship with Hindsight
-            # logging.info(" Built-in Plugins:")
+            # log.info(" Built-in Plugins:")
             for standard_plugin in pyhindsight.plugins.__all__:
                 # Check if the standard plugin is the selected_plugin we're looking for
                 if standard_plugin == plugin:
                     # Check to see if we've already run this plugin (likely from a different path)
                     if plugin in completed_plugins:
-                        logging.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
+                        log.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
                         continue
 
-                    logging.info(" - Loading '{}' [standard plugin]".format(plugin))
+                    log.info(" - Loading '{}' [standard plugin]".format(plugin))
                     try:
                         module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
                     except ImportError, e:
-                        logging.error(" - Error: {}".format(e))
+                        log.error(" - Error: {}".format(e))
                         print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
                         continue
                     try:
-                        logging.info(" - Running '{}' plugin".format(module.friendlyName))
+                        log.info(" - Running '{}' plugin".format(module.friendlyName))
                         parsed_items = module.plugin(self)
                         print format_plugin_output(module.friendlyName, module.version, parsed_items)
                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
-                        logging.info(" - Completed; {}".format(parsed_items))
+                        log.info(" - Completed; {}".format(parsed_items))
                         completed_plugins.append(plugin)
                         break
                     except Exception, e:
                         print format_plugin_output(module.friendlyName, module.version, 'failed')
                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
-                        logging.info(" - Failed; {}".format(e))
+                        log.info(" - Failed; {}".format(e))
 
             for potential_path in sys.path:
                 # If a subdirectory exists called 'plugins' at the current path, continue on
@@ -212,29 +214,29 @@ class AnalysisSession(object):
                                 if custom_plugin == plugin:
                                     # Check to see if we've already run this plugin (likely from a different path)
                                     if plugin in completed_plugins:
-                                        logging.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
+                                        log.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
                                         continue
 
-                                    logging.debug(" - Loading '{}' [custom plugin]".format(plugin))
+                                    log.debug(" - Loading '{}' [custom plugin]".format(plugin))
                                     try:
                                         module = __import__(plugin)
                                     except ImportError, e:
-                                        logging.error(" - Error: {}".format(e))
+                                        log.error(" - Error: {}".format(e))
                                         print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
                                         continue
                                     try:
-                                        logging.info(" - Running '{}' plugin".format(module.friendlyName))
+                                        log.info(" - Running '{}' plugin".format(module.friendlyName))
                                         parsed_items = module.plugin(self)
                                         print format_plugin_output(module.friendlyName, module.version, parsed_items)
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
-                                        logging.info(" - Completed; {}".format(parsed_items))
+                                        log.info(" - Completed; {}".format(parsed_items))
                                         completed_plugins.append(plugin)
                                     except Exception, e:
                                         print format_plugin_output(module.friendlyName, module.version, 'failed')
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
-                                        logging.info(" - Failed; {}".format(e))
+                                        log.info(" - Failed; {}".format(e))
                     except Exception as e:
-                        logging.debug(' - Error loading plugins ({})'.format(e))
+                        log.debug(' - Error loading plugins ({})'.format(e))
                         print '  - Error loading plugins'
                     finally:
                         # Remove the current plugin location from the system path, so we don't loop over it again
@@ -365,8 +367,8 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, green_value_format)  # download path
                     w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
                     w.write(row_number, 6, "", green_type_format)  # Safe Browsing
-                    w.write(row_number, 12, item.interrupt_reason_friendly, green_value_format)  # download path
-                    w.write(row_number, 13, item.danger_type_friendly, green_value_format)  # download path
+                    w.write(row_number, 12, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
+                    w.write(row_number, 13, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
                         open_friendly = u"Yes"
@@ -439,7 +441,7 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
 
             except Exception, e:
-                logging.error("Failed to write row to XLSX: {}".format(e))
+                log.error("Failed to write row to XLSX: {}".format(e))
 
             row_number += 1
 
@@ -493,19 +495,19 @@ class AnalysisSession(object):
             c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT)")
 
             for item in self.parsed_artifacts:
-                if item.row_type[:3] == "url":
+                if item.row_type.startswith("url"):
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, source, visit_duration, visit_count, "
                               "typed_count, url_hidden, transition) "
                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, item.visit_source,
                                item.visit_duration, item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
 
-                if item.row_type == "autofill":
+                elif item.row_type.startswith("autofill"):
                     c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
                               "VALUES (?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation))
 
-                if item.row_type == "download":
+                elif item.row_type.startswith("download"):
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, "
                               "interrupt_reason, danger_type, opened, etag, last_modified) "
                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -513,38 +515,44 @@ class AnalysisSession(object):
                                item.interpretation, item.interrupt_reason_friendly, item.danger_type_friendly,
                                item.opened, item.etag, item.last_modified))
 
-                if item.row_type == "bookmark":
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
-
-                if item.row_type == "bookmark folder":
+                elif item.row_type.startswith("bookmark folder"):
                     c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
                               "VALUES (?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.name, item.value,
                                item.interpretation))
 
-                if item.row_type[:6] == "cookie":
+                elif item.row_type.startswith("bookmark"):
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
                               "VALUES (?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
                                item.interpretation))
 
-                if item.row_type == "local storage":
+                elif item.row_type.startswith("cookie"):
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
                               "VALUES (?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
                                item.interpretation))
 
-                if item.row_type[:5] == "cache":
+                elif item.row_type.startswith("local storage"):
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+                elif item.row_type.startswith("cache"):
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, etag, last_modified, "
                               "server_name, data_location)"
                               "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, str(item.name), item.value,
                                item.interpretation, item.etag, item.last_modified, item.server_name, item.location))
 
-                if item.row_type[:5] == "login":
+                elif item.row_type.startswith("login"):
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                               item.interpretation))
+
+                elif item.row_type.startswith("preference"):
                     c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
                               "VALUES (?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,

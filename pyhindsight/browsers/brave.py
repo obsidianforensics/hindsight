@@ -5,6 +5,8 @@ import re
 from pyhindsight.browsers.chrome import Chrome
 from pyhindsight.utils import to_datetime
 
+log = logging.getLogger(__name__)
+
 
 class Brave(Chrome):
     def __init__(self, profile_path, timezone=None):
@@ -16,7 +18,7 @@ class Brave(Chrome):
         # Set up empty return array
         results = []
 
-        logging.info("History items from {}:".format(history_file))
+        log.info("History items from {}:".format(history_file))
         try:
 
             with open(os.path.join(path, history_file), 'rb') as history_input:
@@ -46,11 +48,11 @@ class Brave(Chrome):
                         results.append(new_row)
 
             self.artifacts_counts[history_file] = len(results)
-            logging.info(" - Parsed {} items".format(len(results)))
+            log.info(" - Parsed {} items".format(len(results)))
             self.parsed_artifacts.extend(results)
 
         except:
-            logging.error(" - Error opening '{}'".format(os.path.join(path, history_file)))
+            log.error(" - Error opening '{}'".format(os.path.join(path, history_file)))
             self.artifacts_counts[history_file] = 'Failed'
             return
 
@@ -59,13 +61,13 @@ class Brave(Chrome):
         supported_subdirs = ['Local Storage', 'Extensions', 'Cache']
         supported_jsons = ['Bookmarks']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
-        logging.debug("Supported items: " + str(supported_items))
+        log.debug("Supported items: " + str(supported_items))
         input_listing = os.listdir(self.profile_path)
 
-        logging.info("Found the following supported files or directories:")
+        log.info("Found the following supported files or directories:")
         for input_file in input_listing:
             if input_file in supported_items:
-                logging.info(" - %s" % input_file)
+                log.info(" - %s" % input_file)
 
         # Process History files
         custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
@@ -97,7 +99,7 @@ class Brave(Chrome):
 
         # Version information is moved to after parsing history, as we read the version from the same file rather than detecting via SQLite table attributes
         print self.format_processing_output("Detected {} version".format(self.browser_name), self.display_version)
-        logging.info("Detected {} version {}".format(self.browser_name, self.display_version))
+        log.info("Detected {} version {}".format(self.browser_name, self.display_version))
 
         if 'Cache' in input_listing:
             self.get_cache(self.profile_path, 'Cache', row_type=u'cache')
