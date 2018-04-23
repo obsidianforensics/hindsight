@@ -88,7 +88,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 66)
+        possible_versions = range(1, 67)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -139,7 +139,7 @@ class Chrome(WebBrowser):
             log.debug("Analyzing 'Cookies' structure")
             log.debug(" - Starting possible versions:  {}".format(possible_versions))
             if 'cookies' in self.structure['Cookies'].keys():
-                trim_lesser_versions_if('persistent', self.structure['Cookies']['cookies'], 17)
+                trim_lesser_versions_if('is_persistent', self.structure['Cookies']['cookies'], 66)
                 trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
                 trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
                 trim_lesser_versions_if('firstpartyonly', self.structure['Cookies']['cookies'], 44)
@@ -439,7 +439,11 @@ class Chrome(WebBrowser):
         log.info("Cookie items from {}:".format(database))
 
         # Queries for different versions
-        query = {33: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+        query = {66: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+                            cookies.last_access_utc, cookies.expires_utc, cookies.is_secure, cookies.is_httponly,
+                            cookies.is_persistent, cookies.has_expires, cookies.priority, cookies.encrypted_value
+                        FROM cookies''',
+                 33: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
                             cookies.persistent, cookies.has_expires, cookies.priority, cookies.encrypted_value
                         FROM cookies''',
@@ -1688,7 +1692,13 @@ class Chrome(WebBrowser):
                                                 self.artifacts_counts['Extensions'])
 
         if 'Extension Cookies' in input_listing:
-            self.get_cookies(self.profile_path, 'Extension Cookies', self.version)
+            # Workaround to cap the version at 65 for Extension Cookies, as until that
+            # point it has the same database format as Cookies
+            ext_cookies_version = self.version
+            if min(self.version) > 65:
+                ext_cookies_version.insert(0, 65)
+
+            self.get_cookies(self.profile_path, 'Extension Cookies', ext_cookies_version)
             self.artifacts_display['Extension Cookies'] = "Extension Cookie records"
             print self.format_processing_output(self.artifacts_display['Extension Cookies'],
                                                 self.artifacts_counts['Extension Cookies'])
