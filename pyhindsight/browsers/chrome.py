@@ -873,23 +873,27 @@ class Chrome(WebBrowser):
 
     def get_preferences(self, path, preferences_file):
         def check_and_append_pref(parent, pref, value=None, description=None):
-            # If the preference exists, continue
-            if parent.get(pref):
-                # If no value is specified, use the value from the preference JSON
-                if not value:
-                    value = parent[pref]
-                # Append the preference dict to our results array
-                results.append({
-                    'group': None,
-                    'name': pref,
-                    'value': value,
-                    'description': description})
-            else:
-                results.append({
-                    'group': None,
-                    'name': pref,
-                    'value': '<not present>',
-                    'description': description})
+            try:
+                # If the preference exists, continue
+                if parent.get(pref):
+                    # If no value is specified, use the value from the preference JSON
+                    if not value:
+                        value = parent[pref]
+                    # Append the preference dict to our results array
+                    results.append({
+                        'group': None,
+                        'name': pref,
+                        'value': value,
+                        'description': description})
+                else:
+                    results.append({
+                        'group': None,
+                        'name': pref,
+                        'value': '<not present>',
+                        'description': description})
+
+            except Exception, e:
+                log.exception(" - Exception parsing Preference item: {})".format(e))
 
         def check_and_append_pref_and_children(parent, pref, value=None, description=None):
             # If the preference exists, continue
@@ -1045,8 +1049,8 @@ class Chrome(WebBrowser):
             pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
             prefs = json.loads(pref_file.read())
 
-        except:
-            log.error(" - Error decoding Preferences file {}".format(pref_path))
+        except Exception, e:
+            log.exception(" - Error decoding Preferences file {}".format(pref_path))
             self.artifacts_counts[preferences_file] = 'Failed'
             return
 
@@ -1088,16 +1092,19 @@ class Chrome(WebBrowser):
                                       "Last time the history was cleared")
             check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
             if prefs['browser'].get('clear_data'):
-                check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
-                                      description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
-                                                  "4: the beginning of time")
-                check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
-                check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
-                check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
-                check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
-                check_and_append_pref(prefs['browser']['clear_data'], 'browsing_history')
-                check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
-                check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
+                try:
+                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
+                                          description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
+                                                      "4: the beginning of time")
+                    check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'download_history')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'browsing_history')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
+                    check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
+                except Exception, e:
+                    log.exception(" - Exception parsing Preference item: {})".format(e))
 
         append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
                                              "useful in some cases.")
@@ -1105,23 +1112,32 @@ class Chrome(WebBrowser):
         # partition.per_host_zoom_levels.[integer].
         if prefs.get('profile'):
             if prefs['profile'].get('per_host_zoom_levels'):
-                for zoom in prefs['profile']['per_host_zoom_levels'].keys():
-                    check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
+                try:
+                    for zoom in prefs['profile']['per_host_zoom_levels'].keys():
+                        check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
+                except Exception, e:
+                    log.exception(" - Exception parsing Preference item: {})".format(e))
 
         if prefs.get('partition'):
             if prefs['partition'].get('per_host_zoom_levels'):
-                for number in prefs['partition']['per_host_zoom_levels'].keys():
-                    for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
-                        check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
+                try:
+                    for number in prefs['partition']['per_host_zoom_levels'].keys():
+                        for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
+                            check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
+                except Exception, e:
+                    log.exception(" - Exception parsing Preference item: {})".format(e))
 
         if prefs.get('profile'):
             if prefs['profile'].get('content_settings'):
                 if prefs['profile']['content_settings'].get('pattern_pairs'):
-                    append_group("Profile Content Settings", "These settings persist even when the history is "
-                                                             "cleared, and may be useful in some cases.")
-                    for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
-                        # Adding the space before the domain prevents Excel from freaking out...  idk.
-                        append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
+                    try:
+                        append_group("Profile Content Settings", "These settings persist even when the history is "
+                                                                 "cleared, and may be useful in some cases.")
+                        for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
+                            # Adding the space before the domain prevents Excel from freaking out...  idk.
+                            append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
+                    except Exception, e:
+                        log.exception(" - Exception parsing Preference item: {})".format(e))
 
                 if prefs['profile']['content_settings'].get('exceptions'):
                     if prefs['profile']['content_settings']['exceptions'].get('media_engagement'):
@@ -1134,12 +1150,15 @@ class Chrome(WebBrowser):
                         #         "mediaPlaybacks": 0,
                         #         "visits": 1
                         #     }
-                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['media_engagement'].iteritems():
-                            if pref_data.get("last_modified"):
-                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                  key="media_engagement [in {}.profile.content_settings.exceptions]"
-                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
-                                timestamped_preference_items.append(pref_item)
+                        try:
+                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['media_engagement'].iteritems():
+                                if pref_data.get("last_modified"):
+                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                      key="media_engagement [in {}.profile.content_settings.exceptions]"
+                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                                    timestamped_preference_items.append(pref_item)
+                        except Exception, e:
+                            log.exception(" - Exception parsing Preference item: {})".format(e))
 
                     if prefs['profile']['content_settings']['exceptions'].get('notifications'):
                         # Example (from in Preferences file):
@@ -1147,12 +1166,15 @@ class Chrome(WebBrowser):
                         #     "last_modified": "13161568350592864",
                         #     "setting": 1
                         # }
-                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['notifications'].iteritems():
-                            if pref_data.get("last_modified"):
-                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                  key="notifications [in {}.profile.content_settings.exceptions]"
-                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
-                                timestamped_preference_items.append(pref_item)
+                        try:
+                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['notifications'].iteritems():
+                                if pref_data.get("last_modified"):
+                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                      key="notifications [in {}.profile.content_settings.exceptions]"
+                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                                    timestamped_preference_items.append(pref_item)
+                        except Exception, e:
+                            log.exception(" - Exception parsing Preference item: {})".format(e))
 
                     if prefs['profile']['content_settings']['exceptions'].get('permission_autoblocking_data'):
                         # Example (from in Preferences file):
@@ -1162,12 +1184,15 @@ class Chrome(WebBrowser):
                         #           "Geolocation": {
                         #               "ignore_count": 1
                         #  }}},
-                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['permission_autoblocking_data'].iteritems():
-                            if pref_data.get("last_modified") and pref_data.get("last_modified") != "0":
-                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                  key="permission_autoblocking_data [in {}.profile.content_settings.exceptions]"
-                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
-                                timestamped_preference_items.append(pref_item)
+                        try:
+                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['permission_autoblocking_data'].iteritems():
+                                if pref_data.get("last_modified") and pref_data.get("last_modified") != "0":
+                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                      key="permission_autoblocking_data [in {}.profile.content_settings.exceptions]"
+                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                                    timestamped_preference_items.append(pref_item)
+                        except Exception, e:
+                            log.exception(" - Exception parsing Preference item: {})".format(e))
 
                     if prefs['profile']['content_settings']['exceptions'].get('site_engagement'):
                         # Example (from in Preferences file):
@@ -1179,12 +1204,15 @@ class Chrome(WebBrowser):
                         #         "pointsAddedToday": 4.5,
                         #         "rawScore": 4.5
                         #     }
-                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['site_engagement'].iteritems():
-                            if pref_data.get("last_modified"):
-                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                  key="site_engagement [in {}.profile.content_settings.exceptions]"
-                                                                  .format(preferences_file), value=str(pref_data), interpretation="")
-                                timestamped_preference_items.append(pref_item)
+                        try:
+                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['site_engagement'].iteritems():
+                                if pref_data.get("last_modified"):
+                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                      key="site_engagement [in {}.profile.content_settings.exceptions]"
+                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                                    timestamped_preference_items.append(pref_item)
+                        except Exception, e:
+                            log.exception(" - Exception parsing Preference item: {})".format(e))
 
                     if prefs['profile']['content_settings']['exceptions'].get('sound'):
                         # Example (from in Preferences file):
@@ -1192,16 +1220,19 @@ class Chrome(WebBrowser):
                         #     "last_modified": "13162624224060055",
                         #     "setting": 2
                         # }
-                        for origin, pref_data in prefs['profile']['content_settings']['exceptions']['sound'].iteritems():
-                            if pref_data.get("last_modified"):
-                                interpretation = ""
-                                if pref_data.get("setting") is 2:
-                                    interpretation = "Muted site"
-                                pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                  key="sound [in {}.profile.content_settings.exceptions]"
-                                                                  .format(preferences_file), value=str(pref_data),
-                                                                  interpretation=interpretation)
-                                timestamped_preference_items.append(pref_item)
+                        try:
+                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['sound'].iteritems():
+                                if pref_data.get("last_modified"):
+                                    interpretation = ""
+                                    if pref_data.get("setting") is 2:
+                                        interpretation = "Muted site"
+                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                                                      key="sound [in {}.profile.content_settings.exceptions]"
+                                                                      .format(preferences_file), value=str(pref_data),
+                                                                      interpretation=interpretation)
+                                    timestamped_preference_items.append(pref_item)
+                        except Exception, e:
+                            log.exception(" - Exception parsing Preference item: {})".format(e))
 
         if prefs.get('extensions'):
             if prefs['extensions'].get('autoupdate'):
@@ -1212,11 +1243,14 @@ class Chrome(WebBrowser):
                 #         "last_check": "13162668769688981",
                 #         "next_check": "13162686093672995"
                 #     },
-                if prefs['extensions']['autoupdate'].get('last_check'):
-                    pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
-                                                      key="autoupdate.last_check [in {}.extensions]".format(preferences_file),
-                                                      value=prefs['extensions']['autoupdate']['last_check'], interpretation="")
-                    timestamped_preference_items.append(pref_item)
+                try:
+                    if prefs['extensions']['autoupdate'].get('last_check'):
+                        pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
+                                                          key="autoupdate.last_check [in {}.extensions]".format(preferences_file),
+                                                          value=prefs['extensions']['autoupdate']['last_check'], interpretation="")
+                        timestamped_preference_items.append(pref_item)
+                except Exception, e:
+                    log.exception(" - Exception parsing Preference item: {})".format(e))
 
         if prefs.get('signin'):
             if prefs['signin'].get('signedin_time'):
@@ -1224,24 +1258,33 @@ class Chrome(WebBrowser):
                 # "signin": {
                 #     "signedin_time": "13196354823425155"
                 #  },
-                pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['signin']['signedin_time'], self.timezone),
-                                                  key="signedin_time [in {}.signin]".format(preferences_file),
-                                                  value=prefs['signin']['signedin_time'], interpretation="")
-                timestamped_preference_items.append(pref_item)
+                try:
+                    pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['signin']['signedin_time'], self.timezone),
+                                                      key="signedin_time [in {}.signin]".format(preferences_file),
+                                                      value=prefs['signin']['signedin_time'], interpretation="")
+                    timestamped_preference_items.append(pref_item)
+                except Exception, e:
+                    log.exception(" - Exception parsing Preference item: {})".format(e))
 
         if prefs.get('translate_last_denied_time_for_language'):
-            for lang_code, timestamp in prefs['translate_last_denied_time_for_language'].iteritems():
-                # Example (from in Preferences file):
-                # "translate_last_denied_time_for_language": {
-                #    "iw": [1492489197120.853],
-                #    "mt": [1487824811164.411],
-                #    "pt": [1502849632254.548]
-                #  },
-                pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(timestamp[0], self.timezone),
-                                                  key="translate_last_denied_time_for_language [in {}]".format(preferences_file),
-                                                  value="{}: {}".format(lang_code, timestamp),
-                                                  interpretation="Declined to translate page from {}".format(expand_language_code(lang_code)))
-                timestamped_preference_items.append(pref_item)
+            try:
+                for lang_code, timestamp in prefs['translate_last_denied_time_for_language'].iteritems():
+                    # Example (from in Preferences file):
+                    # "translate_last_denied_time_for_language": {
+                    #   u'ar': 1438733440742.06,
+                    #   u'th': [1447786189498.162],
+                    #   u'hi': 1438798234384.275,
+                    #  },
+                    if isinstance(timestamp, list):
+                        timestamp = timestamp[0]
+                    assert isinstance(timestamp, float)
+                    pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(timestamp, self.timezone),
+                                                      key="translate_last_denied_time_for_language [in {}]".format(preferences_file),
+                                                      value="{}: {}".format(lang_code, timestamp),
+                                                      interpretation="Declined to translate page from {}".format(expand_language_code(lang_code)))
+                    timestamped_preference_items.append(pref_item)
+            except Exception, e:
+                log.exception(" - Exception parsing Preference item: {})".format(e))
 
         self.parsed_artifacts.extend(timestamped_preference_items)
 
