@@ -88,7 +88,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
         (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
         """
-        possible_versions = range(1, 67)
+        possible_versions = range(1, 70)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -119,6 +119,7 @@ class Chrome(WebBrowser):
             log.debug(" - Starting possible versions:  {}".format(possible_versions))
             if 'visits' in self.structure['History'].keys():
                 trim_lesser_versions_if('visit_duration', self.structure['History']['visits'], 20)
+                trim_lesser_versions_if('incremented_omnibox_typed_score', self.structure['History']['visits'], 68)
             if 'visit_source' in self.structure['History'].keys():
                 trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
             if 'downloads' in self.structure['History'].keys():
@@ -156,6 +157,7 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('validity_bitfield', self.structure['Web Data']['autofill_profiles'], 63)
             if 'autofill_sync_metadata' in self.structure['Web Data'].keys():
                 trim_lesser_versions(57)
+                trim_lesser_versions_if('model_type', self.structure['Web Data']['autofill_sync_metadata'], 69)
             if 'web_apps' not in self.structure['Web Data'].keys():
                 trim_lesser_versions(38)
             if 'credit_cards' in self.structure['Web Data'].keys():
@@ -1740,8 +1742,8 @@ class Chrome(WebBrowser):
             # Workaround to cap the version at 65 for Extension Cookies, as until that
             # point it has the same database format as Cookies
             ext_cookies_version = self.version
-            if min(self.version) > 65:
-                ext_cookies_version.insert(0, 65)
+            # if min(self.version) > 65:
+            #     ext_cookies_version.insert(0, 65)
 
             self.get_cookies(self.profile_path, 'Extension Cookies', ext_cookies_version)
             self.artifacts_display['Extension Cookies'] = "Extension Cookie records"

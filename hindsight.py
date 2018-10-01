@@ -41,11 +41,12 @@ Example:  C:\>hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Da
 The Chrome data folder default locations are:
         WinXP: <userdir>\Local Settings\Application Data\Google\Chrome
                 \User Data\Default\\
-    Vista/7/8: <userdir>\AppData\Local\Google\Chrome\User Data\Default\\
+ Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\User Data\Default\\
         Linux: <userdir>/.config/google-chrome/Default/
          OS X: <userdir>/Library/Application Support/Google/Chrome/Default/
           iOS: \Applications\com.google.chrome.ios\Library\Application Support
                 \Google\Chrome\Default\\
+  Chromium OS: \home\user\<GUID>\\
     '''
 
     class MyParser(argparse.ArgumentParser):
