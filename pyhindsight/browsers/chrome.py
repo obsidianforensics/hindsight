@@ -272,9 +272,9 @@ class Chrome(WebBrowser):
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
-            except IOError:
+            except Exception, e:
                 self.artifacts_counts[history_file] = 'Failed'
-                log.error(" - Couldn't open {}".format(os.path.join(path, history_file)))
+                log.exception(" - Exeception parsing {}; {}".format(os.path.join(path, history_file)), e)
 
     def get_downloads(self, path, database, version, row_type):
         # Set up empty return array
@@ -662,33 +662,34 @@ class Chrome(WebBrowser):
             bookmarks_file = codecs.open(bookmarks_path, 'rb', encoding='utf-8')
             decoded_json = json.loads(bookmarks_file.read())
             log.info(" - Reading from file '{}'".format(bookmarks_path))
+
+            # TODO: sync_id
+            def process_bookmark_children(parent, children):
+                for child in children:
+                    if child["type"] == "url":
+                        results.append(Chrome.BookmarkItem(to_datetime(child["date_added"], self.timezone),
+                                                           child["name"], child["url"], parent))
+                    elif child["type"] == "folder":
+                        new_parent = parent + " > " + child["name"]
+                        results.append(Chrome.BookmarkFolderItem(to_datetime(child["date_added"], self.timezone),
+                                                                 child["date_modified"], child["name"], parent))
+                        process_bookmark_children(new_parent, child["children"])
+
+            for top_level_folder in decoded_json["roots"].keys():
+                if top_level_folder != "sync_transaction_version" and top_level_folder != "synced" and top_level_folder != "meta_info":
+                    if decoded_json["roots"][top_level_folder]["children"] is not None:
+                        process_bookmark_children(decoded_json["roots"][top_level_folder]["name"],
+                                                  decoded_json["roots"][top_level_folder]["children"])
+
+            bookmarks_file.close()
+            self.artifacts_counts['Bookmarks'] = len(results)
+            log.info(" - Parsed {} items".format(len(results)))
+            self.parsed_artifacts.extend(results)
+
         except:
-            log.error(" - Error opening '{}'".format(bookmarks_path))
+            log.error(" - Error parsing '{}'".format(bookmarks_path))
             self.artifacts_counts['Bookmarks'] = 'Failed'
             return
-
-        # TODO: sync_id
-        def process_bookmark_children(parent, children):
-            for child in children:
-                if child["type"] == "url":
-                    results.append(Chrome.BookmarkItem(to_datetime(child["date_added"], self.timezone),
-                                                       child["name"], child["url"], parent))
-                elif child["type"] == "folder":
-                    new_parent = parent + " > " + child["name"]
-                    results.append(Chrome.BookmarkFolderItem(to_datetime(child["date_added"], self.timezone),
-                                                             child["date_modified"], child["name"], parent))
-                    process_bookmark_children(new_parent, child["children"])
-
-        for top_level_folder in decoded_json["roots"].keys():
-            if top_level_folder != "sync_transaction_version" and top_level_folder != "synced" and top_level_folder != "meta_info":
-                if decoded_json["roots"][top_level_folder]["children"] is not None:
-                    process_bookmark_children(decoded_json["roots"][top_level_folder]["name"],
-                                              decoded_json["roots"][top_level_folder]["children"])
-
-        bookmarks_file.close()
-        self.artifacts_counts['Bookmarks'] = len(results)
-        log.info(" - Parsed {} items".format(len(results)))
-        self.parsed_artifacts.extend(results)
 
     def get_local_storage(self, path, dir_name):
         results = []
@@ -1189,9 +1190,9 @@ class Chrome(WebBrowser):
                     if prefs['profile']['content_settings']['exceptions'].get('sound'):
                         # Example (from in Preferences file):
                         # "http://obsidianforensics.com:80,*": {
-                        #     "last_modified": "13162624224060055",
-                        #     "setting": 2
-                        # }
+                        #                         #     "last_modified": "13162624224060055",
+                        #                         #     "setting": 2
+                        #                         # }
                         for origin, pref_data in prefs['profile']['content_settings']['exceptions']['sound'].iteritems():
                             if pref_data.get("last_modified"):
                                 interpretation = ""
@@ -1292,6 +1293,7 @@ class Chrome(WebBrowser):
             log.debug(" - Parsed index block file (version {})".format(cacheBlock.version))
         except:
             log.error(" - Failed to parse index block file")
+            return
 
         try:
             index = open(os.path.join(path, 'index'), 'rb')
@@ -1614,7 +1616,7 @@ class Chrome(WebBrowser):
                 display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
                 self.artifacts_display[input_file] = "{} records".format(display_type)
                 print self.format_processing_output(self.artifacts_display[input_file],
-                                                    self.artifacts_counts[input_file])
+                                                    self.artifacts_counts.get(input_file, '0'))
 
                 row_type = u'download'
                 if custom_type_m:
@@ -1623,73 +1625,73 @@ class Chrome(WebBrowser):
                 display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
                 self.artifacts_display[input_file + '_downloads'] = "{} records".format(display_type)
                 print self.format_processing_output(self.artifacts_display[input_file + '_downloads'],
-                                                    self.artifacts_counts[input_file + '_downloads'])
+                                                    self.artifacts_counts.get(input_file + '_downloads', '0'))
 
         if 'Archived History' in input_listing:
             self.get_history(self.profile_path, 'Archived History', self.version, u'url (archived)')
             self.artifacts_display['Archived History'] = "Archived URL records"
             print self.format_processing_output(self.artifacts_display['Archived History'],
-                                                self.artifacts_counts['Archived History'])
+                                                self.artifacts_counts.get('Archived History', '0'))
 
         if self.cache_path is not None and self.cache_path != '':
             c_path, c_dir = os.path.split(self.cache_path)
             self.get_cache(c_path, c_dir, row_type=u'cache')
             self.artifacts_display['Cache'] = "Cache records"
             print self.format_processing_output(self.artifacts_display['Cache'],
-                                                self.artifacts_counts['Cache'])
+                                                self.artifacts_counts.get('Cache', '0'))
 
         elif 'Cache' in input_listing:
             self.get_cache(self.profile_path, 'Cache', row_type=u'cache')
             self.artifacts_display['Cache'] = "Cache records"
             print self.format_processing_output(self.artifacts_display['Cache'],
-                                                self.artifacts_counts['Cache'])
+                                                self.artifacts_counts.get('Cache', '0'))
         if 'GPUCache' in input_listing:
             self.get_cache(self.profile_path, 'GPUCache', row_type=u'cache (gpu)')
             self.artifacts_display['GPUCache'] = "GPU Cache records"
             print self.format_processing_output(self.artifacts_display['GPUCache'],
-                                                self.artifacts_counts['GPUCache'])
+                                                self.artifacts_counts.get('GPUCache', '0'))
 
         if 'Media Cache' in input_listing:
             self.get_cache(self.profile_path, 'Media Cache', row_type=u'cache (media)')
             self.artifacts_display['Media Cache'] = "Media Cache records"
             print self.format_processing_output(self.artifacts_display['Media Cache'],
-                                                self.artifacts_counts['Media Cache'])
+                                                self.artifacts_counts.get('Media Cache', '0'))
 
         if 'Application Cache' in input_listing:
             self.get_application_cache(self.profile_path, 'Application Cache', row_type=u'cache (application)')
             self.artifacts_display['Application Cache'] = "Application Cache records"
             print self.format_processing_output(self.artifacts_display['Application Cache'],
-                                                self.artifacts_counts['Application Cache'])
+                                                self.artifacts_counts.get('Application Cache', '0'))
 
         if 'Cookies' in input_listing:
             self.get_cookies(self.profile_path, 'Cookies', self.version)
             self.artifacts_display['Cookies'] = "Cookie records"
             print self.format_processing_output(self.artifacts_display['Cookies'],
-                                                self.artifacts_counts['Cookies'])
+                                                self.artifacts_counts.get('Cookies', '0'))
 
         if 'Web Data' in input_listing:
             self.get_autofill(self.profile_path, 'Web Data', self.version)
             self.artifacts_display['Autofill'] = "Autofill records"
             print self.format_processing_output(self.artifacts_display['Autofill'],
-                                                self.artifacts_counts['Autofill'])
+                                                self.artifacts_counts.get('Autofill', '0'))
 
         if 'Bookmarks' in input_listing:
             self.get_bookmarks(self.profile_path, 'Bookmarks', self.version)
             self.artifacts_display['Bookmarks'] = "Bookmark records"
             print self.format_processing_output(self.artifacts_display['Bookmarks'],
-                                                self.artifacts_counts['Bookmarks'])
+                                                self.artifacts_counts.get('Bookmarks', '0'))
 
         if 'Local Storage' in input_listing:
             self.get_local_storage(self.profile_path, 'Local Storage')
             self.artifacts_display['Local Storage'] = "Local Storage records"
             print self.format_processing_output(self.artifacts_display['Local Storage'],
-                                                self.artifacts_counts['Local Storage'])
+                                                self.artifacts_counts.get('Local Storage', '0'))
 
         if 'Extensions' in input_listing:
             self.get_extensions(self.profile_path, 'Extensions')
             self.artifacts_display['Extensions'] = "Extensions"
             print self.format_processing_output(self.artifacts_display['Extensions'],
-                                                self.artifacts_counts['Extensions'])
+                                                self.artifacts_counts.get('Extensions', '0'))
 
         if 'Extension Cookies' in input_listing:
             # Workaround to cap the version at 65 for Extension Cookies, as until that
@@ -1701,25 +1703,25 @@ class Chrome(WebBrowser):
             self.get_cookies(self.profile_path, 'Extension Cookies', ext_cookies_version)
             self.artifacts_display['Extension Cookies'] = "Extension Cookie records"
             print self.format_processing_output(self.artifacts_display['Extension Cookies'],
-                                                self.artifacts_counts['Extension Cookies'])
+                                                self.artifacts_counts.get('Extension Cookies', '0'))
 
         if 'Login Data' in input_listing:
             self.get_login_data(self.profile_path, 'Login Data', self.version)
             self.artifacts_display['Login Data'] = "Login Data records"
             print self.format_processing_output(self.artifacts_display['Login Data'],
-                                                self.artifacts_counts['Login Data'])
+                                                self.artifacts_counts.get('Login Data', '0'))
 
         if 'Preferences' in input_listing:
             self.get_preferences(self.profile_path, 'Preferences')
             self.artifacts_display['Preferences'] = "Preference Items"
             print self.format_processing_output(self.artifacts_display['Preferences'],
-                                                self.artifacts_counts['Preferences'])
+                                                self.artifacts_counts.get('Preferences', '0'))
 
         if 'File System' in input_listing:
             self.get_file_system(self.profile_path, 'File System')
             self.artifacts_display['File System'] = "File System Items"
             print self.format_processing_output(self.artifacts_display['File System'],
-                                                self.artifacts_counts['File System'])
+                                                self.artifacts_counts.get('File System', '0'))
 
         # Destroy the cached key so that json serialization doesn't
         # have a cardiac arrest on the non-unicode binary data.
