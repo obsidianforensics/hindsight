@@ -285,7 +285,7 @@ def main():
         write_sqlite(analysis_session)
 
     # Display and log finish time
-    print("\n Finish time: ", str(datetime.datetime.now())[:-3])
+    print("\n Finish time: {}".format(str(datetime.datetime.now())[:-3]))
     log.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
 
 
