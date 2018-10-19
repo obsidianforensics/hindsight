@@ -39,7 +39,7 @@ The Chrome default profile folder default locations are:
 * OS X:    \[userdir\]/Library/Application Support/Google/Chrome/Default
 * iOS:   \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome\Default
 * Android: /userdata/data/com.android.chrome/app_chrome/Default
-* CrOS: \home\user\<GUID>
+* CrOS: \home\user\\<GUID\>
 
 ## Feature Requests
 
