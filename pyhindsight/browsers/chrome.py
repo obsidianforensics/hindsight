@@ -1873,12 +1873,13 @@ class Chrome(WebBrowser):
         def decode_source(self):
             # https://code.google.com/p/chromium/codesearch#chromium/src/components/history/core/browser/history_types.h
             source_friendly = {
-                0: u'Synced',
-                None: u'Local',
-                2: u'Added by Extension',
-                3: u'Firefox (Imported)',
-                4: u'IE (Imported)',
-                5: u'Safari (Imported)'}
+                0:    u'Synced',               # Synchronized from somewhere else.
+                1:    u'Local',                # User browsed. In my experience, this value isn't written; it will be null.
+                None: u'Local',                # See https://cs.chromium.org/chromium/src/components/history/core/browser/visit_database.cc
+                2:    u'Added by Extension',   # Added by an extension.
+                3:    u'Firefox (Imported)',
+                4:    u'IE (Imported)',
+                5:    u'Safari (Imported)'}
 
             raw = self.visit_source
 
@@ -1926,20 +1927,28 @@ class Chrome(WebBrowser):
 
                 # Server responses
                 30: u'Server Error',                # The server indicates that the operation has failed (generic).
-                31: u'Range Request Error',         # The server does not support range requests. Internal use only:
-                                                    # must restart from the beginning.
+                31: u'Range Request Error',         # The server does not support range requests.
                 32: u'Server Precondition Error',   # The download request does not meet the specified precondition.
                                                     # Internal use only:  the file has changed on the server.
                 33: u'Unable to get file',          # The server does not have the requested data.
+                34: u'Server Unauthorized',         # Server didn't authorize access to resource.
+                35: u'Server Certificate Problem',  # Server certificate problem.
+                36: u'Server Access Forbidden',     # Server access forbidden.
+                37: u'Server Unreachable',          # Unexpected server response. This might indicate that the responding
+                                                    # server may not be the intended server.
+                38: u'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may indicate
+                                                    # that the connection was closed prematurely, or the Content-Length header was
+                                                    # invalid. The download is only interrupted if strong validators are present.
+                                                    # Otherwise, it is treated as finished.
+                39: u'Cross Origin Redirect',       # An unexpected cross-origin redirect happened.
+
 
                 # User input
                 40: u'Cancelled',                   # The user cancelled the download.
-                41: u'Browser Shutdown',            # The user shut down the browser. Internal use only:  resume pending
-                                                    # downloads if possible.
+                41: u'Browser Shutdown',            # The user shut down the browser.
 
                 # Crash
-                50: u'Browser Crashed'}             # The browser crashed. Internal use only:  resume pending downloads
-                                                    # if possible.
+                50: u'Browser Crashed'}             # The browser crashed.
 
             if self.interrupt_reason in interrupts.keys():
                 self.interrupt_reason_friendly = interrupts[self.interrupt_reason]
@@ -1968,8 +1977,9 @@ class Chrome(WebBrowser):
                 7: u'Dangerous Host',                # SafeBrowsing download service checked the contents of the download
                                                      # and didn't have data on this specific file, but the file was served
                                                      # from a host known to serve mostly malicious content.
-                8: u'Potentially Unwanted'}          # Applications and extensions that modify browser and/or computer
+                8: u'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
                                                      # settings
+                9: u'Whitelisted by Policy'}         # Download URL whitelisted by enterprise policy.
 
             if self.danger_type in dangers.keys():
                 self.danger_type_friendly = dangers[self.danger_type]
