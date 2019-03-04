@@ -60,7 +60,7 @@ The Chrome data folder default locations are:
         description=description,
         epilog=epi)
 
-    parser.add_argument('-i', '--input', help='Path to the Chrome(ium) "Default" directory', required=True)
+    parser.add_argument('-i', '--input', help='Path to the Chrome(ium) profile directory (typically "Default")', required=True)
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
     parser.add_argument('-b', '--browser_type', help='Type of input files', default='Chrome',
                         choices=['Chrome', 'Brave'])
@@ -132,6 +132,27 @@ def main():
         else:
             print("\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file))
 
+    def find_browser_profiles(base_path):
+        """Search a path for browser profiles (only Chromium-based at the moment)."""
+        found_profile_paths = []
+        base_dir_listing = os.listdir(base_path)
+
+        # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
+        # Chrome analysis. This approach (checking the file names) is naive but should work.
+        if {'History', 'Cookies'}.issubset(base_dir_listing):
+            found_profile_paths.append(base_path)
+
+        # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
+        else:
+            for item in base_dir_listing:
+                item_path = os.path.join(base_path, item)
+                if os.path.isdir(item_path):
+                    profile_found_in_subdir = find_browser_profiles(item_path)
+                    if profile_found_in_subdir:
+                        found_profile_paths.extend(profile_found_in_subdir)
+
+        return found_profile_paths
+
     print(banner)
 
     # Useful when Hindsight is run from a different directory than where the file is located
@@ -139,8 +160,10 @@ def main():
 
     # Set up the AnalysisSession object, and transfer the relevant input arguments to it
     analysis_session = AnalysisSession()
+
+    # parse_arguments needs the analysis_session as an input to set things like available decrypts
     args = parse_arguments(analysis_session)
-    analysis_session.profile_path = args.input
+
     if args.output:
         analysis_session.output_name = args.output
 
@@ -170,10 +193,17 @@ def main():
     print(format_meta_output("Start time", str(datetime.datetime.now())[:-3]))
 
     # Read the input directory
+    analysis_session.input_path = args.input
     print(format_meta_output("Input directory", args.input))
     log.info("Reading files from %s" % args.input)
     input_listing = os.listdir(args.input)
     log.debug("Input directory contents: " + str(input_listing))
+
+    # Search input directory for browser profiles to analyze
+    input_profiles = find_browser_profiles(args.input)
+    log.info(" - Found {} browser profile(s): {}".format(len(input_profiles), input_profiles))
+    analysis_session.profile_paths = input_profiles
+
     print(format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format)))
 
     # Run the AnalysisSession

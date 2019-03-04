@@ -15,12 +15,13 @@ log = logging.getLogger(__name__)
 
 
 class AnalysisSession(object):
-    def __init__(self, profile_path=None, cache_path=None, browser_type=None, available_input_types=None,
+    def __init__(self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
                  version=None, display_version=None, output_name=None, log_path=None, timezone=None,
                  available_output_formats=None, selected_output_format=None, available_decrypts=None,
                  selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
-                 plugin_descriptions=None, selected_plugins=None, plugin_results=None, hindsight_version=None):
-        self.profile_path = profile_path
+                 plugin_descriptions=None, selected_plugins=None, plugin_results=None, hindsight_version=None, preferences=None):
+        self.input_path = input_path
+        self.profile_paths = profile_paths
         self.cache_path = cache_path
         self.browser_type = browser_type
         self.available_input_types = available_input_types
@@ -40,6 +41,7 @@ class AnalysisSession(object):
         self.selected_plugins = selected_plugins
         self.plugin_results = plugin_results
         self.hindsight_version = hindsight_version
+        self.preferences = preferences
 
         if self.available_input_types is None:
             self.available_input_types = ['Chrome', 'Brave']
@@ -58,6 +60,9 @@ class AnalysisSession(object):
 
         if self.plugin_results is None:
             self.plugin_results = {}
+
+        if self.preferences is None:
+            self.preferences = []
 
         if __version__:
             self.hindsight_version = __version__
@@ -100,6 +105,13 @@ class AnalysisSession(object):
             self.available_decrypts['mac'] = 0
             log.warning("Couldn't import module 'Cryptodome'; cookie decryption on Linux/Mac OS disabled.")
 
+    @staticmethod
+    def sum_dict_counts(dict1, dict2):
+        """Combine two dicts by summing the values of shared keys"""
+        for key, value in dict2.items():
+            dict1[key] = dict1.setdefault(key, 0) + value
+        return dict1
+
     def run(self):
         if self.selected_output_format is None:
             self.selected_output_format = self.available_output_formats[-1]
@@ -123,42 +135,51 @@ class AnalysisSession(object):
         # Analysis start time
         log.info("Starting analysis")
 
-        if self.browser_type == "Chrome":
-            browser_analysis = Chrome(self.profile_path, available_decrypts=self.available_decrypts,
-                                      cache_path=self.cache_path, timezone=self.timezone)
-            browser_analysis.process()
-            self.parsed_artifacts = browser_analysis.parsed_artifacts
-            self.artifacts_counts = browser_analysis.artifacts_counts
-            self.artifacts_display = browser_analysis.artifacts_display
-            self.version = browser_analysis.version
-            self.display_version = browser_analysis.display_version
+        # Make sure the input is what we're expecting
+        assert isinstance(self.profile_paths, list)
+        assert len(self.profile_paths) >= 1
 
-            for item in browser_analysis.__dict__:
-                try:
-                    # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                    # browser_analysis object to analysis_session object
-                    if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
-                        setattr(self, item, browser_analysis.__dict__[item])
-                except:
-                    pass
+        for found_profile_path in self.profile_paths:
 
-        elif self.browser_type == "Brave":
-            browser_analysis = Brave(self.profile_path, timezone=self.timezone)
-            browser_analysis.process()
-            self.parsed_artifacts = browser_analysis.parsed_artifacts
-            self.artifacts_counts = browser_analysis.artifacts_counts
-            self.artifacts_display = browser_analysis.artifacts_display
-            self.version = browser_analysis.version
-            self.display_version = browser_analysis.display_version
+            if self.browser_type == "Chrome":
+                browser_analysis = Chrome(found_profile_path, available_decrypts=self.available_decrypts,
+                                          cache_path=self.cache_path, timezone=self.timezone)
+                browser_analysis.process()
+                self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
+                self.artifacts_counts = self.sum_dict_counts(self.artifacts_counts, browser_analysis.artifacts_counts)
+                self.artifacts_display = browser_analysis.artifacts_display
+                # TODO: make this a list of all versions
+                self.version = browser_analysis.version
+                # TODO: make this a list of all versions
+                self.display_version = browser_analysis.display_version
+                self.preferences.extend(browser_analysis.preferences)
 
-            for item in browser_analysis.__dict__:
-                try:
-                    # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                    # browser_analysis object to analysis_session object
-                    if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
-                        setattr(self, item, browser_analysis.__dict__[item])
-                except:
-                    pass
+                for item in browser_analysis.__dict__:
+                    try:
+                        # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
+                        # browser_analysis object to analysis_session object
+                        if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
+                            setattr(self, item, browser_analysis.__dict__[item])
+                    except:
+                        pass
+
+            elif self.browser_type == "Brave":
+                browser_analysis = Brave(found_profile_path, timezone=self.timezone)
+                browser_analysis.process()
+                self.parsed_artifacts = browser_analysis.parsed_artifacts
+                self.artifacts_counts = browser_analysis.artifacts_counts
+                self.artifacts_display = browser_analysis.artifacts_display
+                self.version = browser_analysis.version
+                self.display_version = browser_analysis.display_version
+
+                for item in browser_analysis.__dict__:
+                    try:
+                        # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
+                        # browser_analysis object to analysis_session object
+                        if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
+                            setattr(self, item, browser_analysis.__dict__[item])
+                    except:
+                        pass
 
     def run_plugins(self):
         log.info("Selected plugins: " + str(self.selected_plugins))
@@ -453,6 +474,38 @@ class AnalysisSession(object):
             try:
                 if self.__dict__[item]['presentation'] and self.__dict__[item]['data']:
                     d = self.__dict__[item]
+                    # TODO: try/except name exists
+                    p = workbook.add_worksheet(d['presentation']['title'])
+                    title = d['presentation']['title']
+                    if 'version' in d['presentation']:
+                        title += " (v{})".format(d['presentation']['version'])
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, "{}".format(title), title_header_format)
+                    for counter, column in enumerate(d['presentation']['columns']):
+                        # print column
+                        p.write(1, counter, column['display_name'], header_format)
+                        if 'display_width' in column:
+                            p.set_column(counter, counter, column['display_width'])
+
+                    for row_count, row in enumerate(d['data'], start=2):
+                        if not isinstance(row, dict):
+                            for column_count, column in enumerate(d['presentation']['columns']):
+                                p.write(row_count, column_count, row.__dict__[column['data_name']], black_type_format)
+                        else:
+                            for column_count, column in enumerate(d['presentation']['columns']):
+                                p.write(row_count, column_count, row[column['data_name']], black_type_format)
+
+                    # Formatting
+                    p.freeze_panes(2, 0)  # Freeze top row
+                    p.autofilter(1, 0, len(d['data']) + 2, len(d['presentation']['columns']) - 1)  # Add autofilter
+
+            except:
+                pass
+
+        for item in self.__dict__.get('preferences'):
+            try:
+                if item['presentation'] and item['data']:
+                    d = item
+                    # TODO: try/except name exists
                     p = workbook.add_worksheet(d['presentation']['title'])
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:

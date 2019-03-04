@@ -35,11 +35,11 @@ log = logging.getLogger(__name__)
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
                  parsed_artifacts=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
-                 available_decrypts=None):
+                 available_decrypts=None, preferences=None):
         # TODO: try to fix this to use super()
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
                             timezone=timezone, parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
-                            artifacts_display=artifacts_display)
+                            artifacts_display=artifacts_display, preferences=preferences)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.cache_path = cache_path
@@ -48,6 +48,7 @@ class Chrome(WebBrowser):
         self.cached_key = None
         self.available_decrypts = available_decrypts
         self.storage = storage
+        self.preferences = preferences
 
         if self.version is None:
             self.version = []
@@ -60,6 +61,9 @@ class Chrome(WebBrowser):
 
         if self.installed_extensions is None:
             self.installed_extensions = []
+
+        if self.preferences is None:
+            self.preferences = []
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
@@ -1293,7 +1297,13 @@ class Chrome(WebBrowser):
 
         self.artifacts_counts[preferences_file] = len(results)
         log.info(" - Parsed {} items".format(len(results)))
-        presentation = {'title': 'Preferences',
+
+        try:
+            profile_folder = os.path.split(path)[1]
+        except:
+            profile_folder = "error"
+
+        presentation = {'title': 'Preferences ({})'.format(profile_folder),
                         'columns': [
                             {'display_name': 'Group',
                              'data_name': 'group',
@@ -1309,7 +1319,7 @@ class Chrome(WebBrowser):
                              'display_width': 60},
                             ]}
 
-        self.preferences = {'data': results, 'presentation': presentation}
+        self.preferences.append({'data': results, 'presentation': presentation})
 
     def get_cache(self, path, dir_name, row_type=None):
         """
@@ -1640,8 +1650,9 @@ class Chrome(WebBrowser):
         else:
             self.display_version = self.version[0]
 
-        print self.format_processing_output("Detected {} version".format(self.browser_name), self.display_version)
+        print(self.format_profile_path(self.profile_path))
 
+        print(self.format_processing_output("Detected {} version".format(self.browser_name), self.display_version))
         log.info("Detected {} version {}".format(self.browser_name, self.display_version))
 
         log.info("Found the following supported files or directories:")

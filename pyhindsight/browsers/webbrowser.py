@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 
 class WebBrowser(object):
     def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None, timezone=None, structure=None,
-                 parsed_artifacts=None, artifacts_counts=None, artifacts_display=None):
+                 parsed_artifacts=None, artifacts_counts=None, artifacts_display=None, preferences=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -19,6 +19,7 @@ class WebBrowser(object):
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_counts = artifacts_counts
         self.artifacts_display = artifacts_display
+        self.preferences = preferences
         # self.logger = logger
 
         if self.version is None:
@@ -33,6 +34,9 @@ class WebBrowser(object):
         if self.artifacts_display is None:
             self.artifacts_display = {}
 
+        if self.preferences is None:
+            self.preferences = []
+
     @staticmethod
     def format_processing_output(name, items):
         width = 80
@@ -42,6 +46,12 @@ class WebBrowser(object):
             .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
                     right_width=(width - int(left_side)-2))
         return pretty_name
+
+    @staticmethod
+    def format_profile_path(profile_path):
+        if len(profile_path) > 68:
+            profile_path = "...{}".format(profile_path[-65:])
+        return "\n    Profile: {}".format(profile_path)
 
     def build_structure(self, path, database):
 
