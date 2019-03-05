@@ -109,8 +109,24 @@ class AnalysisSession(object):
     def sum_dict_counts(dict1, dict2):
         """Combine two dicts by summing the values of shared keys"""
         for key, value in dict2.items():
-            dict1[key] = dict1.setdefault(key, 0) + value
+            if value == 'Failed':
+                dict1[key] = dict1.setdefault(key, 0)
+
+            elif dict1.get(key) == 'Failed':
+                dict1[key] = value
+
+            else:
+                dict1[key] = dict1.setdefault(key, 0) + value
         return dict1
+
+    def promote_object_to_analysis_session(self, item_name, item_value):
+        if self.__dict__.get(item_name):
+            self.__dict__[item_name]['data'].extend(item_value['data'])
+            # TODO: add some checks around value of presentation. It *shouldn't* differ...
+            self.__dict__[item_name]['presentation'] = item_value['presentation']
+
+        else:
+            setattr(self, item_name, item_value)
 
     def run(self):
         if self.selected_output_format is None:
@@ -159,7 +175,8 @@ class AnalysisSession(object):
                         # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
                         # browser_analysis object to analysis_session object
                         if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
-                            setattr(self, item, browser_analysis.__dict__[item])
+                            self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
+                            # setattr(self, item, browser_analysis.__dict__[item])
                     except:
                         pass
 
@@ -177,7 +194,8 @@ class AnalysisSession(object):
                         # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
                         # browser_analysis object to analysis_session object
                         if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
-                            setattr(self, item, browser_analysis.__dict__[item])
+                            self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
+                            # setattr(self, item, browser_analysis.__dict__[item])
                     except:
                         pass
 
@@ -303,10 +321,10 @@ class AnalysisSession(object):
         blue_value_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
 
         # Title bar
-        w.merge_range('A1:G1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
-        w.merge_range('H1:L1', 'URL Specific', center_header_format)
-        w.merge_range('M1:P1', 'Download Specific', center_header_format)
-        w.merge_range('Q1:T1', 'Cache Specific', center_header_format)
+        w.merge_range('A1:H1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
+        w.merge_range('I1:M1', 'URL Specific', center_header_format)
+        w.merge_range('N1:P1', 'Download Specific', center_header_format)
+        w.merge_range('S1:U1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, "Type", header_format)
@@ -315,20 +333,21 @@ class AnalysisSession(object):
         w.write_rich_string(1, 3, "Title / Name / Status", header_format)
         w.write_rich_string(1, 4, "Data / Value / Path", header_format)
         w.write(1, 5, "Interpretation", header_format)
-        w.write(1, 6, "Source", header_format)
-        w.write(1, 7, "Duration", header_format)
-        w.write(1, 8, "Visit Count", header_format)
-        w.write(1, 9, "Typed Count", header_format)
-        w.write(1, 10, "URL Hidden", header_format)
-        w.write(1, 11, "Transition", header_format)
-        w.write(1, 12, "Interrupt Reason", header_format)
-        w.write(1, 13, "Danger Type", header_format)
-        w.write(1, 14, "Opened?", header_format)
-        w.write(1, 15, "ETag", header_format)
-        w.write(1, 16, "Last Modified", header_format)
-        w.write(1, 17, "Server Name", header_format)
-        w.write(1, 18, "Data Location [Offset]", header_format)
-        w.write(1, 19, "All HTTP Headers", header_format)
+        w.write(1, 6, "Profile", header_format)
+        w.write(1, 7, "Source", header_format)
+        w.write(1, 8, "Duration", header_format)
+        w.write(1, 9, "Visit Count", header_format)
+        w.write(1, 10, "Typed Count", header_format)
+        w.write(1, 11, "URL Hidden", header_format)
+        w.write(1, 12, "Transition", header_format)
+        w.write(1, 13, "Interrupt Reason", header_format)
+        w.write(1, 14, "Danger Type", header_format)
+        w.write(1, 15, "Opened?", header_format)
+        w.write(1, 16, "ETag", header_format)
+        w.write(1, 17, "Last Modified", header_format)
+        w.write(1, 18, "Server Name", header_format)
+        w.write(1, 19, "Data Location [Offset]", header_format)
+        w.write(1, 20, "All HTTP Headers", header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -337,23 +356,27 @@ class AnalysisSession(object):
         w.set_column('D:D', 25)  # Title / Name / Status
         w.set_column('E:E', 80)  # Data / Value / Path
         w.set_column('F:F', 60)  # Interpretation
-        w.set_column('G:G', 10)  # Source
-        # URL Specific
-        w.set_column('H:H', 14)  # Visit Duration
-        w.set_column('I:K', 6)  # Visit Count, Typed Count, Hidden
-        w.set_column('L:L', 12)  # Transition
-        # Download Specific
-        w.set_column('M:M', 12)  # Interrupt Reason
-        w.set_column('N:N', 24)  # Danger Type
-        w.set_column('O:O', 12)  # Opened
+        w.set_column('G:G', 12)  # Profile
+        w.set_column('H:H', 10)  # Source
 
-        w.set_column('P:P', 12)  # ETag
-        w.set_column('Q:Q', 27)  # Last Modified
+        # URL Specific
+        w.set_column('I:I', 14)  # Visit Duration
+        w.set_column('J:L', 6)   # Visit Count, Typed Count, Hidden
+        w.set_column('M:M', 12)  # Transition
+
+        # Download Specific
+        w.set_column('N:N', 12)  # Interrupt Reason
+        w.set_column('O:O', 24)  # Danger Type
+        w.set_column('P:P', 12)  # Opened
+
+        # Common between Downloads and Cache
+        w.set_column('Q:Q', 12)  # ETag
+        w.set_column('R:R', 27)  # Last Modified
 
         # Cache Specific
-        w.set_column('R:R', 18)  # Server Name
-        w.set_column('S:S', 27)  # Data Location
-        w.set_column('T:T', 27)  # HTTP Headers
+        w.set_column('S:S', 18)  # Server Name
+        w.set_column('T:T', 27)  # Data Location
+        w.set_column('U:U', 27)  # HTTP Headers
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -366,19 +389,20 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.name, black_field_format)  # Title
                     w.write(row_number, 4, "", black_value_format)  # Indexed Content
                     w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
-                    w.write(row_number, 6, item.visit_source, black_type_format)  # Source
-                    w.write(row_number, 7, item.visit_duration, black_flag_format)  # Duration
-                    w.write(row_number, 8, item.visit_count, black_flag_format)  # Visit Count
-                    w.write(row_number, 9, item.typed_count, black_flag_format)  # Typed Count
-                    w.write(row_number, 10, item.hidden, black_flag_format)  # Hidden
-                    w.write(row_number, 11, item.transition_friendly, black_trans_format)  # Transition
+                    w.write(row_number, 6, item.profile, black_type_format)  # Profile
+                    w.write(row_number, 7, item.visit_source, black_type_format)  # Source
+                    w.write(row_number, 8, item.visit_duration, black_flag_format)  # Duration
+                    w.write(row_number, 9, item.visit_count, black_flag_format)  # Visit Count
+                    w.write(row_number, 10, item.typed_count, black_flag_format)  # Typed Count
+                    w.write(row_number, 11, item.hidden, black_flag_format)  # Hidden
+                    w.write(row_number, 12, item.transition_friendly, black_trans_format)  # Transition
 
                 elif item.row_type.startswith("autofill"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
                     w.write_string(row_number, 3, item.name, red_field_format)  # autofill field
                     w.write_string(row_number, 4, item.value, red_value_format)  # autofill value
-                    w.write_string(row_number, 6, " ", red_type_format)  # blank
+                    w.write(row_number, 6, item.profile, red_type_format)  # Profile
 
                 elif item.row_type.startswith("download"):
                     w.write_string(row_number, 0, item.row_type, green_type_format)  # record_type
@@ -387,23 +411,24 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.status_friendly, green_field_format)  # % complete
                     w.write_string(row_number, 4, item.value, green_value_format)  # download path
                     w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
-                    w.write(row_number, 6, "", green_type_format)  # Safe Browsing
-                    w.write(row_number, 12, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
-                    w.write(row_number, 13, item.danger_type_friendly, green_value_format)  # danger type
+                    w.write(row_number, 6, item.profile, green_type_format)  # Profile
+                    w.write(row_number, 13, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
+                    w.write(row_number, 14, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
                         open_friendly = u"Yes"
                     elif item.opened == 0:
                         open_friendly = u"No"
-                    w.write_string(row_number, 14, open_friendly, green_value_format)  # opened
-                    w.write(row_number, 15, item.etag, green_value_format)  # ETag
-                    w.write(row_number, 16, item.last_modified, green_value_format)  # Last Modified
+                    w.write_string(row_number, 15, open_friendly, green_value_format)  # opened
+                    w.write(row_number, 16, item.etag, green_value_format)  # ETag
+                    w.write(row_number, 17, item.last_modified, green_value_format)  # Last Modified
 
                 elif item.row_type.startswith("bookmark folder"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
                     w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
                     w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
+                    w.write(row_number, 6, item.profile, red_value_format)  # Profile
 
                 elif item.row_type.startswith("bookmark"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -411,6 +436,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 2, item.url, red_url_format)  # URL
                     w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
                     w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
+                    w.write(row_number, 6, item.profile, red_value_format)  # Profile
 
                 elif item.row_type.startswith("cookie"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -419,6 +445,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.name, gray_field_format)  # cookie name
                     w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
+                    w.write(row_number, 6, item.profile, gray_value_format)  # Profile
 
                 elif item.row_type.startswith("cache"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -430,11 +457,12 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, str(item.name), gray_field_format)  # cached status // Normal (data cached)
                     w.write_string(row_number, 4, item.value, gray_value_format)  # content-type (size) // image/jpeg (2035 bytes)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
-                    w.write(row_number, 15, item.etag, gray_value_format)  # ETag
-                    w.write(row_number, 16, item.last_modified, gray_value_format)  # Last Modified
-                    w.write(row_number, 17, item.server_name, gray_value_format)  # Server name
-                    w.write(row_number, 18, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
-                    w.write(row_number, 19, item.http_headers_str, gray_value_format)  # Cached data location // data_2 [1542523]
+                    w.write(row_number, 6, item.profile, gray_value_format)  # Profile
+                    w.write(row_number, 16, item.etag, gray_value_format)  # ETag
+                    w.write(row_number, 17, item.last_modified, gray_value_format)  # Last Modified
+                    w.write(row_number, 18, item.server_name, gray_value_format)  # Server name
+                    w.write(row_number, 19, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
+                    w.write(row_number, 20, item.http_headers_str, gray_value_format)  # Cached data location // data_2 [1542523]
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -443,7 +471,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.name, gray_field_format)  # cookie name
                     w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
-                    w.write_string(row_number, 6, " ", gray_type_format)  # blank
+                    w.write(row_number, 6, item.profile, gray_value_format)  # Profile
 
                 elif item.row_type.startswith("login"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -451,7 +479,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 2, item.url, red_url_format)  # URL
                     w.write_string(row_number, 3, item.name, red_field_format)  # form field name
                     w.write_string(row_number, 4, item.value, red_value_format)  # username or pw value
-                    w.write_string(row_number, 6, " ", red_type_format)  # blank
+                    w.write(row_number, 6, item.profile, red_value_format)  # Profile
 
                 elif item.row_type.startswith("preference"):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
@@ -460,6 +488,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.name, blue_field_format)  # form field name
                     w.write_string(row_number, 4, item.value, blue_value_format)  # username or pw value
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
+                    w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
             except Exception, e:
                 log.error("Failed to write row to XLSX: {}".format(e))
@@ -501,6 +530,7 @@ class AnalysisSession(object):
             except:
                 pass
 
+        # TODO: combine this with above function
         for item in self.__dict__.get('preferences'):
             try:
                 if item['presentation'] and item['data']:

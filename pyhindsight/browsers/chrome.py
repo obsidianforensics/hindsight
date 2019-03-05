@@ -68,6 +68,9 @@ class Chrome(WebBrowser):
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
 
+        if self.storage is None:
+            self.storage = {}
+
         if self.artifacts_display is None:
             self.artifacts_display = {}
 
@@ -254,7 +257,7 @@ class Chrome(WebBrowser):
                     if row.get('visit_duration'):
                         duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
-                    new_row = Chrome.URLItem(row.get('id'), row.get('url'), row.get('title'),
+                    new_row = Chrome.URLItem(self.profile_path, row.get('id'), row.get('url'), row.get('title'),
                                              to_datetime(row.get('visit_time'), self.timezone),
                                              to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
                                              row.get('typed_count'), row.get('from_visit'), row.get('transition'),
@@ -336,7 +339,7 @@ class Chrome(WebBrowser):
                     try:
                         # TODO: collapse download chain into one entry per download
                         # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        new_row = Chrome.DownloadItem(row.get('id'), row.get('url'), row.get('received_bytes'),
+                        new_row = Chrome.DownloadItem(self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
                                                       row.get('total_bytes'), row.get('state'), row.get('full_path'),
                                                       to_datetime(row.get('start_time'), self.timezone),
                                                       to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
@@ -496,14 +499,14 @@ class Chrome(WebBrowser):
                         # print type(cookie_value), cookie_value
 
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    new_row = Chrome.CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                    new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
                                                 to_datetime(row.get('creation_utc'), self.timezone),
                                                 to_datetime(row.get('last_access_utc'), self.timezone),
                                                 to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
                                                 row.get('httponly'), row.get('persistent'),
                                                 row.get('has_expires'), row.get('priority'))
 
-                    accessed_row = Chrome.CookieItem(row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                    accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
                                                      to_datetime(row.get('creation_utc'), self.timezone),
                                                      to_datetime(row.get('last_access_utc'), self.timezone),
                                                      to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
@@ -568,7 +571,7 @@ class Chrome(WebBrowser):
 
                 for row in cursor:
                     if row.get('blacklisted_by_user') == 1:
-                        blacklist_row = Chrome.LoginItem(to_datetime(row.get('date_created'), self.timezone),
+                        blacklist_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
                                                          url=row.get('action_url'), name=row.get('username_element').decode(),
                                                          value=u'<User chose to "Never save password" for this site>',
                                                          count=row.get('times_used'))
@@ -576,7 +579,7 @@ class Chrome(WebBrowser):
                         results.append(blacklist_row)
 
                     if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
-                        username_row = Chrome.LoginItem(to_datetime(row.get('date_created'), self.timezone),
+                        username_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
                                                         url=row.get('action_url'), name=row.get('username_element'),
                                                         value=row.get('username_value'), count=row.get('times_used'))
                         username_row.row_type = u'login (username)'
@@ -590,7 +593,7 @@ class Chrome(WebBrowser):
                         except:
                             password = self.decrypt_cookie(row.get('password_value'))
 
-                        password_row = Chrome.LoginItem(to_datetime(row.get('date_created'), self.timezone),
+                        password_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
                                                         url=row.get('action_url'), name=row.get('password_element'),
                                                         value=password, count=row.get('times_used'))
                         password_row.row_type = u'login (password)'
@@ -639,11 +642,11 @@ class Chrome(WebBrowser):
 
                 for row in cursor:
                     # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    results.append(Chrome.AutofillItem(to_datetime(row.get('date_created'), self.timezone), row.get('name'),
+                    results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone), row.get('name'),
                                                        row.get('value'), row.get('count')))
 
                     if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(Chrome.AutofillItem(to_datetime(row.get('date_last_used'), self.timezone),
+                        results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_last_used'), self.timezone),
                                                            row.get('name'), row.get('value'), row.get('count')))
 
                 db_file.close()
@@ -673,11 +676,11 @@ class Chrome(WebBrowser):
             def process_bookmark_children(parent, children):
                 for child in children:
                     if child["type"] == "url":
-                        results.append(Chrome.BookmarkItem(to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
                                                            child["name"], child["url"], parent))
                     elif child["type"] == "folder":
                         new_parent = parent + " > " + child["name"]
-                        results.append(Chrome.BookmarkFolderItem(to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkFolderItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
                                                                  child["date_modified"], child["name"], parent))
                         process_bookmark_children(new_parent, child["children"])
 
@@ -754,8 +757,8 @@ class Chrome(WebBrowser):
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
                         # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(Chrome.LocalStorageItem(ls_file.decode(), to_datetime(ls_created, self.timezone),
-                                                        row.get('key'), to_unicode(row.get('value'))))
+                        results.append(Chrome.LocalStorageItem(self.profile_path, ls_file.decode(), to_datetime(ls_created, self.timezone),
+                                                               row.get('key'), to_unicode(row.get('value'))))
                 except Exception as e:
                     log.warning(" - Error reading key/values from {}: {}".format(ls_file_path, e))
                     pass
@@ -767,6 +770,12 @@ class Chrome(WebBrowser):
     def get_extensions(self, path, dir_name):
         results = []
         log.info("Extensions:")
+
+        # Profile folder
+        try:
+            profile = os.path.split(path)[1]
+        except:
+            profile = "error"
 
         # Grab listing of 'Extensions' directory
         ext_path = os.path.join(path, dir_name)
@@ -854,7 +863,7 @@ class Chrome(WebBrowser):
                                 description = None
                                 log.warning(" - Error reading 'description' for {}".format(app_id))
 
-                    results.append(Chrome.BrowserExtension(app_id, name, description, decoded_manifest["version"]))
+                    results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest["version"]))
                 except:
                     log.error(" - Error decoding manifest file for {}".format(app_id))
                     pass
@@ -874,7 +883,10 @@ class Chrome(WebBrowser):
                              'display_width': 10},
                             {'display_name': 'App ID',
                              'data_name': 'app_id',
-                             'display_width': 36}
+                             'display_width': 36},
+                            {'display_name': 'Profile Folder',
+                             'data_name': 'profile',
+                             'display_width': 30}
                         ]}
         self.installed_extensions = {'data': results, 'presentation': presentation}
 
@@ -1160,7 +1172,7 @@ class Chrome(WebBrowser):
                         try:
                             for origin, pref_data in prefs['profile']['content_settings']['exceptions']['media_engagement'].iteritems():
                                 if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
                                                                       key="media_engagement [in {}.profile.content_settings.exceptions]"
                                                                       .format(preferences_file), value=str(pref_data), interpretation="")
                                     timestamped_preference_items.append(pref_item)
@@ -1176,7 +1188,7 @@ class Chrome(WebBrowser):
                         try:
                             for origin, pref_data in prefs['profile']['content_settings']['exceptions']['notifications'].iteritems():
                                 if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
                                                                       key="notifications [in {}.profile.content_settings.exceptions]"
                                                                       .format(preferences_file), value=str(pref_data), interpretation="")
                                     timestamped_preference_items.append(pref_item)
@@ -1194,7 +1206,7 @@ class Chrome(WebBrowser):
                         try:
                             for origin, pref_data in prefs['profile']['content_settings']['exceptions']['permission_autoblocking_data'].iteritems():
                                 if pref_data.get("last_modified") and pref_data.get("last_modified") != "0":
-                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
                                                                       key="permission_autoblocking_data [in {}.profile.content_settings.exceptions]"
                                                                       .format(preferences_file), value=str(pref_data), interpretation="")
                                     timestamped_preference_items.append(pref_item)
@@ -1214,7 +1226,7 @@ class Chrome(WebBrowser):
                         try:
                             for origin, pref_data in prefs['profile']['content_settings']['exceptions']['site_engagement'].iteritems():
                                 if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
                                                                       key="site_engagement [in {}.profile.content_settings.exceptions]"
                                                                       .format(preferences_file), value=str(pref_data), interpretation="")
                                     timestamped_preference_items.append(pref_item)
@@ -1233,7 +1245,7 @@ class Chrome(WebBrowser):
                                     interpretation = ""
                                     if pref_data.get("setting") is 2:
                                         interpretation = "Muted site"
-                                    pref_item = Chrome.PreferenceItem(url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
                                                                       key="sound [in {}.profile.content_settings.exceptions]"
                                                                       .format(preferences_file), value=str(pref_data),
                                                                       interpretation=interpretation)
@@ -1252,7 +1264,7 @@ class Chrome(WebBrowser):
                 #     },
                 try:
                     if prefs['extensions']['autoupdate'].get('last_check'):
-                        pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
+                        pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
                                                           key="autoupdate.last_check [in {}.extensions]".format(preferences_file),
                                                           value=prefs['extensions']['autoupdate']['last_check'], interpretation="")
                         timestamped_preference_items.append(pref_item)
@@ -1266,7 +1278,7 @@ class Chrome(WebBrowser):
                 #     "signedin_time": "13196354823425155"
                 #  },
                 try:
-                    pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(prefs['signin']['signedin_time'], self.timezone),
+                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(prefs['signin']['signedin_time'], self.timezone),
                                                       key="signedin_time [in {}.signin]".format(preferences_file),
                                                       value=prefs['signin']['signedin_time'], interpretation="")
                     timestamped_preference_items.append(pref_item)
@@ -1285,7 +1297,7 @@ class Chrome(WebBrowser):
                     if isinstance(timestamp, list):
                         timestamp = timestamp[0]
                     assert isinstance(timestamp, float)
-                    pref_item = Chrome.PreferenceItem(url='', timestamp=to_datetime(timestamp, self.timezone),
+                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(timestamp, self.timezone),
                                                       key="translate_last_denied_time_for_language [in {}]".format(preferences_file),
                                                       value="{}: {}".format(lang_code, timestamp),
                                                       interpretation="Declined to translate page from {}".format(expand_language_code(lang_code)))
@@ -1364,7 +1376,7 @@ class Chrome(WebBrowser):
             raw = struct.unpack('I', index.read(4))[0]
             if raw != 0:
                 try:
-                    entry = CacheEntry(CacheAddress(raw, path=path), row_type, self.timezone)
+                    entry = CacheEntry(self.profile_path, CacheAddress(raw, path=path), row_type, self.timezone)
                     # Add the new row to the results array
                     results.append(entry)
                 except Exception, e:
@@ -1375,7 +1387,7 @@ class Chrome(WebBrowser):
                     # such entries are not stored in the Index File so they will
                     # be ignored during iterative lookup in the hash table
                     while entry.next != 0:
-                        entry = CacheEntry(CacheAddress(entry.next, path=path), row_type, self.timezone)
+                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=path), row_type, self.timezone)
                         results.append(entry)
                 except Exception, e:
                     log.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
@@ -1433,7 +1445,7 @@ class Chrome(WebBrowser):
             raw = struct.unpack('I', index.read(4))[0]
             if raw != 0:
                 try:
-                    entry = CacheEntry(CacheAddress(raw, path=cache_path), row_type, self.timezone)
+                    entry = CacheEntry(self.profile_path, CacheAddress(raw, path=cache_path), row_type, self.timezone)
                     cursor.execute('''SELECT url from Entries WHERE response_id=?''', [entry.key])
                     index_url = cursor.fetchone()
                     if index_url:
@@ -1446,7 +1458,7 @@ class Chrome(WebBrowser):
                     # such entries are not stored in the Index File so they will
                     # be ignored during iterative lookup in the hash table
                     while entry.next != 0:
-                        entry = CacheEntry(CacheAddress(entry.next, path=cache_path), row_type, self.timezone)
+                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=cache_path), row_type, self.timezone)
                         cursor.execute('''SELECT url FROM Entries WHERE response_id=?''', [entry.key])
                         index_url = cursor.fetchone()
                         if index_url:
@@ -1505,40 +1517,46 @@ class Chrome(WebBrowser):
         for child_node in node["children"].itervalues():
             self.build_logical_fs_path(child_node, parent_path=list(node["path"]))
 
-    def flatten_nodes_to_list(self, output_list, node):
+    def flatten_nodes_to_list(self, profile_folder, output_list, node):
+    # def flatten_nodes_to_list(self, output_list, node):
         output_row = {
             "type": node["type"],
             "display_type": node["display_type"],
             "origin": node["path"][0],
             "logical_path": "\\".join(node["path"][1:]),
-            "local_path": "File System\\{}\\{}".format(node["origin_id"], node["type"])
+            "local_path": "{}\\File System\\{}\\{}".format(profile_folder, node["origin_id"], node["type"])
+            # "local_path": os.path.join(path, node["origin_id"], node["type"])
         }
         if node.get("fs_path"):
             output_row["local_path"] += "\\{}\\{}".format(node["fs_path"]["dir"], node["fs_path"]["id"])
 
         output_list.append(output_row)
         for child_node in node["children"].itervalues():
-            self.flatten_nodes_to_list(output_list, child_node)
+            self.flatten_nodes_to_list(profile_folder, output_list, child_node)
 
     def get_file_system(self, path, dir_name):
         try:
+            # TODO: add conditionally to imports/requirements?
             import leveldb
         except ImportError:
             self.artifacts_counts['File System'] = 0
             log.info("File System: Failed to parse; couldn't import leveldb.")
             return
 
-        results = {}
         result_list = []
         result_count = 0
-        log.info("File System:")
+        try:
+            profile_folder = os.path.split(path)[1]
+        except:
+            profile_folder = "error"
+        log.info("File System ({}):".format(profile_folder))
 
         # Grab listing of 'File System' directory
         fs_root_path = os.path.join(path, dir_name)
         log.info(" - Reading from {}".format(fs_root_path))
         fs_root_listing = os.listdir(fs_root_path)
         log.debug(" - {count} files in File System directory: {list}".format(list=str(fs_root_listing),
-                                                                                 count=len(fs_root_listing)))
+                                                                             count=len(fs_root_listing)))
         # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
             lvl_db_path = os.path.join(fs_root_path, 'Origins')
@@ -1575,7 +1593,7 @@ class Chrome(WebBrowser):
                                         t_tree[id] = t_nodes[id]
 
                                 self.build_logical_fs_path(t_tree["0"])
-                                self.flatten_nodes_to_list(result_list, t_tree["0"])
+                                self.flatten_nodes_to_list(profile_folder, result_list, t_tree["0"])
                             except Exception as e:
                                 log.error(" - Error accessing LevelDB {}: {}".format(origin_t_paths_path, str(e)))
 
@@ -1603,7 +1621,7 @@ class Chrome(WebBrowser):
                                         p_tree[id] = p_nodes[id]
 
                                 self.build_logical_fs_path(p_tree["0"])
-                                self.flatten_nodes_to_list(result_list, p_tree["0"])
+                                self.flatten_nodes_to_list(profile_folder, result_list, p_tree["0"])
                             except Exception as e:
                                 log.error(" - Error accessing LevelDB {}: {}".format(origin_p_paths_path, str(e)))
 
@@ -1625,7 +1643,11 @@ class Chrome(WebBrowser):
                              'data_name': 'local_path',
                              'display_width': 36}
                         ]}
-        self.storage = {'data': result_list, 'presentation': presentation}
+
+        self.storage.setdefault('data', [])
+        self.storage.setdefault('presentation', presentation)
+        self.storage['data'].extend(result_list)
+        # self.storage = {'data': result_list, 'presentation': presentation}
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
@@ -1786,10 +1808,10 @@ class Chrome(WebBrowser):
         self.parsed_artifacts.sort()
 
     class URLItem(WebBrowser.URLItem):
-        def __init__(self, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
+        def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                      transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                      transition_friendly=None):
-            WebBrowser.URLItem.__init__(self, url_id=url_id, url=url, title=title, visit_time=visit_time, last_visit_time=last_visit_time,
+            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time, last_visit_time=last_visit_time,
                                         visit_count=visit_count, typed_count=typed_count, from_visit=from_visit, transition=transition,
                                         hidden=hidden, favicon_id=favicon_id, indexed=indexed, visit_duration=visit_duration,
                                         visit_source=visit_source, transition_friendly=transition_friendly)
@@ -1898,11 +1920,11 @@ class Chrome(WebBrowser):
                 self.visit_source = source_friendly[raw]
 
     class DownloadItem(WebBrowser.DownloadItem):
-        def __init__(self, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
+        def __init__(self, profile, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
                      end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
                      interrupt_reason=None, etag=None, last_modified=None, chain_index=None, interrupt_reason_friendly=None,
                      danger_type_friendly=None, state_friendly=None, status_friendly=None):
-            WebBrowser.DownloadItem.__init__(self, download_id, url, received_bytes, total_bytes, state, full_path=full_path,
+            WebBrowser.DownloadItem.__init__(self, profile, download_id, url, received_bytes, total_bytes, state, full_path=full_path,
                                              start_time=start_time, end_time=end_time, target_path=target_path,
                                              current_path=current_path, opened=opened, danger_type=danger_type,
                                              interrupt_reason=interrupt_reason, etag=etag, last_modified=last_modified,
@@ -2264,8 +2286,9 @@ class CacheBlock:
 
 
 class CacheItem(Chrome.HistoryItem):
-    def __init__(self, url, date_created, key, value, http_headers):
-        super(CacheItem, self).__init__(u'cache', timestamp=date_created, name=key, value=value)
+    def __init__(self, profile, url, date_created, key, value, http_headers):
+        super(CacheItem, self).__init__(u'cache', timestamp=date_created, profile=profile, name=key, value=value)
+        self.profile = profile
         self.url = url
         self.date_created = date_created
         self.key = key
@@ -2282,13 +2305,14 @@ class CacheEntry(Chrome.HistoryItem):
              "Evicted (data deleted)",
              "Doomed (data to be deleted)"]
 
-    def __init__(self, address, row_type, timezone):
+    def __init__(self, profile, address, row_type, timezone):
         """
         Parse a Chrome Cache Entry at the given address
         """
 
-        super(CacheEntry, self).__init__(row_type, timestamp=None, name=None, value=None)
+        super(CacheEntry, self).__init__(row_type, timestamp=None, profile=profile, name=None, value=None)
 
+        self.profile = profile
         self.httpHeader = None
         self.http_headers_dict = None
         self.timezone = timezone
