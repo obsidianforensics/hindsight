@@ -43,6 +43,9 @@ class AnalysisSession(object):
         self.hindsight_version = hindsight_version
         self.preferences = preferences
 
+        if self.version is None:
+            self.version = []
+
         if self.available_input_types is None:
             self.available_input_types = ['Chrome', 'Brave']
 
@@ -128,6 +131,34 @@ class AnalysisSession(object):
         else:
             setattr(self, item_name, item_value)
 
+    def find_browser_profiles(self, base_path):
+        """Search a path for browser profiles (only Chromium-based at the moment)."""
+        found_profile_paths = []
+        base_dir_listing = os.listdir(base_path)
+
+        # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
+        # Chrome analysis. This approach (checking the file names) is naive but should work.
+        if {'History', 'Cookies'}.issubset(base_dir_listing):
+            found_profile_paths.append(base_path)
+
+        # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
+        else:
+            for item in base_dir_listing:
+                item_path = os.path.join(base_path, item)
+                if os.path.isdir(item_path):
+                    profile_found_in_subdir = self.find_browser_profiles(item_path)
+                    if profile_found_in_subdir:
+                        found_profile_paths.extend(profile_found_in_subdir)
+
+        return found_profile_paths
+
+    def generate_display_version(self):
+        self.version = sorted(self.version)
+        if self.version[0] != self.version[-1]:
+            self.display_version = "%s-%s" % (self.version[0], self.version[-1])
+        else:
+            self.display_version = self.version[0]
+
     def run(self):
         if self.selected_output_format is None:
             self.selected_output_format = self.available_output_formats[-1]
@@ -151,6 +182,11 @@ class AnalysisSession(object):
         # Analysis start time
         log.info("Starting analysis")
 
+        # Search input directory for browser profiles to analyze
+        input_profiles = self.find_browser_profiles(self.input_path)
+        log.info(" - Found {} browser profile(s): {}".format(len(input_profiles), input_profiles))
+        self.profile_paths = input_profiles
+
         # Make sure the input is what we're expecting
         assert isinstance(self.profile_paths, list)
         assert len(self.profile_paths) >= 1
@@ -164,21 +200,17 @@ class AnalysisSession(object):
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
                 self.artifacts_counts = self.sum_dict_counts(self.artifacts_counts, browser_analysis.artifacts_counts)
                 self.artifacts_display = browser_analysis.artifacts_display
-                # TODO: make this a list of all versions
-                self.version = browser_analysis.version
-                # TODO: make this a list of all versions
+                self.version.extend(browser_analysis.version)
                 self.display_version = browser_analysis.display_version
                 self.preferences.extend(browser_analysis.preferences)
 
                 for item in browser_analysis.__dict__:
                     try:
                         # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                        # browser_analysis object to analysis_session object
                         if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
                             self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
-                            # setattr(self, item, browser_analysis.__dict__[item])
                     except:
-                        pass
+                        log.info("Exception occurred while analyzing {} for analysis session promotion.".format(item))
 
             elif self.browser_type == "Brave":
                 browser_analysis = Brave(found_profile_path, timezone=self.timezone)
@@ -192,12 +224,12 @@ class AnalysisSession(object):
                 for item in browser_analysis.__dict__:
                     try:
                         # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                        # browser_analysis object to analysis_session object
                         if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
                             self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
-                            # setattr(self, item, browser_analysis.__dict__[item])
                     except:
                         pass
+
+        self.generate_display_version()
 
     def run_plugins(self):
         log.info("Selected plugins: " + str(self.selected_plugins))
@@ -284,7 +316,7 @@ class AnalysisSession(object):
     def generate_excel(self, output_object):
         import xlsxwriter
         workbook = xlsxwriter.Workbook(output_object, {'in_memory': True})
-        w = workbook.add_worksheet('Timeline')
+        w = workbook.add_worksheet(u'Timeline')
 
         # Define cell formats
         title_header_format = workbook.add_format({'font_color': 'white', 'bg_color': 'gray', 'bold': 'true'})
@@ -321,33 +353,33 @@ class AnalysisSession(object):
         blue_value_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
 
         # Title bar
-        w.merge_range('A1:H1', "Hindsight Internet History Forensics (v%s)" % __version__, title_header_format)
-        w.merge_range('I1:M1', 'URL Specific', center_header_format)
-        w.merge_range('N1:P1', 'Download Specific', center_header_format)
-        w.merge_range('S1:U1', 'Cache Specific', center_header_format)
+        w.merge_range('A1:H1', u'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
+        w.merge_range('I1:M1', u'URL Specific', center_header_format)
+        w.merge_range('N1:P1', u'Download Specific', center_header_format)
+        w.merge_range('S1:U1', u'Cache Specific', center_header_format)
 
         # Write column headers
-        w.write(1, 0, "Type", header_format)
-        w.write(1, 1, "Timestamp ({})".format(self.timezone), header_format)
-        w.write(1, 2, "URL", header_format)
-        w.write_rich_string(1, 3, "Title / Name / Status", header_format)
-        w.write_rich_string(1, 4, "Data / Value / Path", header_format)
-        w.write(1, 5, "Interpretation", header_format)
-        w.write(1, 6, "Profile", header_format)
-        w.write(1, 7, "Source", header_format)
-        w.write(1, 8, "Duration", header_format)
-        w.write(1, 9, "Visit Count", header_format)
-        w.write(1, 10, "Typed Count", header_format)
-        w.write(1, 11, "URL Hidden", header_format)
-        w.write(1, 12, "Transition", header_format)
-        w.write(1, 13, "Interrupt Reason", header_format)
-        w.write(1, 14, "Danger Type", header_format)
-        w.write(1, 15, "Opened?", header_format)
-        w.write(1, 16, "ETag", header_format)
-        w.write(1, 17, "Last Modified", header_format)
-        w.write(1, 18, "Server Name", header_format)
-        w.write(1, 19, "Data Location [Offset]", header_format)
-        w.write(1, 20, "All HTTP Headers", header_format)
+        w.write(1, 0, u'Type', header_format)
+        w.write(1, 1, u'Timestamp ({})'.format(self.timezone), header_format)
+        w.write(1, 2, u'URL', header_format)
+        w.write(1, 3, u'Title / Name / Status', header_format)
+        w.write(1, 4, u'Data / Value / Path', header_format)
+        w.write(1, 5, u'Interpretation', header_format)
+        w.write(1, 6, u'Profile', header_format)
+        w.write(1, 7, u'Source', header_format)
+        w.write(1, 8, u'Duration', header_format)
+        w.write(1, 9, u'Visit Count', header_format)
+        w.write(1, 10, u'Typed Count', header_format)
+        w.write(1, 11, u'URL Hidden', header_format)
+        w.write(1, 12, u'Transition', header_format)
+        w.write(1, 13, u'Interrupt Reason', header_format)
+        w.write(1, 14, u'Danger Type', header_format)
+        w.write(1, 15, u'Opened?', header_format)
+        w.write(1, 16, u'ETag', header_format)
+        w.write(1, 17, u'Last Modified', header_format)
+        w.write(1, 18, u'Server Name', header_format)
+        w.write(1, 19, u'Data Location [Offset]', header_format)
+        w.write(1, 20, u'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -416,9 +448,9 @@ class AnalysisSession(object):
                     w.write(row_number, 14, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
-                        open_friendly = u"Yes"
+                        open_friendly = u'Yes'
                     elif item.opened == 0:
-                        open_friendly = u"No"
+                        open_friendly = u'No'
                     w.write_string(row_number, 15, open_friendly, green_value_format)  # opened
                     w.write(row_number, 16, item.etag, green_value_format)  # ETag
                     w.write(row_number, 17, item.last_modified, green_value_format)  # Last Modified
