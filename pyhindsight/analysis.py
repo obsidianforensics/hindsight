@@ -599,84 +599,85 @@ class AnalysisSession(object):
     def generate_sqlite(self, output_file_path='.temp_db'):
 
         output_db = sqlite3.connect(output_file_path)
+        output_db.text_factory = lambda x: unicode(x, 'utf-8', 'ignore')
 
         with output_db:
             c = output_db.cursor()
             c.execute("CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, "
-                      "interpretation TEXT, source TEXT, visit_duration TEXT, visit_count INT, typed_count INT, "
+                      "interpretation TEXT, profile TEXT, source TEXT, visit_duration TEXT, visit_count INT, typed_count INT, "
                       "url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
                       "last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)")
 
-            c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT)")
+            c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, profile TEXT)")
 
             for item in self.parsed_artifacts:
                 if item.row_type.startswith("url"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, source, visit_duration, visit_count, "
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source, visit_duration, visit_count, "
                               "typed_count, url_hidden, transition) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, item.visit_source,
-                               item.visit_duration, item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, item.profile,
+                               item.visit_source, item.visit_duration, item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
 
                 elif item.row_type.startswith("autofill"):
-                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation))
+                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
+                              (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation, item.profile))
 
                 elif item.row_type.startswith("download"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, "
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, "
                               "interrupt_reason, danger_type, opened, etag, last_modified) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
-                               item.interpretation, item.interrupt_reason_friendly, item.danger_type_friendly,
+                               item.interpretation, item.profile, item.interrupt_reason_friendly, item.danger_type_friendly,
                                item.opened, item.etag, item.last_modified))
 
                 elif item.row_type.startswith("bookmark folder"):
-                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?)",
+                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.name, item.value,
-                               item.interpretation))
+                               item.interpretation, item.profile))
 
                 elif item.row_type.startswith("bookmark"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
+                               item.interpretation, item.profile))
 
                 elif item.row_type.startswith("cookie"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
+                               item.interpretation, item.profile))
 
                 elif item.row_type.startswith("local storage"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
+                               item.interpretation, item.profile))
 
                 elif item.row_type.startswith("cache"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, etag, last_modified, "
-                              "server_name, data_location)"
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, "
+                              "etag, last_modified, server_name, data_location)"
+                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, str(item.name), item.value,
-                               item.interpretation, item.etag, item.last_modified, item.server_name, item.location))
+                               item.interpretation, item.profile, item.etag, item.last_modified, item.server_name, item.location))
 
                 elif item.row_type.startswith("login"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
+                               item.interpretation, item.profile))
 
                 elif item.row_type.startswith("preference"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
+                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation))
+                               item.interpretation, item.profile))
 
             if self.__dict__.get("installed_extensions"):
                 for extension in self.installed_extensions['data']:
-                    c.execute("INSERT INTO installed_extensions (name, description, version, app_id) "
-                              "VALUES (?, ?, ?, ?)",
-                              (extension.name, extension.description, extension.version, extension.app_id))
+                    c.execute("INSERT INTO installed_extensions (name, description, version, app_id, profile) "
+                              "VALUES (?, ?, ?, ?, ?)",
+                              (extension.name, extension.description, extension.version, extension.app_id, extension.profile))
 
 
