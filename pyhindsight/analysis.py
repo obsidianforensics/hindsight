@@ -88,7 +88,6 @@ class AnalysisSession(object):
             self.available_decrypts['windows'] = 1
         except ImportError:
             self.available_decrypts['windows'] = 0
-            log.warning("Couldn't import module 'win32crypt'; cookie decryption on Windows disabled.")
 
         # Mac OS
         try:
@@ -96,7 +95,6 @@ class AnalysisSession(object):
             self.available_decrypts['mac'] = 1
         except ImportError:
             self.available_decrypts['mac'] = 0
-            log.warning("Couldn't import module 'keyring'; cookie decryption on Mac OS disabled.")
 
         # Linux / Mac OS
         try:
@@ -106,18 +104,28 @@ class AnalysisSession(object):
         except ImportError:
             self.available_decrypts['linux'] = 0
             self.available_decrypts['mac'] = 0
-            log.warning("Couldn't import module 'Cryptodome'; cookie decryption on Linux/Mac OS disabled.")
 
     @staticmethod
     def sum_dict_counts(dict1, dict2):
         """Combine two dicts by summing the values of shared keys"""
         for key, value in dict2.items():
-            if value == 'Failed':
+            # Case 1: dict2's value for key is a string (aka: it failed)
+            if isinstance(value, str):
+                #  The value should only be non-int if it's a Failed message
+                if not value.startswith('Fail'):
+                    raise ValueError('Unexpected status value')
+
                 dict1[key] = dict1.setdefault(key, 0)
 
-            elif dict1.get(key) == 'Failed':
+            # Case 2: dict1's value of key is a string (aka: it failed)
+            elif isinstance(dict1.get(key), str):
+                #  The value should only be non-int if it's a Failed message
+                if not dict1.get(key).startswith('Fail'):
+                    raise ValueError('Unexpected status value')
+
                 dict1[key] = value
 
+            # Case 3: dict2's value for key is an int, or doesn't exist.
             else:
                 dict1[key] = dict1.setdefault(key, 0) + value
         return dict1
