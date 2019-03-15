@@ -92,10 +92,9 @@ class Chrome(WebBrowser):
     def determine_version(self):
         """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
 
-        Based on research I did to create "The Evolution of Chrome Databases Reference Chart"
-        (http://www.obsidianforensics.com/blog/evolution-of-chrome-databases-chart/)
+        Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
-        possible_versions = range(1, 70)
+        possible_versions = range(1, 74)
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -162,6 +161,8 @@ class Chrome(WebBrowser):
             if 'autofill_profiles' in self.structure['Web Data'].keys():
                 trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
                 trim_lesser_versions_if('validity_bitfield', self.structure['Web Data']['autofill_profiles'], 63)
+                trim_lesser_versions_if('is_client_validity_states_updated', self.structure['Web Data']['autofill_profiles'], 71)
+
             if 'autofill_sync_metadata' in self.structure['Web Data'].keys():
                 trim_lesser_versions(57)
                 trim_lesser_versions_if('model_type', self.structure['Web Data']['autofill_sync_metadata'], 69)
@@ -179,6 +180,7 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('generation_upload_status', self.structure['Login Data']['logins'], 42)
                 trim_greater_versions_if('ssl_valid', self.structure['Login Data']['logins'], 53)
                 trim_lesser_versions_if('possible_username_pairs', self.structure['Login Data']['logins'], 59)
+                trim_lesser_versions_if('id', self.structure['Login Data']['logins'], 73)
             log.debug(" - Finishing possible versions: {}".format(possible_versions))
 
         if 'Network Action Predictor' in self.structure.keys():
@@ -711,9 +713,18 @@ class Chrome(WebBrowser):
         log.info(" - Reading from {}".format(ls_path))
 
         local_storage_listing = os.listdir(ls_path)
-        log.debug(" - {} files in Local Storage directory"
-                      .format(len(local_storage_listing)))
+        log.debug(" - {} files in Local Storage directory".format(len(local_storage_listing)))
         filtered_listing = []
+
+        if 'leveldb' in local_storage_listing:
+            ls_lvl_db_path = os.path.join(ls_path, 'leveldb')
+            all_ls_lvl_db_pairs = self.get_prefixed_leveldb_pairs(ls_lvl_db_path)
+            for entry in all_ls_lvl_db_pairs:
+                ldb_entry = self.parse_ls_ldb_dict(entry)
+                if ldb_entry:
+                    results.append(Chrome.LocalStorageItem(self.profile_path, ldb_entry['origin'],
+                                                           to_datetime(0, self.timezone),
+                                                           ldb_entry['key'], ldb_entry['value']))
 
         for ls_file in local_storage_listing:
             if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
@@ -1491,7 +1502,12 @@ class Chrome(WebBrowser):
 
     def get_prefixed_leveldb_pairs(self, lvl_db_path, prefix=""):
         """Given a path to a LevelDB and a prefix string, return all pairs starting"""
-        import leveldb
+        try:
+            import leveldb
+        except ImportError:
+            log.warning("Failed to import leveldb; unable to process {}".format(lvl_db_path))
+            return []
+
         db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
         cleaned_pairs = []
         pairs = list(db.RangeIter())
@@ -1507,6 +1523,74 @@ class Chrome(WebBrowser):
                 cleaned_pairs.append({"key": key, "value": value})
 
         return cleaned_pairs
+
+    @staticmethod
+    def parse_ls_ldb_dict(ls_dict):
+        origin, ls_key, ls_value = (None, None, None)
+
+        log.debug("Raw: {}".format(str(ls_dict)[:240]))
+        origin_and_key = ls_dict['key']
+        log.debug("  Origin_and_key: {}".format(origin_and_key))
+
+        if ls_dict['key'].startswith('META:'):
+            origin = ls_dict['key'].split(':', 1)[1]
+            ls_key = 'META'
+            return False
+
+        elif ls_dict['key'] == 'VERSION':
+            return False
+
+        else:
+            try:
+                origin, ls_key = ls_dict['key'].split('\x00', 1)
+                log.debug("    Origin: {}".format(origin))
+                log.debug("    RawKey: {}".format(ls_key))
+
+                if ls_key.startswith('\x01'):
+                    ls_key = ls_key.lstrip('\x01')
+                    log.info("    1__Key: {}".format(ls_key))
+
+                elif ls_key.startswith('\x00'):
+                    ls_key = ls_key.lstrip('\x00').decode('utf-16')
+                    log.info("    0__Key: {}".format(ls_key))
+            except Exception as e:
+                log.error("Origin/key parsing error: {}".format(e))
+
+        try:
+            ls_value = ls_dict['value']
+            log.debug("  Value: {}".format(ls_value[:160]))
+
+            if ls_value.startswith('\x01'):
+                ls_value = ls_value.lstrip('\x01')
+                log.info("    1__Val: {}".format(ls_value[:160]))
+
+            elif ls_value.startswith('\x00'):
+                ls_value = ls_value.lstrip('\x00').decode('utf-16', errors='replace')
+                log.info("    0__Val: {}".format(ls_value))
+
+            elif ls_value.startswith('\x08'):
+                ls_value = ls_value.lstrip('\x08')
+                log.info("    8__Val: {}".format(ls_value))
+        except Exception as e:
+            log.error("Value parsing error: {}".format(e))
+
+        log.info({'origin': origin, 'key': ls_key, 'value': ls_value})
+        return {'origin': origin, 'key': ls_key, 'value': ls_value}
+
+        # if ls_dict['key'] is 'VERSION':
+        #     return "VERSION"
+        # try:
+        #     origin, ls_key = ls_dict['key'].split('\x00\x01')
+        #     print(origin, ls_key)
+        #
+        # except ValueError:
+        #     try:
+        #         origin, ls_key = ls_dict['key'].split(':', 1)
+        #     except:
+        #         print("ERREREREERIR: {}".format(ls_dict))
+        #         return False
+        #
+        #     print(origin, ls_key)
 
     def build_logical_fs_path(self, node, parent_path=None):
         if not parent_path:

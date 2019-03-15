@@ -1,3 +1,4 @@
+leveldb>=0.1
 keyring>=9.0
 matplotlib>=1.5.1
 pytz>=2016.4

@@ -213,12 +213,13 @@ class AnalysisSession(object):
                 self.preferences.extend(browser_analysis.preferences)
 
                 for item in browser_analysis.__dict__:
-                    try:
-                        # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                        if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
-                            self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
-                    except:
-                        log.info("Exception occurred while analyzing {} for analysis session promotion.".format(item))
+                    if isinstance(browser_analysis.__dict__[item], dict):
+                        try:
+                            # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
+                            if browser_analysis.__dict__[item].get('presentation') and browser_analysis.__dict__[item].get('data'):
+                                self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
+                        except Exception as e:
+                            log.info("Exception occurred while analyzing {} for analysis session promotion: {}".format(item, e))
 
             elif self.browser_type == "Brave":
                 browser_analysis = Brave(found_profile_path, timezone=self.timezone)
@@ -230,12 +231,13 @@ class AnalysisSession(object):
                 self.display_version = browser_analysis.display_version
 
                 for item in browser_analysis.__dict__:
-                    try:
-                        # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                        if browser_analysis.__dict__[item]['presentation'] and browser_analysis.__dict__[item]['data']:
-                            self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
-                    except:
-                        pass
+                    if isinstance(browser_analysis.__dict__[item], dict):
+                        try:
+                            # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
+                            if browser_analysis.__dict__[item].get('presentation') and browser_analysis.__dict__[item].get('data'):
+                                self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
+                        except Exception as e:
+                            log.info("Exception occurred while analyzing {} for analysis session promotion: {}".format(item, e))
 
         self.generate_display_version()
 
@@ -364,6 +366,7 @@ class AnalysisSession(object):
         w.merge_range('A1:H1', u'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
         w.merge_range('I1:M1', u'URL Specific', center_header_format)
         w.merge_range('N1:P1', u'Download Specific', center_header_format)
+        w.merge_range('Q1:R1', u'', center_header_format)
         w.merge_range('S1:U1', u'Cache Specific', center_header_format)
 
         # Write column headers
@@ -576,7 +579,7 @@ class AnalysisSession(object):
                 if item['presentation'] and item['data']:
                     d = item
                     # TODO: try/except name exists
-                    p = workbook.add_worksheet(d['presentation']['title'])
+                    p = workbook.add_worksheet(d['presentation']['title'][:31])
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += " (v{})".format(d['presentation']['version'])
@@ -599,7 +602,8 @@ class AnalysisSession(object):
                     p.freeze_panes(2, 0)  # Freeze top row
                     p.autofilter(1, 0, len(d['data']) + 2, len(d['presentation']['columns']) - 1)  # Add autofilter
 
-            except:
+            except Exception as e:
+                log.warning("Exception occurred while writing Preferences page: {}".format(e))
                 pass
 
         workbook.close()
