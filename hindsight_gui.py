@@ -128,7 +128,7 @@ def do_run():
     # Get user selections from the UI
     ui_selected_decrypts = bottle.request.forms.getall('selected_decrypts')
     analysis_session.selected_plugins = bottle.request.forms.getall('selected_plugins')
-    analysis_session.profile_path = bottle.request.forms.get('profile_path')
+    analysis_session.input_path = bottle.request.forms.get('profile_path')  # TODO: refactor bottle name
     analysis_session.cache_path = bottle.request.forms.get('cache_path')
     analysis_session.browser_type = bottle.request.forms.get('browser_type')
     analysis_session.timezone = bottle.request.forms.get('timezone')

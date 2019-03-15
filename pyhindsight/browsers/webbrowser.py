@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 
 class WebBrowser(object):
     def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None, timezone=None, structure=None,
-                 parsed_artifacts=None, artifacts_counts=None, artifacts_display=None):
+                 parsed_artifacts=None, artifacts_counts=None, artifacts_display=None, preferences=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -19,6 +19,7 @@ class WebBrowser(object):
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_counts = artifacts_counts
         self.artifacts_display = artifacts_display
+        self.preferences = preferences
         # self.logger = logger
 
         if self.version is None:
@@ -33,6 +34,9 @@ class WebBrowser(object):
         if self.artifacts_display is None:
             self.artifacts_display = {}
 
+        if self.preferences is None:
+            self.preferences = []
+
     @staticmethod
     def format_processing_output(name, items):
         width = 80
@@ -42,6 +46,12 @@ class WebBrowser(object):
             .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
                     right_width=(width - int(left_side)-2))
         return pretty_name
+
+    @staticmethod
+    def format_profile_path(profile_path):
+        if len(profile_path) > 68:
+            profile_path = "...{}".format(profile_path[-65:])
+        return "\n    Profile: {}".format(profile_path)
 
     def build_structure(self, path, database):
 
@@ -88,9 +98,10 @@ class WebBrowser(object):
         return d
 
     class HistoryItem(object):
-        def __init__(self, item_type, timestamp, url=None, name=None, value=None, interpretation=None):
+        def __init__(self, item_type, timestamp, profile, url=None, name=None, value=None, interpretation=None):
             self.row_type = item_type
             self.timestamp = timestamp
+            self.profile = profile
             self.url = url
             self.name = name
             self.value = value
@@ -103,10 +114,11 @@ class WebBrowser(object):
             return iter(self.__dict__)
 
     class URLItem(HistoryItem):
-        def __init__(self, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
+        def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                      transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                      transition_friendly=None):
-            super(WebBrowser.URLItem, self).__init__('url', timestamp=visit_time, url=url, name=title)
+            super(WebBrowser.URLItem, self).__init__('url', timestamp=visit_time, profile=profile, url=url, name=title)
+            self.profile = profile
             self.url_id = url_id
             self.url = url
             self.title = title
@@ -124,11 +136,12 @@ class WebBrowser(object):
             self.transition_friendly = transition_friendly
 
     class DownloadItem(HistoryItem):
-        def __init__(self, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
+        def __init__(self, profile, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
                      end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
                      interrupt_reason=None, etag=None, last_modified=None, chain_index=None, interrupt_reason_friendly=None,
                      danger_type_friendly=None, state_friendly=None, status_friendly=None):
-            super(WebBrowser.DownloadItem, self).__init__(u'download', timestamp=start_time, url=url)
+            super(WebBrowser.DownloadItem, self).__init__(u'download', timestamp=start_time, profile=profile, url=url)
+            self.profile = profile
             self.download_id = download_id
             self.url = url
             self.received_bytes = received_bytes
@@ -151,9 +164,10 @@ class WebBrowser(object):
             self.status_friendly = status_friendly
 
     class CookieItem(HistoryItem):
-        def __init__(self, host_key, path, name, value, creation_utc, last_access_utc, expires_utc, secure, http_only,
+        def __init__(self, profile, host_key, path, name, value, creation_utc, last_access_utc, expires_utc, secure, http_only,
                      persistent=None, has_expires=None, priority=None):
-            super(WebBrowser.CookieItem, self).__init__('cookie', timestamp=creation_utc, url=host_key, name=name, value=value)
+            super(WebBrowser.CookieItem, self).__init__('cookie', timestamp=creation_utc, profile=profile, url=host_key, name=name, value=value)
+            self.profile = profile
             self.host_key = host_key
             self.path = path
             self.name = name
@@ -168,16 +182,18 @@ class WebBrowser(object):
             self.priority = priority
 
     class AutofillItem(HistoryItem):
-        def __init__(self, date_created, name, value, count):
-            super(WebBrowser.AutofillItem, self).__init__(u'autofill', timestamp=date_created, name=name, value=value)
+        def __init__(self, profile, date_created, name, value, count):
+            super(WebBrowser.AutofillItem, self).__init__(u'autofill', timestamp=date_created, profile=profile, name=name, value=value)
+            self.profile = profile
             self.date_created = date_created
             self.name = name
             self.value = value
             self.count = count
 
     class BookmarkItem(HistoryItem):
-        def __init__(self, date_added, name, url, parent_folder, sync_transaction_version=None):
-            super(WebBrowser.BookmarkItem, self).__init__(u'bookmark', timestamp=date_added, name=name, value=parent_folder)
+        def __init__(self, profile, date_added, name, url, parent_folder, sync_transaction_version=None):
+            super(WebBrowser.BookmarkItem, self).__init__(u'bookmark', timestamp=date_added, profile=profile, name=name, value=parent_folder)
+            self.profile = profile
             self.date_added = date_added
             self.name = name
             self.url = url
@@ -185,8 +201,9 @@ class WebBrowser(object):
             self.sync_transaction_version = sync_transaction_version
 
     class BookmarkFolderItem(HistoryItem):
-        def __init__(self, date_added, date_modified, name, parent_folder, sync_transaction_version=None):
-            super(WebBrowser.BookmarkFolderItem, self).__init__(u'bookmark folder', timestamp=date_added, name=name, value=parent_folder)
+        def __init__(self, profile, date_added, date_modified, name, parent_folder, sync_transaction_version=None):
+            super(WebBrowser.BookmarkFolderItem, self).__init__(u'bookmark folder', timestamp=date_added, profile=profile, name=name, value=parent_folder)
+            self.profile = profile
             self.date_added = date_added
             self.date_modified = date_modified
             self.name = name
@@ -194,23 +211,26 @@ class WebBrowser(object):
             self.sync_transaction_version = sync_transaction_version
 
     class LocalStorageItem(HistoryItem):
-        def __init__(self, url, date_created, key, value):
-            super(WebBrowser.LocalStorageItem, self).__init__(u'local storage', timestamp=date_created, name=key, value=value)
+        def __init__(self, profile, url, date_created, key, value):
+            super(WebBrowser.LocalStorageItem, self).__init__(u'local storage', timestamp=date_created, profile=profile, name=key, value=value)
+            self.profile = profile
             self.url = url
             self.date_created = date_created
             self.key = key
             self.value = value
 
     class BrowserExtension(object):
-        def __init__(self, app_id, name, description, version):
+        def __init__(self, profile, app_id, name, description, version):
+            self.profile = profile
             self.app_id = app_id
             self.name = name
             self.description = description
             self.version = version
 
     class LoginItem(HistoryItem):
-        def __init__(self, date_created, url, name, value, count):
-            super(WebBrowser.LoginItem, self).__init__(u'login', timestamp=date_created, url=url, name=name, value=value)
+        def __init__(self, profile, date_created, url, name, value, count):
+            super(WebBrowser.LoginItem, self).__init__(u'login', timestamp=date_created, profile=profile, url=url, name=name, value=value)
+            self.profile = profile
             self.date_created = date_created
             self.url = url
             self.name = name
@@ -218,8 +238,9 @@ class WebBrowser(object):
             self.count = count
 
     class PreferenceItem(HistoryItem):
-        def __init__(self, url, timestamp, key, value, interpretation):
-            super(WebBrowser.PreferenceItem, self).__init__(u'preference', timestamp=timestamp, name=key, value=value)
+        def __init__(self, profile, url, timestamp, key, value, interpretation):
+            super(WebBrowser.PreferenceItem, self).__init__(u'preference', timestamp=timestamp, profile=profile, name=key, value=value)
+            self.profile = profile
             self.url = url
             self.timestamp = timestamp
             self.key = key

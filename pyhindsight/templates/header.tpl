@@ -30,7 +30,7 @@
                 <td align="right">
                     <span class="social-logos logo-bars">
                         <a href="https://github.com/obsidianforensics/hindsight" target="_blank"><img class="social-logo" src="static/github.png" title="View the code on GitHub"></a> |
-                        <a href="http://slack.hindsig.ht/" target="_blank"><img class="social-logo" src="static/slack.png" title="Join the Hindsight Slack Channel"></a> |
+                        <a href="https://join-open-source-dfir-slack.herokuapp.com/" target="_blank"><img class="social-logo" src="static/slack.png" title="Join the Hindsight Slack Channel"></a> |
                         <a href="https://twitter.com/_RyanBenson" target="_blank"><img class="social-logo" src="static/twitter.png" title="Say Hi!"></a>
                     </span>
                 </td>
