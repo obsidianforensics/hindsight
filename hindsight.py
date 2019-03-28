@@ -8,6 +8,7 @@ against the data, and then outputs the results in a spreadsheet.
 
 import os
 import sys
+import errno
 import time
 import datetime
 import argparse
@@ -108,6 +109,21 @@ The Chrome data folder default locations are:
 
 def main():
 
+    def database_file_already_exists(output_file):
+        print("\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file))
+
+    def sqlite_name(analysis_session):
+        return(analysis_session.output_name + '.sqlite')
+
+    def validate_output_file(analysis_session):
+        """
+        Return True if either the selected format is not
+        sqlite, or the output file does not already exist.
+        """
+        if analysis_session.selected_output_format != 'sqlite':
+            return True
+        return(not os.path.exists(sqlite_name(analysis_session)))
+
     def write_excel(analysis_session):
         import StringIO
 
@@ -125,12 +141,12 @@ def main():
             shutil.copyfileobj(string_buffer, file_output)
 
     def write_sqlite(analysis_session):
-        output_file = analysis_session.output_name + '.sqlite'
+        output_file = sqlite_file(analysis_session.output_name)
 
         if not os.path.exists(output_file):
             analysis_session.generate_sqlite(output_file)
         else:
-            print("\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file))
+            database_file_already_exists(output_file)
 
     def find_browser_profiles(base_path):
         """Search a path for browser profiles (only Chromium-based at the moment)."""
@@ -164,15 +180,18 @@ def main():
     # parse_arguments needs the analysis_session as an input to set things like available decrypts
     args = parse_arguments(analysis_session)
 
-    if args.output:
-        analysis_session.output_name = args.output
-
-    if args.cache:
-        analysis_session.cache_path = args.cache
-
     analysis_session.selected_output_format = args.format
     analysis_session.browser_type = args.browser_type
     analysis_session.timezone = args.timezone
+
+    if args.output:
+        analysis_session.output_name = args.output
+        if not(validate_output_file(analysis_session)):
+           database_file_already_exists(sqlite_name(analysis_session))
+           sys.exit(errno.EEXIST)
+
+    if args.cache:
+        analysis_session.cache_path = args.cache
 
     if args.log == 'hindsight.log':
         args.log = os.path.join(real_path, args.log)
@@ -312,7 +331,7 @@ def main():
 
     elif args.format == 'sqlite':
         log.info("Writing output; SQLite format selected")
-        print("\n Writing {}.sqlite".format(analysis_session.output_name))
+        print("\n Writing {}.".format(sqlite_name(analysis_session)))
         write_sqlite(analysis_session)
 
     # Display and log finish time
