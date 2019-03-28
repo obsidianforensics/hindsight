@@ -2,6 +2,7 @@
 import sqlite3
 import os
 import sys
+import errno
 import datetime
 import re
 import struct
@@ -1357,11 +1358,12 @@ class Chrome(WebBrowser):
         results = []
 
         path = os.path.join(path, dir_name)
+        index_path = os.path.join(path, 'index')
         log.info("Cache items from {}:".format(path))
 
         try:
-            log.debug(" - Found cache index file")
-            cacheBlock = CacheBlock(os.path.join(path, 'index'))
+            cacheBlock = CacheBlock(index_path)
+            log.debug(" - Found cache index file: " + index_path)
 
             # Checking type
             if cacheBlock.type != CacheBlock.INDEX:
@@ -1369,6 +1371,12 @@ class Chrome(WebBrowser):
                 self.artifacts_counts[dir_name] = 'Failed'
                 return
             log.debug(" - Parsed index block file (version {})".format(cacheBlock.version))
+        except IOError as io_error:
+            if io_error.errno == errno.ENOENT:
+                log.error(" - No file called 'index' exists in the cache directory, {}".format(path))
+            else:
+                log.error(" - Failed to read index block file, {}".format(index_path))
+            return
         except:
             log.error(" - Failed to parse index block file")
             return

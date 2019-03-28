@@ -75,7 +75,9 @@ The Chrome data folder default locations are:
                              'Linux system, and only use "--decrypt mac" when running Hindsight on the same Mac the '
                              'Chrome data is from.')
     parser.add_argument('-c', '--cache', help='Path to the cache directory; only needed if the directory is outside '
-                                              'the given "input" directory. Mac systems are setup this way by default.')
+                                              'the given "input" directory. Mac systems are set up this way by default. '
+                                              'On a Mac, the default cache directory location for Chrome is '
+                                              '<userdir>/Library/Caches/Google/Chrome/Default/Cache/')
 
     args = parser.parse_args()
 
