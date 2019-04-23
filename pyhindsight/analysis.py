@@ -150,7 +150,9 @@ class AnalysisSession(object):
             # This approach (checking the file names) is naive but should work.
             if required_file not in existing_files:
                 if warn:
-                    log.warning("The profile directory {} does not contain the file {}. Analysis may not be very useful.")
+                    log.warning("The profile directory {} does not contain the "
+                                "file {}. Analysis may not be very useful."
+                                .format(base_path, required_file))
                 is_profile = False
         return is_profile
 
@@ -170,7 +172,7 @@ class AnalysisSession(object):
 
     def find_browser_profiles(self, base_path):
         """Search a path for browser profiles (only Chromium-based at the moment)."""
-        found_profile_paths = [base_path]
+        found_profile_paths = []
         base_dir_listing = os.listdir(base_path)
 
         # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
@@ -178,6 +180,13 @@ class AnalysisSession(object):
         if not self.is_profile(base_path, base_dir_listing, warn=True):
             # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
             found_profile_paths.extend(self.search_subdirs(base_path))
+
+        # If we did not find any valid Profiles, attempt to process the input
+        # path as a Profile
+        if not found_profile_paths:
+            log.warning("No Profile paths found; processing input path as a Profile")
+            found_profile_paths = [base_path]
+
         log.debug("Profile paths: " + str(found_profile_paths))
         return found_profile_paths
 
