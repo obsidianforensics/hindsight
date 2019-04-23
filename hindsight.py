@@ -132,27 +132,6 @@ def main():
         else:
             print("\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file))
 
-    def find_browser_profiles(base_path):
-        """Search a path for browser profiles (only Chromium-based at the moment)."""
-        found_profile_paths = []
-        base_dir_listing = os.listdir(base_path)
-
-        # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
-        # Chrome analysis. This approach (checking the file names) is naive but should work.
-        if {'History', 'Cookies'}.issubset(base_dir_listing):
-            found_profile_paths.append(base_path)
-
-        # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
-        else:
-            for item in base_dir_listing:
-                item_path = os.path.join(base_path, item)
-                if os.path.isdir(item_path):
-                    profile_found_in_subdir = find_browser_profiles(item_path)
-                    if profile_found_in_subdir:
-                        found_profile_paths.extend(profile_found_in_subdir)
-
-        return found_profile_paths
-
     print(banner)
 
     # Useful when Hindsight is run from a different directory than where the file is located
@@ -200,7 +179,7 @@ def main():
     log.debug("Input directory contents: " + str(input_listing))
 
     # Search input directory for browser profiles to analyze
-    input_profiles = find_browser_profiles(args.input)
+    input_profiles = analysis_session.find_browser_profiles(args.input)
     log.info(" - Found {} browser profile(s): {}".format(len(input_profiles), input_profiles))
     analysis_session.profile_paths = input_profiles
 

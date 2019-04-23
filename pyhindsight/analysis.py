@@ -139,25 +139,46 @@ class AnalysisSession(object):
         else:
             setattr(self, item_name, item_value)
 
+    @staticmethod
+    def is_profile(base_path, existing_files, warn=False):
+        """
+        Log a warning message if any file in `required_files` is missing from
+        `existing_files`. Return True if all required files are present.
+        """
+        is_profile = True
+        for required_file in ['History', 'Cookies']:
+            # This approach (checking the file names) is naive but should work.
+            if required_file not in existing_files:
+                if warn:
+                    log.warning("The profile directory {} does not contain the file {}. Analysis may not be very useful.")
+                is_profile = False
+        return is_profile
+
+    def search_subdirs(self, base_path):
+        """Recursively search a path for browser profiles"""
+        found_profile_paths = []
+        base_dir_listing = os.listdir(base_path)
+        if self.is_profile(base_path, base_dir_listing):
+            found_profile_paths.append(base_path)
+        for item in base_dir_listing:
+            item_path = os.path.join(base_path, item)
+            if os.path.isdir(item_path):
+                profile_found_in_subdir = self.search_subdirs(item_path)
+                if profile_found_in_subdir:
+                    found_profile_paths.extend(profile_found_in_subdir)
+        return found_profile_paths
+
     def find_browser_profiles(self, base_path):
         """Search a path for browser profiles (only Chromium-based at the moment)."""
-        found_profile_paths = []
+        found_profile_paths = [base_path]
         base_dir_listing = os.listdir(base_path)
 
         # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
-        # Chrome analysis. This approach (checking the file names) is naive but should work.
-        if {'History', 'Cookies'}.issubset(base_dir_listing):
-            found_profile_paths.append(base_path)
-
-        # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
-        else:
-            for item in base_dir_listing:
-                item_path = os.path.join(base_path, item)
-                if os.path.isdir(item_path):
-                    profile_found_in_subdir = self.find_browser_profiles(item_path)
-                    if profile_found_in_subdir:
-                        found_profile_paths.extend(profile_found_in_subdir)
-
+        # Chrome analysis. Warn if they are not present.
+        if not self.is_profile(base_path, base_dir_listing, warn=True):
+            # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
+            found_profile_paths.extend(self.search_subdirs(base_path))
+        log.debug("Profile paths: " + str(found_profile_paths))
         return found_profile_paths
 
     def generate_display_version(self):
