@@ -6,19 +6,20 @@ This script parses the files in the Chrome data folder, runs various plugins
 against the data, and then outputs the results in a spreadsheet.
 """
 
-import os
-import sys
-import time
-import datetime
 import argparse
-import logging
-import json
-import shutil
+import datetime
 import importlib
+import json
+import logging
+import os
 import pyhindsight
 import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
 from pyhindsight.utils import banner, MyEncoder, format_meta_output, format_plugin_output
+import re
+import shutil
+import sys
+import time
 
 # Try to import module for timezone support
 try:
@@ -127,10 +128,27 @@ def main():
     def write_sqlite(analysis_session):
         output_file = analysis_session.output_name + '.sqlite'
 
-        if not os.path.exists(output_file):
-            analysis_session.generate_sqlite(output_file)
-        else:
-            print("\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file))
+        if os.path.exists(output_file):
+            if os.path.getsize(output_file) > 0:
+                print('\nDatabase file "{}" already exists.\n'.format(output_file))
+                user_input = raw_input('Would you like to (O)verwrite it, (R)ename output file, or (E)xit? ')
+                over_re = re.compile(r'(^o$|overwrite)', re.IGNORECASE)
+                rename_re = re.compile(r'(^r$|rename)', re.IGNORECASE)
+                exit_re = re.compile(r'(^e$|exit)', re.IGNORECASE)
+                if re.search(exit_re, user_input):
+                    print("Exiting... ")
+                    sys.exit()
+                elif re.search(over_re, user_input):
+                    os.remove(output_file)
+                    print("Deleted old \"%s\"" % output_file)
+                elif re.search(rename_re, user_input):
+                    output_file = "{}_1.sqlite".format(output_file[:-7])
+                    print("Renaming new output to {}".format(output_file))
+                else:
+                    print("Did not understand response.  Exiting... ")
+                    sys.exit()
+
+        analysis_session.generate_sqlite(output_file)
 
     print(banner)
 
