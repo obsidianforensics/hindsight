@@ -33,11 +33,12 @@
 
                     <table width=100%>
                     <tr>
-                      <td align="left" width=50%><input type="button" value="Save XLSX" class="button" onclick="location.href='/xlsx';" style="width:100%" /></td>
-                      <td align="right" width=50%><input type="button" value="Save SQLite DB" class="button" onclick="location.href='/sqlite';" style="width:100%" /></td>
+                      <td align="left" width=33%><input type="button" value="Save XLSX" class="button" onclick="location.href='/xlsx';" style="width:100%" /></td>
+                      <td align="center" width=33%><input type="button" value="Save JSONL" class="button" onclick="location.href='/jsonl';" style="width:100%" /></td>
+                      <td align="right" width=33%><input type="button" value="Save SQLite DB" class="button" onclick="location.href='/sqlite';" style="width:100%" /></td>
                     </tr>
                     <tr>
-                      <td colspan=2>
+                      <td colspan=3>
                         <input type="button" value="Start New Analysis Session" class="button" onclick="location.href='/';" style="width:100%" />
                       </td>
                     </tr>

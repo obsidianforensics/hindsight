@@ -150,6 +150,10 @@ def main():
 
         analysis_session.generate_sqlite(output_file)
 
+    def write_jsonl(analysis_session):
+        output_file = analysis_session.output_name + '.jsonl'
+        analysis_session.generate_jsonl(output_file)
+
     print(banner)
 
     # Useful when Hindsight is run from a different directory than where the file is located
@@ -302,10 +306,10 @@ def main():
             print(value, "- is the file open?  If so, please close it and try again.")
             log.error("Error writing XLSX file; type: {}, value: {}, traceback: {}".format(type, value, traceback))
 
-    elif args.format == 'json':
-        log.info("Writing output; JSON format selected")
-        output = open("{}.json".format(analysis_session.output_name), 'wb')
-        output.write(json.dumps(analysis_session, cls=MyEncoder, indent=4))
+    elif args.format == 'jsonl':
+        log.info("Writing output; JSONL format selected")
+        print("\n Writing {}.jsonl".format(analysis_session.output_name))
+        write_jsonl(analysis_session)
 
     elif args.format == 'sqlite':
         log.info("Writing output; SQLite format selected")

@@ -1,5 +1,5 @@
-import json
 import datetime
+import json
 import pytz
 from pyhindsight import __version__
 
