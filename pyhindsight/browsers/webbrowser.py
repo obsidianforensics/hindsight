@@ -7,8 +7,9 @@ log = logging.getLogger(__name__)
 
 
 class WebBrowser(object):
-    def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None, timezone=None, structure=None,
-                 parsed_artifacts=None, artifacts_counts=None, artifacts_display=None, preferences=None):
+    def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
+                 timezone=None, structure=None, parsed_artifacts=None, artifacts_counts=None,
+                 artifacts_display=None, preferences=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -20,7 +21,6 @@ class WebBrowser(object):
         self.artifacts_counts = artifacts_counts
         self.artifacts_display = artifacts_display
         self.preferences = preferences
-        # self.logger = logger
 
         if self.version is None:
             self.version = []
@@ -164,8 +164,8 @@ class WebBrowser(object):
             self.status_friendly = status_friendly
 
     class CookieItem(HistoryItem):
-        def __init__(self, profile, host_key, path, name, value, creation_utc, last_access_utc, expires_utc, secure, http_only,
-                     persistent=None, has_expires=None, priority=None):
+        def __init__(self, profile, host_key, path, name, value, creation_utc, last_access_utc, secure, http_only,
+                     persistent=None, has_expires=None, expires_utc=None, priority=None):
             super(WebBrowser.CookieItem, self).__init__('cookie', timestamp=creation_utc, profile=profile, url=host_key, name=name, value=value)
             self.profile = profile
             self.host_key = host_key
@@ -174,11 +174,11 @@ class WebBrowser(object):
             self.value = value
             self.creation_utc = creation_utc
             self.last_access_utc = last_access_utc
-            self.expires_utc = expires_utc
             self.secure = secure
             self.httponly = http_only
             self.persistent = persistent
             self.has_expires = has_expires
+            self.expires_utc = expires_utc
             self.priority = priority
 
     class AutofillItem(HistoryItem):

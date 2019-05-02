@@ -451,8 +451,9 @@ class Chrome(WebBrowser):
 
         # Queries for different versions
         query = {66: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
-                            cookies.last_access_utc, cookies.expires_utc, cookies.is_secure, cookies.is_httponly,
-                            cookies.is_persistent, cookies.has_expires, cookies.priority, cookies.encrypted_value
+                            cookies.last_access_utc, cookies.expires_utc, cookies.is_secure AS secure, 
+                            cookies.is_httponly AS httponly, cookies.is_persistent AS persistent, 
+                            cookies.has_expires, cookies.priority, cookies.encrypted_value
                         FROM cookies''',
                  33: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
@@ -500,20 +501,20 @@ class Chrome(WebBrowser):
                         cookie_value = row.get('value')
                         # print type(cookie_value), cookie_value
 
-                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                                to_datetime(row.get('creation_utc'), self.timezone),
+                    new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'),
+                                                cookie_value, to_datetime(row.get('creation_utc'), self.timezone),
                                                 to_datetime(row.get('last_access_utc'), self.timezone),
-                                                to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
-                                                row.get('httponly'), row.get('persistent'),
-                                                row.get('has_expires'), row.get('priority'))
+                                                row.get('secure'), row.get('httponly'), row.get('persistent'),
+                                                row.get('has_expires'), to_datetime(row.get('expires_utc'), self.timezone),
+                                                row.get('priority'))
 
-                    accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                    accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'),
+                                                     row.get('name'), cookie_value,
                                                      to_datetime(row.get('creation_utc'), self.timezone),
                                                      to_datetime(row.get('last_access_utc'), self.timezone),
-                                                     to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
-                                                     row.get('httponly'), row.get('persistent'),
-                                                     row.get('has_expires'), row.get('priority'))
+                                                     row.get('secure'), row.get('httponly'), row.get('persistent'),
+                                                     row.get('has_expires'), to_datetime(row.get('expires_utc'), self.timezone),
+                                                     row.get('priority'))
 
                     new_row.url = (new_row.host_key + new_row.path)
                     accessed_row.url = (accessed_row.host_key + accessed_row.path)
@@ -643,13 +644,12 @@ class Chrome(WebBrowser):
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
-                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone), row.get('name'),
-                                                       row.get('value'), row.get('count')))
+                    results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                                                       row.get('name'), row.get('value'), row.get('count')))
 
                     if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_last_used'), self.timezone),
-                                                           row.get('name'), row.get('value'), row.get('count')))
+                        results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_last_used'),
+                                                           self.timezone), row.get('name'), row.get('value'), row.get('count')))
 
                 db_file.close()
                 self.artifacts_counts['Autofill'] = len(results)

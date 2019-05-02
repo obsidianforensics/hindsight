@@ -209,15 +209,31 @@ def generate_xlsx():
     return strIO.read()
 
 
-@bottle.route('/json')
-def generate_json():
+@bottle.route('/jsonl')
+def generate_jsonl():
+    temp_output = '.tempjsonl'
+    try:
+        os.remove(temp_output)
+    except:
+        # temp file deletion failed
+        pass
+
+    analysis_session.generate_jsonl(temp_output)
     import StringIO
-    strIO = StringIO.StringIO()
-    strIO.write(json.dumps(analysis_session, cls=MyEncoder, indent=4))
-    strIO.seek(0)
-    bottle.response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
-    bottle.response.headers['Content-Disposition'] = 'attachment; filename={}.json'.format(analysis_session.output_name)
-    return strIO.read()
+    str_io = StringIO.StringIO()
+    with open(temp_output, 'rb') as f:
+        str_io.write(f.read())
+
+    try:
+        os.remove(temp_output)
+    except:
+        # temp file deletion failed
+        pass
+
+    bottle.response.headers['Content-Type'] = 'application/json; charset=UTF-8'
+    bottle.response.headers['Content-Disposition'] = 'attachment; filename={}.jsonl'.format(analysis_session.output_name)
+    str_io.seek(0)
+    return str_io.read()
 
 
 def main():

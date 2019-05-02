@@ -1,17 +1,212 @@
-import sys
-import os
-import logging
-import pytz
-import time
-import sqlite3
+import datetime
 import importlib
+import json
+import logging
+import os
+import pytz
+import sqlite3
+import sys
+import time
+
 from pyhindsight import __version__
 from pyhindsight.browsers.chrome import Chrome
+from pyhindsight.browsers.chrome import CacheEntry
 from pyhindsight.browsers.brave import Brave
-from pyhindsight.utils import friendly_date, format_meta_output, format_plugin_output
+from pyhindsight.utils import friendly_date, format_plugin_output
 import pyhindsight.plugins
 
 log = logging.getLogger(__name__)
+
+
+class HindsightEncoder(json.JSONEncoder):
+    """This JSONEncoder translates several Hindsight HistoryItem classes into
+    JSON objects for use in the JSONL output format. It also makes changes
+    to field names and values to more closely align with Plaso
+    (https://github.com/log2timeline/plaso) output for easier use with
+    Timesketch (https://github.com/google/timesketch/).
+    """
+
+    @staticmethod
+    def base_encoder(history_item):
+        item = {'source_short': 'WEBHIST', 'source_long': 'Chrome History',
+                'parser': 'hindsight/{}'.format(__version__)}
+        for key, value in history_item.__dict__.items():
+            # Drop any keys that have None as value
+            if value is None:
+                continue
+
+            if isinstance(value, datetime.datetime):
+                value = value.isoformat()
+
+            # JSONL requires utf-8 encoding
+            if isinstance(value, str):
+                value = value.decode('utf-8', errors='replace')
+
+            item[key] = value
+
+        item['datetime'] = item['timestamp']
+        del(item['timestamp'])
+
+        return item
+
+    def default(self, obj):
+        if isinstance(obj, Chrome.URLItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Last Visited Time'
+            item['data_type'] = 'chrome:history:page_visited'
+            item['url_hidden'] = 'true' if item['hidden'] else 'false'
+            if item['visit_duration'] == u'None':
+                del (item['visit_duration'])
+
+            item['message'] = u'{} ({}) [count: {}]'.format(
+                item['url'], item['title'], item['visit_count'])
+
+            del(item['name'], item['row_type'], item['visit_time'],
+                item['last_visit_time'], item['hidden'])
+            return item
+
+        if isinstance(obj, Chrome.DownloadItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'File Downloaded'
+            item['data_type'] = 'chrome:history:file_downloaded'
+
+            item['message'] = u'{} ({}). Received {}/{} bytes'.format(
+                item['url'],
+                item['full_path'] if item.get('full_path') else item.get('target_path'),
+                item['received_bytes'], item['total_bytes'])
+
+            del(item['row_type'], item['start_time'])
+            return item
+
+        if isinstance(obj, Chrome.CookieItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['data_type'] = 'chrome:cookie:entry'
+            item['source_long'] = 'Chrome Cookies'
+            if item['row_type'] == 'cookie (accessed)':
+                item['timestamp_desc'] = 'Last Access Time'
+            elif item['row_type'] == 'cookie (created)':
+                item['timestamp_desc'] = 'Creation Time'
+            item['host'] = item['host_key']
+            item['cookie_name'] = item['name']
+            item['data'] = item['value'] if item['value'] != '<encrypted>' else ''
+            item['url'] = item['url'].lstrip('.')
+            item['url'] = 'https://{}'.format(item['url']) if item['secure'] else 'http://{}'.format(item['url'])
+            if item['expires_utc'] == '1970-01-01T00:00:00+00:00':
+                del(item['expires_utc'])
+            # Convert these from 1/0 to true/false to match Plaso
+            item['secure'] = 'true' if item['secure'] else 'false'
+            item['httponly'] = 'true' if item['httponly'] else 'false'
+            item['persistent'] = 'true' if item['persistent'] else 'false'
+
+            item['message'] = u'{} ({}) Flags: [HTTP only] = {} [Persistent] = {}'.format(
+                item['url'],
+                item['cookie_name'],
+                item['httponly'], item['persistent'])
+
+            del(item['creation_utc'], item['last_access_utc'], item['row_type'],
+                item['host_key'], item['name'], item['value'])
+            return item
+
+        if isinstance(obj, Chrome.AutofillItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Used Time'
+            item['data_type'] = 'chrome:autofill:entry'
+            item['source_long'] = 'Chrome Autofill'
+            item['usage_count'] = item['count']
+            item['field_name'] = item['name']
+
+            item['message'] = u'{}: {} (times used: {})'.format(
+                item['field_name'], item['value'], item['usage_count'])
+
+            del(item['name'], item['row_type'], item['count'], item['date_created'])
+            return item
+
+        if isinstance(obj, Chrome.BookmarkItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Creation Time'
+            item['data_type'] = 'chrome:bookmark:entry'
+            item['source_long'] = 'Chrome Bookmarks'
+
+            item['message'] = u'{} ({}) bookmarked in folder "{}"'.format(
+                item['name'], item['url'], item['parent_folder'])
+
+            del(item['value'], item['row_type'], item['date_added'])
+            return item
+
+        if isinstance(obj, Chrome.BookmarkFolderItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Creation Time'
+            item['data_type'] = 'chrome:bookmark:folder'
+            item['source_long'] = 'Chrome Bookmarks'
+
+            item['message'] = u'"{}" bookmark folder created in folder "{}"'.format(
+                item['name'], item['parent_folder'])
+
+            del(item['value'], item['row_type'], item['date_added'])
+            return item
+
+        if isinstance(obj, Chrome.LocalStorageItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:local_storage:entry'
+            item['source_long'] = 'Chrome LocalStorage'
+            item['url'] = item['url'][1:]
+
+            item['message'] = u'key: {} value: {}'.format(
+                item['key'], item['value'])
+
+            del (item['row_type'])
+            return item
+
+        if isinstance(obj, Chrome.LoginItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Used Time'
+            item['data_type'] = 'chrome:login_item:entry'
+            item['source_long'] = 'Chrome Logins'
+            item['usage_count'] = item['count']
+
+            item['message'] = u'{}: {} used on {} (total times used: {})'.format(
+                item['name'], item['value'], item['url'], item['usage_count'])
+
+            del(item['row_type'], item['count'], item['date_created'])
+            return item
+
+        if isinstance(obj, Chrome.PreferenceItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Update Time'
+            item['data_type'] = 'chrome:preferences:entry'
+            item['source_long'] = 'Chrome Preferences'
+
+            item['message'] = u'Updated preference: {}: {})'.format(
+                item['key'], item['value'])
+
+            del(item['row_type'], item['name'])
+            return item
+
+        if isinstance(obj, CacheEntry):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Last Visit Time'
+            item['data_type'] = 'chrome:cache:entry'
+            item['source_long'] = 'Chrome Cache'
+            item['original_url'] = item['url']
+            item['cache_type'] = item['row_type']
+            item['cached_state'] = item['name']
+
+            item['message'] = u'Original URL: {}'.format(
+                item['original_url'])
+
+            del(item['row_type'], item['name'], item['timezone'])
+            return item
 
 
 class AnalysisSession(object):
@@ -56,7 +251,7 @@ class AnalysisSession(object):
             self.artifacts_counts = {}
 
         if self.available_output_formats is None:
-            self.available_output_formats = ['sqlite']
+            self.available_output_formats = ['sqlite', 'jsonl']
 
         if self.available_decrypts is None:
             self.available_decrypts = {'windows': 0, 'mac': 0, 'linux': 0}
@@ -141,8 +336,7 @@ class AnalysisSession(object):
 
     @staticmethod
     def is_profile(base_path, existing_files, warn=False):
-        """
-        Log a warning message if any file in `required_files` is missing from
+        """Log a warning message if any file in `required_files` is missing from
         `existing_files`. Return True if all required files are present.
         """
         is_profile = True
@@ -722,4 +916,9 @@ class AnalysisSession(object):
                               "VALUES (?, ?, ?, ?, ?)",
                               (extension.name, extension.description, extension.version, extension.app_id, extension.profile))
 
-
+    def generate_jsonl(self, output_file):
+        with open(output_file, mode='wb') as jsonl:
+            for parsed_artifact in self.parsed_artifacts:
+                parsed_artifact_json = json.dumps(parsed_artifact, cls=HindsightEncoder)
+                jsonl.write(parsed_artifact_json)
+                jsonl.write('\n')
