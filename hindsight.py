@@ -9,13 +9,12 @@ against the data, and then outputs the results in a spreadsheet.
 import argparse
 import datetime
 import importlib
-import json
 import logging
 import os
 import pyhindsight
 import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
-from pyhindsight.utils import banner, MyEncoder, format_meta_output, format_plugin_output
+from pyhindsight.utils import banner, format_meta_output, format_plugin_output
 import re
 import shutil
 import sys

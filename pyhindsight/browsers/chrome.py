@@ -91,10 +91,19 @@ class Chrome(WebBrowser):
 
     def determine_version(self):
         """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
-
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
+
         possible_versions = range(1, 74)
+        previous_possible_versions = possible_versions[:]
+
+        def update_and_rollback_if_empty(version_list, prev_version_list):
+            if len(version_list) == 0:
+                version_list = prev_version_list
+                log.warning('Last version structure check eliminated all possible versions; skipping that file.')
+            else:
+                prev_version_list = version_list[:]
+            return version_list, prev_version_list
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -142,6 +151,8 @@ class Chrome(WebBrowser):
         elif (db.startswith('History__') for db in self.structure.keys()):
             trim_lesser_versions(30)
 
+        possible_versions, previous_possible_versions = update_and_rollback_if_empty(possible_versions, previous_possible_versions)
+
         if 'Cookies' in self.structure.keys():
             log.debug("Analyzing 'Cookies' structure")
             log.debug(" - Starting possible versions:  {}".format(possible_versions))
@@ -151,6 +162,8 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
                 trim_lesser_versions_if('firstpartyonly', self.structure['Cookies']['cookies'], 44)
             log.debug(" - Finishing possible versions: {}".format(possible_versions))
+
+        possible_versions, previous_possible_versions = update_and_rollback_if_empty(possible_versions, previous_possible_versions)
 
         if 'Web Data' in self.structure.keys():
             log.debug("Analyzing 'Web Data' structure")
@@ -172,6 +185,8 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('billing_address_id', self.structure['Web Data']['credit_cards'], 53)
             log.debug(" - Finishing possible versions: {}".format(possible_versions))
 
+        possible_versions, previous_possible_versions = update_and_rollback_if_empty(possible_versions, previous_possible_versions)
+
         if 'Login Data' in self.structure.keys():
             log.debug("Analyzing 'Login Data' structure")
             log.debug(" - Starting possible versions:  {}".format(possible_versions))
@@ -183,6 +198,8 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('id', self.structure['Login Data']['logins'], 73)
             log.debug(" - Finishing possible versions: {}".format(possible_versions))
 
+        possible_versions, previous_possible_versions = update_and_rollback_if_empty(possible_versions, previous_possible_versions)
+
         if 'Network Action Predictor' in self.structure.keys():
             log.debug("Analyzing 'Network Action Predictor' structure")
             log.debug(" - Starting possible versions:  {}".format(possible_versions))
@@ -191,6 +208,8 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('key', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 55)
                 trim_lesser_versions_if('proto', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 54)
             log.debug(" - Finishing possible versions: {}".format(possible_versions))
+
+        possible_versions, previous_possible_versions = update_and_rollback_if_empty(possible_versions, previous_possible_versions)
 
         self.version = possible_versions
 
@@ -1753,8 +1772,10 @@ class Chrome(WebBrowser):
 
         if len(self.version) > 1:
             self.display_version = "%s-%s" % (self.version[0], self.version[-1])
-        else:
+        elif len(self.version) == 1:
             self.display_version = self.version[0]
+        else:
+            print("Unable to determine browser version from")
 
         print(self.format_profile_path(self.profile_path))
 
