@@ -353,7 +353,14 @@ class AnalysisSession(object):
     def search_subdirs(self, base_path):
         """Recursively search a path for browser profiles"""
         found_profile_paths = []
-        base_dir_listing = os.listdir(base_path)
+
+        try:
+            base_dir_listing = os.listdir(base_path)
+        except Exception, e:
+            log.warning('Exception reading directory {0:s}; possible permissions issue? Exception: {1:s}'
+                        .format(base_path, e))
+            return found_profile_paths
+
         if self.is_profile(base_path, base_dir_listing):
             found_profile_paths.append(base_path)
         for item in base_dir_listing:
