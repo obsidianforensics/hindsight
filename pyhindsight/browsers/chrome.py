@@ -94,7 +94,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = range(1, 76)
+        possible_versions = range(1, 77)
         previous_possible_versions = possible_versions[:]
 
         def update_and_rollback_if_empty(version_list, prev_version_list):
@@ -157,10 +157,10 @@ class Chrome(WebBrowser):
             log.debug("Analyzing 'Cookies' structure")
             log.debug(" - Starting possible versions:  {}".format(possible_versions))
             if 'cookies' in self.structure['Cookies'].keys():
+                trim_lesser_versions_if('samesite', self.structure['Cookies']['cookies'], 76)
                 trim_lesser_versions_if('is_persistent', self.structure['Cookies']['cookies'], 66)
                 trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
                 trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
-                trim_lesser_versions_if('firstpartyonly', self.structure['Cookies']['cookies'], 44)
             log.debug(" - Finishing possible versions: {}".format(possible_versions))
 
         possible_versions, previous_possible_versions = update_and_rollback_if_empty(possible_versions, previous_possible_versions)
@@ -1527,7 +1527,12 @@ class Chrome(WebBrowser):
             log.warning("Failed to import leveldb; unable to process {}".format(lvl_db_path))
             return []
 
-        db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
+        try:
+            db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
+        except Exception as e:
+            log.warning(" - Couldn't open {0:s} as LevelDB; {1:s}".format(lvl_db_path, e))
+            return []
+
         cleaned_pairs = []
         pairs = list(db.RangeIter())
         for pair in pairs:
@@ -1546,10 +1551,7 @@ class Chrome(WebBrowser):
     @staticmethod
     def parse_ls_ldb_dict(ls_dict):
         origin, ls_key, ls_value = (None, None, None)
-
-        log.debug("Raw: {}".format(str(ls_dict)[:240]))
         origin_and_key = ls_dict['key']
-        log.debug("  Origin_and_key: {}".format(origin_and_key))
 
         if ls_dict['key'].startswith('META:'):
             origin = ls_dict['key'].split(':', 1)[1]
@@ -1562,54 +1564,32 @@ class Chrome(WebBrowser):
         else:
             try:
                 origin, ls_key = ls_dict['key'].split('\x00', 1)
-                log.debug("    Origin: {}".format(origin))
-                log.debug("    RawKey: {}".format(ls_key))
 
                 if ls_key.startswith('\x01'):
                     ls_key = ls_key.lstrip('\x01')
-                    log.info("    1__Key: {}".format(ls_key))
 
                 elif ls_key.startswith('\x00'):
                     ls_key = ls_key.lstrip('\x00').decode('utf-16')
-                    log.info("    0__Key: {}".format(ls_key))
+
             except Exception as e:
                 log.error("Origin/key parsing error: {}".format(e))
 
         try:
             ls_value = ls_dict['value']
-            log.debug("  Value: {}".format(ls_value[:160]))
 
             if ls_value.startswith('\x01'):
                 ls_value = ls_value.lstrip('\x01')
-                log.info("    1__Val: {}".format(ls_value[:160]))
 
             elif ls_value.startswith('\x00'):
                 ls_value = ls_value.lstrip('\x00').decode('utf-16', errors='replace')
-                log.info("    0__Val: {}".format(ls_value))
 
             elif ls_value.startswith('\x08'):
                 ls_value = ls_value.lstrip('\x08')
-                log.info("    8__Val: {}".format(ls_value))
         except Exception as e:
             log.error("Value parsing error: {}".format(e))
 
         log.info({'origin': origin, 'key': ls_key, 'value': ls_value})
         return {'origin': origin, 'key': ls_key, 'value': ls_value}
-
-        # if ls_dict['key'] is 'VERSION':
-        #     return "VERSION"
-        # try:
-        #     origin, ls_key = ls_dict['key'].split('\x00\x01')
-        #     print(origin, ls_key)
-        #
-        # except ValueError:
-        #     try:
-        #         origin, ls_key = ls_dict['key'].split(':', 1)
-        #     except:
-        #         print("ERREREREERIR: {}".format(ls_dict))
-        #         return False
-        #
-        #     print(origin, ls_key)
 
     def build_logical_fs_path(self, node, parent_path=None):
         if not parent_path:
@@ -1621,14 +1601,12 @@ class Chrome(WebBrowser):
             self.build_logical_fs_path(child_node, parent_path=list(node["path"]))
 
     def flatten_nodes_to_list(self, profile_folder, output_list, node):
-    # def flatten_nodes_to_list(self, output_list, node):
         output_row = {
             "type": node["type"],
             "display_type": node["display_type"],
             "origin": node["path"][0],
             "logical_path": "\\".join(node["path"][1:]),
             "local_path": "{}\\File System\\{}\\{}".format(profile_folder, node["origin_id"], node["type"])
-            # "local_path": os.path.join(path, node["origin_id"], node["type"])
         }
         if node.get("fs_path"):
             output_row["local_path"] += "\\{}\\{}".format(node["fs_path"]["dir"], node["fs_path"]["id"])
