@@ -1540,7 +1540,7 @@ class Chrome(WebBrowser):
             if not isinstance(pair, tuple) or len(pair) is not 2:
                 log.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
                 continue
-            if pair[0].startswith(prefix):
+            if pair[0].startswith(prefix.encode()):
                 # Split the tuple in the origin domain and origin ID, and remove the prefix from the domain
                 (key, value) = pair
                 key = key[len(prefix):]
@@ -1641,7 +1641,7 @@ class Chrome(WebBrowser):
         # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
             lvl_db_path = os.path.join(fs_root_path, 'Origins')
-            origins = self.get_prefixed_leveldb_pairs(lvl_db_path, "ORIGIN:")
+            origins = self.get_prefixed_leveldb_pairs(lvl_db_path, 'ORIGIN:')
             for origin in origins:
                 origin_domain = origin["key"]
                 origin_id = origin["value"]
