@@ -30,7 +30,7 @@ class HindsightEncoder(json.JSONEncoder):
     def base_encoder(history_item):
         item = {'source_short': 'WEBHIST', 'source_long': 'Chrome History',
                 'parser': 'hindsight/{}'.format(__version__)}
-        for key, value in history_item.__dict__.items():
+        for key, value in list(history_item.__dict__.items()):
             # Drop any keys that have None as value
             if value is None:
                 continue
@@ -56,10 +56,10 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'Last Visited Time'
             item['data_type'] = 'chrome:history:page_visited'
             item['url_hidden'] = 'true' if item['hidden'] else 'false'
-            if item['visit_duration'] == u'None':
+            if item['visit_duration'] == 'None':
                 del (item['visit_duration'])
 
-            item['message'] = u'{} ({}) [count: {}]'.format(
+            item['message'] = '{} ({}) [count: {}]'.format(
                 item['url'], item['title'], item['visit_count'])
 
             del(item['name'], item['row_type'], item['visit_time'],
@@ -72,7 +72,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'File Downloaded'
             item['data_type'] = 'chrome:history:file_downloaded'
 
-            item['message'] = u'{} ({}). Received {}/{} bytes'.format(
+            item['message'] = '{} ({}). Received {}/{} bytes'.format(
                 item['url'],
                 item['full_path'] if item.get('full_path') else item.get('target_path'),
                 item['received_bytes'], item['total_bytes'])
@@ -101,7 +101,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['httponly'] = 'true' if item['httponly'] else 'false'
             item['persistent'] = 'true' if item['persistent'] else 'false'
 
-            item['message'] = u'{} ({}) Flags: [HTTP only] = {} [Persistent] = {}'.format(
+            item['message'] = '{} ({}) Flags: [HTTP only] = {} [Persistent] = {}'.format(
                 item['url'],
                 item['cookie_name'],
                 item['httponly'], item['persistent'])
@@ -119,7 +119,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['usage_count'] = item['count']
             item['field_name'] = item['name']
 
-            item['message'] = u'{}: {} (times used: {})'.format(
+            item['message'] = '{}: {} (times used: {})'.format(
                 item['field_name'], item['value'], item['usage_count'])
 
             del(item['name'], item['row_type'], item['count'], item['date_created'])
@@ -132,7 +132,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:bookmark:entry'
             item['source_long'] = 'Chrome Bookmarks'
 
-            item['message'] = u'{} ({}) bookmarked in folder "{}"'.format(
+            item['message'] = '{} ({}) bookmarked in folder "{}"'.format(
                 item['name'], item['url'], item['parent_folder'])
 
             del(item['value'], item['row_type'], item['date_added'])
@@ -145,7 +145,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:bookmark:folder'
             item['source_long'] = 'Chrome Bookmarks'
 
-            item['message'] = u'"{}" bookmark folder created in folder "{}"'.format(
+            item['message'] = '"{}" bookmark folder created in folder "{}"'.format(
                 item['name'], item['parent_folder'])
 
             del(item['value'], item['row_type'], item['date_added'])
@@ -159,7 +159,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome LocalStorage'
             item['url'] = item['url'][1:]
 
-            item['message'] = u'key: {} value: {}'.format(
+            item['message'] = 'key: {} value: {}'.format(
                 item['key'], item['value'])
 
             del (item['row_type'])
@@ -173,7 +173,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Logins'
             item['usage_count'] = item['count']
 
-            item['message'] = u'{}: {} used on {} (total times used: {})'.format(
+            item['message'] = '{}: {} used on {} (total times used: {})'.format(
                 item['name'], item['value'], item['url'], item['usage_count'])
 
             del(item['row_type'], item['count'], item['date_created'])
@@ -186,7 +186,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:preferences:entry'
             item['source_long'] = 'Chrome Preferences'
 
-            item['message'] = u'Updated preference: {}: {})'.format(
+            item['message'] = 'Updated preference: {}: {})'.format(
                 item['key'], item['value'])
 
             del(item['row_type'], item['name'])
@@ -202,7 +202,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['cache_type'] = item['row_type']
             item['cached_state'] = item['name']
 
-            item['message'] = u'Original URL: {}'.format(
+            item['message'] = 'Original URL: {}'.format(
                 item['original_url'])
 
             del(item['row_type'], item['name'], item['timezone'])
@@ -303,7 +303,7 @@ class AnalysisSession(object):
     @staticmethod
     def sum_dict_counts(dict1, dict2):
         """Combine two dicts by summing the values of shared keys"""
-        for key, value in dict2.items():
+        for key, value in list(dict2.items()):
             # Case 1: dict2's value for key is a string (aka: it failed)
             if isinstance(value, str):
                 #  The value should only be non-int if it's a Failed message
@@ -356,7 +356,7 @@ class AnalysisSession(object):
 
         try:
             base_dir_listing = os.listdir(base_path)
-        except Exception, e:
+        except Exception as e:
             log.warning('Exception reading directory {0:s}; possible permissions issue? Exception: {1:s}'
                         .format(base_path, e))
             return found_profile_paths
@@ -491,20 +491,20 @@ class AnalysisSession(object):
                     log.info(" - Loading '{}' [standard plugin]".format(plugin))
                     try:
                         module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
-                    except ImportError, e:
+                    except ImportError as e:
                         log.error(" - Error: {}".format(e))
-                        print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+                        print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
                         continue
                     try:
                         log.info(" - Running '{}' plugin".format(module.friendlyName))
                         parsed_items = module.plugin(self)
-                        print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                        print(format_plugin_output(module.friendlyName, module.version, parsed_items))
                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
                         log.info(" - Completed; {}".format(parsed_items))
                         completed_plugins.append(plugin)
                         break
-                    except Exception, e:
-                        print format_plugin_output(module.friendlyName, module.version, 'failed')
+                    except Exception as e:
+                        print(format_plugin_output(module.friendlyName, module.version, 'failed'))
                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
                         log.info(" - Failed; {}".format(e))
 
@@ -532,24 +532,24 @@ class AnalysisSession(object):
                                     log.debug(" - Loading '{}' [custom plugin]".format(plugin))
                                     try:
                                         module = __import__(plugin)
-                                    except ImportError, e:
+                                    except ImportError as e:
                                         log.error(" - Error: {}".format(e))
-                                        print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+                                        print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
                                         continue
                                     try:
                                         log.info(" - Running '{}' plugin".format(module.friendlyName))
                                         parsed_items = module.plugin(self)
-                                        print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                                        print(format_plugin_output(module.friendlyName, module.version, parsed_items))
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
                                         log.info(" - Completed; {}".format(parsed_items))
                                         completed_plugins.append(plugin)
-                                    except Exception, e:
-                                        print format_plugin_output(module.friendlyName, module.version, 'failed')
+                                    except Exception as e:
+                                        print(format_plugin_output(module.friendlyName, module.version, 'failed'))
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
                                         log.info(" - Failed; {}".format(e))
                     except Exception as e:
                         log.debug(' - Error loading plugins ({})'.format(e))
-                        print '  - Error loading plugins'
+                        print('  - Error loading plugins')
                     finally:
                         # Remove the current plugin location from the system path, so we don't loop over it again
                         sys.path.remove(potential_plugin_path)
@@ -557,7 +557,7 @@ class AnalysisSession(object):
     def generate_excel(self, output_object):
         import xlsxwriter
         workbook = xlsxwriter.Workbook(output_object, {'in_memory': True})
-        w = workbook.add_worksheet(u'Timeline')
+        w = workbook.add_worksheet('Timeline')
 
         # Define cell formats
         title_header_format = workbook.add_format({'font_color': 'white', 'bg_color': 'gray', 'bold': 'true'})
@@ -594,34 +594,34 @@ class AnalysisSession(object):
         blue_value_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
 
         # Title bar
-        w.merge_range('A1:H1', u'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
-        w.merge_range('I1:M1', u'URL Specific', center_header_format)
-        w.merge_range('N1:P1', u'Download Specific', center_header_format)
-        w.merge_range('Q1:R1', u'', center_header_format)
-        w.merge_range('S1:U1', u'Cache Specific', center_header_format)
+        w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
+        w.merge_range('I1:M1', 'URL Specific', center_header_format)
+        w.merge_range('N1:P1', 'Download Specific', center_header_format)
+        w.merge_range('Q1:R1', '', center_header_format)
+        w.merge_range('S1:U1', 'Cache Specific', center_header_format)
 
         # Write column headers
-        w.write(1, 0, u'Type', header_format)
-        w.write(1, 1, u'Timestamp ({})'.format(self.timezone), header_format)
-        w.write(1, 2, u'URL', header_format)
-        w.write(1, 3, u'Title / Name / Status', header_format)
-        w.write(1, 4, u'Data / Value / Path', header_format)
-        w.write(1, 5, u'Interpretation', header_format)
-        w.write(1, 6, u'Profile', header_format)
-        w.write(1, 7, u'Source', header_format)
-        w.write(1, 8, u'Duration', header_format)
-        w.write(1, 9, u'Visit Count', header_format)
-        w.write(1, 10, u'Typed Count', header_format)
-        w.write(1, 11, u'URL Hidden', header_format)
-        w.write(1, 12, u'Transition', header_format)
-        w.write(1, 13, u'Interrupt Reason', header_format)
-        w.write(1, 14, u'Danger Type', header_format)
-        w.write(1, 15, u'Opened?', header_format)
-        w.write(1, 16, u'ETag', header_format)
-        w.write(1, 17, u'Last Modified', header_format)
-        w.write(1, 18, u'Server Name', header_format)
-        w.write(1, 19, u'Data Location [Offset]', header_format)
-        w.write(1, 20, u'All HTTP Headers', header_format)
+        w.write(1, 0, 'Type', header_format)
+        w.write(1, 1, 'Timestamp ({})'.format(self.timezone), header_format)
+        w.write(1, 2, 'URL', header_format)
+        w.write(1, 3, 'Title / Name / Status', header_format)
+        w.write(1, 4, 'Data / Value / Path', header_format)
+        w.write(1, 5, 'Interpretation', header_format)
+        w.write(1, 6, 'Profile', header_format)
+        w.write(1, 7, 'Source', header_format)
+        w.write(1, 8, 'Duration', header_format)
+        w.write(1, 9, 'Visit Count', header_format)
+        w.write(1, 10, 'Typed Count', header_format)
+        w.write(1, 11, 'URL Hidden', header_format)
+        w.write(1, 12, 'Transition', header_format)
+        w.write(1, 13, 'Interrupt Reason', header_format)
+        w.write(1, 14, 'Danger Type', header_format)
+        w.write(1, 15, 'Opened?', header_format)
+        w.write(1, 16, 'ETag', header_format)
+        w.write(1, 17, 'Last Modified', header_format)
+        w.write(1, 18, 'Server Name', header_format)
+        w.write(1, 19, 'Data Location [Offset]', header_format)
+        w.write(1, 20, 'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -690,9 +690,9 @@ class AnalysisSession(object):
                     w.write(row_number, 14, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
-                        open_friendly = u'Yes'
+                        open_friendly = 'Yes'
                     elif item.opened == 0:
-                        open_friendly = u'No'
+                        open_friendly = 'No'
                     w.write_string(row_number, 15, open_friendly, green_value_format)  # opened
                     w.write(row_number, 16, item.etag, green_value_format)  # ETag
                     w.write(row_number, 17, item.last_modified, green_value_format)  # Last Modified
@@ -726,8 +726,8 @@ class AnalysisSession(object):
                     w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
                     try:
                         w.write_string(row_number, 2, item.url, gray_url_format)  # URL
-                    except Exception, e:
-                        print e, item.url, item.location
+                    except Exception as e:
+                        print(e, item.url, item.location)
                     w.write_string(row_number, 3, str(item.name), gray_field_format)  # cached status // Normal (data cached)
                     w.write_string(row_number, 4, item.value, gray_value_format)  # content-type (size) // image/jpeg (2035 bytes)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
@@ -764,7 +764,7 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
-            except Exception, e:
+            except Exception as e:
                 log.error("Failed to write row to XLSX: {}".format(e))
 
             row_number += 1
@@ -842,7 +842,7 @@ class AnalysisSession(object):
     def generate_sqlite(self, output_file_path='.temp_db'):
 
         output_db = sqlite3.connect(output_file_path)
-        output_db.text_factory = lambda x: unicode(x, 'utf-8', 'ignore')
+        output_db.text_factory = lambda x: str(x, 'utf-8', 'ignore')
 
         with output_db:
             c = output_db.cursor()

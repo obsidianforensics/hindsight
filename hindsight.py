@@ -24,8 +24,8 @@ import time
 try:
     import pytz
 except ImportError:
-    print("Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({})."
-          .format(time.tzname[time.daylight]))
+    print(("Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({})."
+          .format(time.tzname[time.daylight])))
 
 
 def parse_arguments(analysis_session):
@@ -36,17 +36,17 @@ This script parses the files in the Chrome/Chromium/Brave data folder, runs vari
    against the data, and then outputs the results in a spreadsheet. '''.format(pyhindsight.__version__)
 
     epi = '''
-Example:  C:\>hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
+Example:  C:\>hindsight.py -i "C:\\Users\Ryan\AppData\Local\Google\Chrome\\User Data\Default" -o test_case
 
 The Chrome data folder default locations are:
         WinXP: <userdir>\Local Settings\Application Data\Google\Chrome
-                \User Data\Default\\
- Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\User Data\Default\\
+                \\User Data\Default\\
+ Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\\User Data\Default\\
         Linux: <userdir>/.config/google-chrome/Default/
          OS X: <userdir>/Library/Application Support/Google/Chrome/Default/
           iOS: \Applications\com.google.chrome.ios\Library\Application Support
                 \Google\Chrome\Default\\
-  Chromium OS: \home\user\<GUID>\\
+  Chromium OS: \home\\user\<GUID>\\
     '''
 
     class MyParser(argparse.ArgumentParser):
@@ -109,10 +109,10 @@ The Chrome data folder default locations are:
 def main():
 
     def write_excel(analysis_session):
-        import StringIO
+        import io
 
         # Set up a StringIO object to save the XLSX content to before saving to disk
-        string_buffer = StringIO.StringIO()
+        string_buffer = io.StringIO()
 
         # Generate the XLSX content using the function in the AnalysisSession and save it to the StringIO object
         analysis_session.generate_excel(string_buffer)
@@ -129,8 +129,8 @@ def main():
 
         if os.path.exists(output_file):
             if os.path.getsize(output_file) > 0:
-                print('\nDatabase file "{}" already exists.\n'.format(output_file))
-                user_input = raw_input('Would you like to (O)verwrite it, (R)ename output file, or (E)xit? ')
+                print(('\nDatabase file "{}" already exists.\n'.format(output_file)))
+                user_input = input('Would you like to (O)verwrite it, (R)ename output file, or (E)xit? ')
                 over_re = re.compile(r'(^o$|overwrite)', re.IGNORECASE)
                 rename_re = re.compile(r'(^r$|rename)', re.IGNORECASE)
                 exit_re = re.compile(r'(^e$|exit)', re.IGNORECASE)
@@ -139,10 +139,10 @@ def main():
                     sys.exit()
                 elif re.search(over_re, user_input):
                     os.remove(output_file)
-                    print("Deleted old \"%s\"" % output_file)
+                    print(("Deleted old \"%s\"" % output_file))
                 elif re.search(rename_re, user_input):
                     output_file = "{}_1.sqlite".format(output_file[:-7])
-                    print("Renaming new output to {}".format(output_file))
+                    print(("Renaming new output to {}".format(output_file)))
                 else:
                     print("Did not understand response.  Exiting... ")
                     sys.exit()
@@ -190,11 +190,11 @@ def main():
         .format(pyhindsight.__version__) + '#' * 80)
 
     # Analysis start time
-    print(format_meta_output("Start time", str(datetime.datetime.now())[:-3]))
+    print((format_meta_output("Start time", str(datetime.datetime.now())[:-3])))
 
     # Read the input directory
     analysis_session.input_path = args.input
-    print(format_meta_output("Input directory", args.input))
+    print((format_meta_output("Input directory", args.input)))
     log.info("Reading files from %s" % args.input)
     input_listing = os.listdir(args.input)
     log.debug("Input directory contents: " + str(input_listing))
@@ -204,7 +204,7 @@ def main():
     log.info(" - Found {} browser profile(s): {}".format(len(input_profiles), input_profiles))
     analysis_session.profile_paths = input_profiles
 
-    print(format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format)))
+    print((format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format))))
 
     # Run the AnalysisSession
     print("\n Processing:")
@@ -224,18 +224,18 @@ def main():
         log.debug(" - Loading '{}'".format(plugin))
         try:
             module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
-        except ImportError, e:
+        except ImportError as e:
             log.error(" - Error: {}".format(e))
-            print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
+            print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
             continue
         try:
             log.info(" - Running '{}' plugin".format(module.friendlyName))
             parsed_items = module.plugin(analysis_session)
-            print(format_plugin_output(module.friendlyName, module.version, parsed_items))
+            print((format_plugin_output(module.friendlyName, module.version, parsed_items)))
             log.info(" - Completed; {}".format(parsed_items))
             completed_plugins.append(plugin)
-        except Exception, e:
-            print(format_plugin_output(module.friendlyName, module.version, 'failed'))
+        except Exception as e:
+            print((format_plugin_output(module.friendlyName, module.version, 'failed')))
             log.info(" - Failed; {}".format(e))
 
     # Then look for any custom user-provided plugins in a 'plugins' directory
@@ -270,18 +270,18 @@ def main():
                             log.debug(" - Loading '{}'".format(plugin))
                             try:
                                 module = __import__(plugin)
-                            except ImportError, e:
+                            except ImportError as e:
                                 log.error(" - Error: {}".format(e))
-                                print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
+                                print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
                                 continue
                             try:
                                 log.info(" - Running '{}' plugin".format(module.friendlyName))
                                 parsed_items = module.plugin(analysis_session)
-                                print(format_plugin_output(module.friendlyName, module.version, parsed_items))
+                                print((format_plugin_output(module.friendlyName, module.version, parsed_items)))
                                 log.info(" - Completed; {}".format(parsed_items))
                                 completed_plugins.append(plugin)
-                            except Exception, e:
-                                print(format_plugin_output(module.friendlyName, module.version, 'failed'))
+                            except Exception as e:
+                                print((format_plugin_output(module.friendlyName, module.version, 'failed')))
                                 log.info(" - Failed; {}".format(e))
                 except Exception as e:
                     log.debug(' - Error loading plugins ({})'.format(e))
@@ -298,25 +298,25 @@ def main():
     if analysis_session.selected_output_format == 'xlsx':
         log.info("Writing output; XLSX format selected")
         try:
-            print("\n Writing {}.xlsx".format(analysis_session.output_name))
+            print(("\n Writing {}.xlsx".format(analysis_session.output_name)))
             write_excel(analysis_session)
         except IOError:
             type, value, traceback = sys.exc_info()
-            print(value, "- is the file open?  If so, please close it and try again.")
+            print((value, "- is the file open?  If so, please close it and try again."))
             log.error("Error writing XLSX file; type: {}, value: {}, traceback: {}".format(type, value, traceback))
 
     elif args.format == 'jsonl':
         log.info("Writing output; JSONL format selected")
-        print("\n Writing {}.jsonl".format(analysis_session.output_name))
+        print(("\n Writing {}.jsonl".format(analysis_session.output_name)))
         write_jsonl(analysis_session)
 
     elif args.format == 'sqlite':
         log.info("Writing output; SQLite format selected")
-        print("\n Writing {}.sqlite".format(analysis_session.output_name))
+        print(("\n Writing {}.sqlite".format(analysis_session.output_name)))
         write_sqlite(analysis_session)
 
     # Display and log finish time
-    print("\n Finish time: {}".format(str(datetime.datetime.now())[:-3]))
+    print(("\n Finish time: {}".format(str(datetime.datetime.now())[:-3])))
     log.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
 
 

@@ -18,13 +18,13 @@
 ###################################################################################################
 
 # Config
-friendlyName = u"Load Balancer Cookie Decoder"
-description = u"Decodes persistence cookies set by load balancers"
-artifactTypes = (u'cookie',)  # Artifacts that this plugin processes
+friendlyName = "Load Balancer Cookie Decoder"
+description = "Decodes persistence cookies set by load balancers"
+artifactTypes = ('cookie',)  # Artifacts that this plugin processes
 remoteLookups = 0  # if this plugin will query online sources/databases
 browser = []  # browsers that the plugin applies to; empty list if no restrictions
 browserVersion = []  # browser versions that the plugin applies to; empty list if no restrictions
-version = u"20160621"  # version of the plugin (use the date)
+version = "20160621"  # version of the plugin (use the date)
 parsedItems = 0  # count of items that the plugin parsed; initialized to 0
 
 

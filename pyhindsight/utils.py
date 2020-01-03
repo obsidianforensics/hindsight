@@ -26,7 +26,7 @@ class MyEncoder(json.JSONEncoder):
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
         elif isinstance(obj, buffer):
-            return unicode(obj, encoding='utf-8', errors='replace')
+            return str(obj, encoding='utf-8', errors='replace')
         else:
             return obj.__dict__
 
@@ -79,12 +79,12 @@ def to_datetime(timestamp, timezone=None):
                 return new_timestamp
         else:
             return new_timestamp
-    except Exception, e:
-        print e
+    except Exception as e:
+        print(e)
 
 
 def friendly_date(timestamp):
-    if isinstance(timestamp, (str, unicode, long, int)):
+    if isinstance(timestamp, (str, int)):
         return to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     else:
         return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]

@@ -35,12 +35,12 @@ def get_plugins_info():
             description['version'] = module.version
             try:
                 module.plugin()
-            except ImportError, e:
+            except ImportError as e:
                 description['error'] = 'import'
                 description['error_msg'] = e
                 continue
 
-        except Exception, e:
+        except Exception as e:
             description['error'] = 'other'
             description['error_msg'] = e
             continue
@@ -83,12 +83,12 @@ def get_plugins_info():
                             description['version'] = module.version
                             try:
                                 module.plugin()
-                            except ImportError, e:
+                            except ImportError as e:
                                 description['error'] = 'import'
                                 description['error_msg'] = e
                                 continue
 
-                        except Exception, e:
+                        except Exception as e:
                             description['error'] = 'other'
                             description['error_msg'] = e
                             continue
@@ -99,7 +99,7 @@ def get_plugins_info():
 
             except Exception as e:
                 # log.debug(' - Error loading plugins ({})'.format(e))
-                print '  - Error loading plugins'
+                print('  - Error loading plugins')
             finally:
                 # Remove the current plugin location from the system path, so we don't loop over it again
                 sys.path.remove(potential_plugin_path)
@@ -180,8 +180,8 @@ def generate_sqlite():
         pass
 
     analysis_session.generate_sqlite(temp_output)
-    import StringIO
-    str_io = StringIO.StringIO()
+    import io
+    str_io = io.StringIO()
     with open(temp_output, 'rb') as f:
         str_io.write(f.read())
 
@@ -199,8 +199,8 @@ def generate_sqlite():
 
 @bottle.route('/xlsx')
 def generate_xlsx():
-    import StringIO
-    strIO = StringIO.StringIO()
+    import io
+    strIO = io.StringIO()
     analysis_session.generate_excel(strIO)
     # strIO.write()
     strIO.seek(0)
@@ -219,8 +219,8 @@ def generate_jsonl():
         pass
 
     analysis_session.generate_jsonl(temp_output)
-    import StringIO
-    str_io = StringIO.StringIO()
+    import io
+    str_io = io.StringIO()
     with open(temp_output, 'rb') as f:
         str_io.write(f.read())
 
