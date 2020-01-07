@@ -1,2 +1,2 @@
 language: python
-script: ./tests/test_history.py
+script: python -m unittest
