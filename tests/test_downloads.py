@@ -38,3 +38,7 @@ class TestGetDownloads(unittest.TestCase):
                               ['C:\\Users\\Ryan\\Downloads\\Hard_disk.jpg',
                                'C:\\Users\\Ryan\\Documents\\Downloads\\Hard_disk.jpg',
                                'C:\\Users\\IEUser\\Downloads\\Hard_disk.jpg'])
+
+
+if __name__ == '__main__':
+    unittest.main()

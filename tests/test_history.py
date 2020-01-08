@@ -30,3 +30,7 @@ class TestGetHistory(unittest.TestCase):
                               ['http://en.wikipedia.org/wiki/Computer_forensics', 'https://en.wikipedia.org/wiki/Computer_forensics'])
 
                 self.assertEqual(test_instance.parsed_artifacts[config['wikipedia_record']].timestamp, config['wikipedia_timestamp'])
+
+
+if __name__ == '__main__':
+    unittest.main()
