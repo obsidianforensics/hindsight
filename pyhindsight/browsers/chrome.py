@@ -453,7 +453,7 @@ class Chrome(WebBrowser):
                 if decrypted_value is "<encrypted>" and self.available_decrypts['linux'] is 1:
                     try:
                         if not self.cached_key:
-                            my_pass = 'peanuts'.encode('utf8')
+                            my_pass = 'peanuts'
                             iterations = 1
                             self.cached_key = PBKDF2(my_pass, salt, length, iterations)
                         decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
@@ -513,7 +513,7 @@ class Chrome(WebBrowser):
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = self.decrypt_cookie(row.get('encrypted_value')).decode('utf-8')
+                            cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
                         else:
                             cookie_value = row.get('value')
                     else:
@@ -728,22 +728,22 @@ class Chrome(WebBrowser):
 
         # Grab file list of 'Local Storage' directory
         ls_path = os.path.join(path, dir_name)
-        log.info("Local Storage:")
-        log.info(" - Reading from {}".format(ls_path))
+        log.info('Local Storage:')
+        log.info(f' - Reading from {ls_path}')
 
         local_storage_listing = os.listdir(ls_path)
-        log.debug(" - {} files in Local Storage directory".format(len(local_storage_listing)))
+        log.debug(f' - {len(local_storage_listing)} files in Local Storage directory')
         filtered_listing = []
 
         if 'leveldb' in local_storage_listing:
-            ls_lvl_db_path = os.path.join(ls_path, 'leveldb')
-            all_ls_lvl_db_pairs = self.get_prefixed_leveldb_pairs(ls_lvl_db_path)
-            for entry in all_ls_lvl_db_pairs:
-                ldb_entry = self.parse_ls_ldb_dict(entry)
-                if ldb_entry:
-                    results.append(Chrome.LocalStorageItem(self.profile_path, ldb_entry['origin'],
+            ls_ldb_path = os.path.join(ls_path, 'leveldb')
+            ls_ldb_records = self.get_leveldb_pairs(ls_ldb_path)
+            for record in ls_ldb_records:
+                ls_item = self.parse_ls_ldb_record(record)
+                if ls_item and ls_item.get('record_type') == 'entry':
+                    results.append(Chrome.LocalStorageItem(self.profile_path, ls_item['origin'],
                                                            to_datetime(0, self.timezone),
-                                                           ldb_entry['key'], ldb_entry['value']))
+                                                           ls_item['key'], ls_item['value']))
 
         for ls_file in local_storage_listing:
             if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
@@ -1519,77 +1519,101 @@ class Chrome(WebBrowser):
                 nodes[pair[0]] = {"dir": m.group("dir"), "id": m.group("id")}
         return nodes
 
-    def get_prefixed_leveldb_pairs(self, lvl_db_path, prefix=""):
-        """Given a path to a LevelDB and a prefix string, return all pairs starting"""
+    def get_leveldb_pairs(self, lvl_db_path, prefix=b''):
+        """Open a LevelDB at given path and return a list of all key/value pairs, optionally filtered by a prefix
+        string. Key and value are kept as byte strings """
+
         try:
             import leveldb
         except ImportError:
-            log.warning("Failed to import leveldb; unable to process {}".format(lvl_db_path))
+            log.warning(f'Failed to import leveldb; unable to process {lvl_db_path}')
             return []
 
         try:
             db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
         except Exception as e:
-            log.warning(" - Couldn't open {0:s} as LevelDB; {1:s}".format(lvl_db_path, e))
+            log.warning(f' - Couldn\'t open {lvl_db_path} as LevelDB; {e}')
             return []
 
         cleaned_pairs = []
         pairs = list(db.RangeIter())
         for pair in pairs:
-            # Each origin value should be a tuple of length 2; if not, log it and skip it.
+            # Each leveldb pair should be a tuple of length 2 (key & value); if not, log it and skip it.
             if not isinstance(pair, tuple) or len(pair) is not 2:
-                log.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
+                log.warning(f' - Found LevelDB key/value pair that is not formed as expected ({str(pair)}); skipping.')
                 continue
-            if pair[0].startswith(prefix.encode()):
+
+            if pair[0].startswith(prefix):
                 # Split the tuple in the origin domain and origin ID, and remove the prefix from the domain
                 (key, value) = pair
                 key = key[len(prefix):]
-                cleaned_pairs.append({"key": key, "value": value})
+                cleaned_pairs.append({'key': key, 'value': value})
 
         return cleaned_pairs
 
     @staticmethod
-    def parse_ls_ldb_dict(ls_dict):
-        origin, ls_key, ls_value = (None, None, None)
-        origin_and_key = ls_dict['key']
+    def parse_ls_ldb_record(record):
+        """
+        From https://cs.chromium.org/chromium/src/components/services/storage/dom_storage/local_storage_impl.cc:
 
-        if ls_dict['key'].startswith('META:'):
-            origin = ls_dict['key'].split(':', 1)[1]
-            ls_key = 'META'
-            return False
+        // LevelDB database schema
+        // =======================
+        //
+        // Version 1 (in sorted order):
+        //   key: "VERSION"
+        //   value: "1"
+        //
+        //   key: "META:" + <url::Origin 'origin'>
+        //   value: <LocalStorageOriginMetaData serialized as a string>
+        //
+        //   key: "_" + <url::Origin> 'origin'> + '\x00' + <script controlled key>
+        //   value: <script controlled value>
+        """
+        parsed = {}
+        # origin, parsed['key'], ls_value, record_type = (None, None, None, None)
 
-        elif ls_dict['key'] == 'VERSION':
-            return False
+        if record['key'].startswith('META:'.encode('utf-8')):
+            parsed['record_type'] = 'META'
+            parsed['origin'] = record['key'][5:].decode()
+            parsed['key'] = record['key'][5:].decode()
+            parsed['value'] = record['value']
+            return parsed
 
-        else:
+        elif record['key'] == 'VERSION':
+            return
+
+        elif record['key'][0] == ord('_'):
+            parsed['record_type'] = 'entry'
             try:
-                origin, ls_key = ls_dict['key'].split('\x00', 1)
+                parsed['origin'], parsed['key'] = record['key'][1:].split(b'\x00', 1)
+                parsed['origin'] = parsed['origin'].decode()
 
-                if ls_key.startswith('\x01'):
-                    ls_key = ls_key.lstrip('\x01')
+                if parsed['key'].startswith(b'\x01'):
+                    parsed['key'] = parsed['key'].lstrip(b'\x01').decode()
 
-                elif ls_key.startswith('\x00'):
-                    ls_key = ls_key.lstrip('\x00').decode('utf-16')
+                elif parsed['key'].startswith('\x00'):
+                    parsed['key'] = parsed['key'].lstrip('\x00').decode('utf-16')
 
             except Exception as e:
                 log.error("Origin/key parsing error: {}".format(e))
+                return
 
-        try:
-            ls_value = ls_dict['value']
+            try:
+                if record['value'].startswith(b'\x01'):
+                    parsed['value'] = record['value'].lstrip(b'\x01').decode()
 
-            if ls_value.startswith('\x01'):
-                ls_value = ls_value.lstrip('\x01')
+                elif record['value'].startswith(b'\x00'):
+                    parsed['value'] = record['value'].lstrip(b'\x00').decode('utf-16', errors='replace')
 
-            elif ls_value.startswith('\x00'):
-                ls_value = ls_value.lstrip('\x00').decode('utf-16', errors='replace')
+                elif record['value'].startswith(b'\x08'):
+                    parsed['value'] = record['value'].lstrip(b'\x08').decode()
 
-            elif ls_value.startswith('\x08'):
-                ls_value = ls_value.lstrip('\x08')
-        except Exception as e:
-            log.error("Value parsing error: {}".format(e))
+            except Exception as e:
+                log.error(f'Value parsing error: {e}')
+                return
 
-        log.info({'origin': origin, 'key': ls_key, 'value': ls_value})
-        return {'origin': origin, 'key': ls_key, 'value': ls_value}
+        log.info(parsed)
+        return parsed
 
     def build_logical_fs_path(self, node, parent_path=None):
         if not parent_path:
@@ -1641,7 +1665,7 @@ class Chrome(WebBrowser):
         # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
             lvl_db_path = os.path.join(fs_root_path, 'Origins')
-            origins = self.get_prefixed_leveldb_pairs(lvl_db_path, 'ORIGIN:')
+            origins = self.get_leveldb_pairs(lvl_db_path, 'ORIGIN:')
             for origin in origins:
                 origin_domain = origin["key"]
                 origin_id = origin["value"]
@@ -1656,7 +1680,7 @@ class Chrome(WebBrowser):
                         origin_t_paths_path = os.path.join(origin_t_path, 'Paths')
                         if os.path.isdir(origin_t_paths_path):
                             try:
-                                t_items = self.get_prefixed_leveldb_pairs(origin_t_paths_path, "CHILD_OF:")
+                                t_items = self.get_leveldb_pairs(origin_t_paths_path, "CHILD_OF:")
                                 t_fs_paths = self.get_fs_path_leveldb(origin_t_paths_path)
                                 t_nodes = {"0": {"name": origin_domain, "type": "t", "display_type": "file system (temporary)",
                                                  "origin_id": origin_id, "fs_path": t_fs_paths.get('0'), "children": {}}}
@@ -1684,7 +1708,7 @@ class Chrome(WebBrowser):
                         origin_p_paths_path = os.path.join(origin_p_path, 'Paths')
                         if os.path.isdir(origin_p_paths_path):
                             try:
-                                p_items = self.get_prefixed_leveldb_pairs(origin_p_paths_path, "CHILD_OF:")
+                                p_items = self.get_leveldb_pairs(origin_p_paths_path, "CHILD_OF:")
                                 p_fs_paths = self.get_fs_path_leveldb(origin_p_paths_path)
                                 p_nodes = {"0": {"name": origin_domain, "type": "p", "display_type": "file system (persistent)",
                                                  "origin_id": origin_id, "fs_path": p_fs_paths.get('0'), "children": {}}}
