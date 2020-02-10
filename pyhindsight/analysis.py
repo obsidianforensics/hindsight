@@ -39,8 +39,11 @@ class HindsightEncoder(json.JSONEncoder):
                 value = value.isoformat()
 
             # JSONL requires utf-8 encoding
-            if isinstance(value, str):
+            if isinstance(value, bytes) or isinstance(value, bytearray):
                 value = value.decode('utf-8', errors='replace')
+
+            if isinstance(key, bytes) or isinstance(key, bytearray):
+                key = key.decode('utf-8', errors='replace')
 
             item[key] = value
 
@@ -213,7 +216,7 @@ class AnalysisSession(object):
     def __init__(self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
                  version=None, display_version=None, output_name=None, log_path=None, timezone=None,
                  available_output_formats=None, selected_output_format=None, available_decrypts=None,
-                 selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
+                 selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None, parsed_storage=None,
                  plugin_descriptions=None, selected_plugins=None, plugin_results=None, hindsight_version=None, preferences=None):
         self.input_path = input_path
         self.profile_paths = profile_paths
@@ -232,6 +235,7 @@ class AnalysisSession(object):
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_display = artifacts_display
         self.artifacts_counts = artifacts_counts
+        self.parsed_storage = parsed_storage
         self.plugin_descriptions = plugin_descriptions
         self.selected_plugins = selected_plugins
         self.plugin_results = plugin_results
@@ -249,6 +253,9 @@ class AnalysisSession(object):
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.available_output_formats is None:
             self.available_output_formats = ['sqlite', 'jsonl']
@@ -437,6 +444,7 @@ class AnalysisSession(object):
                                           cache_path=self.cache_path, timezone=self.timezone)
                 browser_analysis.process()
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
+                self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.artifacts_counts = self.sum_dict_counts(self.artifacts_counts, browser_analysis.artifacts_counts)
                 self.artifacts_display = browser_analysis.artifacts_display
                 self.version.extend(browser_analysis.version)
@@ -456,6 +464,7 @@ class AnalysisSession(object):
                 browser_analysis = Brave(found_profile_path, timezone=self.timezone)
                 browser_analysis.process()
                 self.parsed_artifacts = browser_analysis.parsed_artifacts
+                self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.artifacts_counts = browser_analysis.artifacts_counts
                 self.artifacts_display = browser_analysis.artifacts_display
                 self.version = browser_analysis.version
@@ -924,7 +933,7 @@ class AnalysisSession(object):
                               (extension.name, extension.description, extension.version, extension.app_id, extension.profile))
 
     def generate_jsonl(self, output_file):
-        with open(output_file, mode='wb') as jsonl:
+        with open(output_file, mode='w') as jsonl:
             for parsed_artifact in self.parsed_artifacts:
                 parsed_artifact_json = json.dumps(parsed_artifact, cls=HindsightEncoder)
                 jsonl.write(parsed_artifact_json)

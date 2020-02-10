@@ -35,10 +35,11 @@ log = logging.getLogger(__name__)
 
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
-                 parsed_artifacts=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
+                 parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
                  available_decrypts=None, preferences=None):
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
-                            timezone=timezone, parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
+                            timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
+                            artifacts_counts=artifacts_counts,
                             artifacts_display=artifacts_display, preferences=preferences)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
@@ -58,6 +59,9 @@ class Chrome(WebBrowser):
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.installed_extensions is None:
             self.installed_extensions = []
@@ -743,9 +747,9 @@ class Chrome(WebBrowser):
                 ls_item = self.parse_ls_ldb_record(record)
                 if ls_item and ls_item.get('record_type') == 'entry':
                     results.append(Chrome.LocalStorageItem(
-                        self.profile_path, ls_item['origin'], utils.to_datetime(0, self.timezone),
-                        ls_item['key'], ls_item['value']))
+                        self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value']))
 
+        # TODO: Rework this for py3 once you have access to an example
         # Chrome v60 and earlier used a SQLite file (with a .localstorage file ext) for each origin
         for ls_file in local_storage_listing:
             if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
@@ -797,7 +801,7 @@ class Chrome(WebBrowser):
 
         self.artifacts_counts['Local Storage'] = len(results)
         log.info(" - Parsed {} items from {} files".format(len(results), len(filtered_listing)))
-        self.parsed_artifacts.extend(results)
+        self.parsed_storage.extend(results)
 
     def get_extensions(self, path, dir_name):
         results = []
@@ -1505,22 +1509,6 @@ class Chrome(WebBrowser):
         log.info(" - Parsed {} items".format(len(results)))
         self.parsed_artifacts.extend(results)
 
-    def get_fs_path_leveldb(self, lvl_db_path):
-        import leveldb
-        db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
-        nodes = {}
-        pairs = list(db.RangeIter())
-        for pair in pairs:
-            # Each origin value should be a tuple of length 2; if not, log it and skip it.
-            if not isinstance(pair, tuple) or len(pair) is not 2:
-                log.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
-                continue
-            fs_path_re = re.compile(b"\x00(?P<dir>\d\d)(\\\\|/)(?P<id>\d{8})\x00")
-            m = fs_path_re.search(pair[1])
-            if m:
-                nodes[pair[0]] = {"dir": m.group("dir"), "id": m.group("id")}
-        return nodes
-
     @staticmethod
     def parse_ls_ldb_record(record):
         """
@@ -1717,7 +1705,13 @@ class Chrome(WebBrowser):
                             node_tree[entry_id] = path_nodes[entry_id]
 
                     self.build_logical_fs_path(node_tree['0'])
-                    self.flatten_nodes_to_list(os.path.split(path)[1], result_list, node_tree['0'])
+                    flattened_list = []
+                    self.flatten_nodes_to_list(os.path.split(path)[1], flattened_list, node_tree['0'])
+
+                    for item in flattened_list:
+                        result_list.append(Chrome.FileSystemItem(
+                            self.profile_path, item.get('origin'), item.get('logical_path'), item.get('local_path'),
+                            item.get('modification_time')))
 
         log.info(" - Parsed {} items".format(len(result_list)))
         self.artifacts_counts['File System'] = len(result_list)
@@ -1738,9 +1732,8 @@ class Chrome(WebBrowser):
                              'display_width': 36}
                         ]}
 
-        self.storage.setdefault('data', [])
-        self.storage['data'].extend(result_list)
-        self.storage.setdefault('presentation', presentation)
+        self.parsed_storage.extend(result_list)
+        # self.storage.setdefault('presentation', presentation)
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
@@ -1906,80 +1899,81 @@ class Chrome(WebBrowser):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                      transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                      transition_friendly=None):
-            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time, last_visit_time=last_visit_time,
-                                        visit_count=visit_count, typed_count=typed_count, from_visit=from_visit, transition=transition,
-                                        hidden=hidden, favicon_id=favicon_id, indexed=indexed, visit_duration=visit_duration,
-                                        visit_source=visit_source, transition_friendly=transition_friendly)
+            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time,
+                                        last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
+                                        from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
+                                        indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
+                                        transition_friendly=transition_friendly)
 
         def decode_transition(self):
             # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
             transition_friendly = {
                 0: 'link',                 # User got to this page by clicking a link on another page.
                 1: 'typed',                # User got this page by typing the URL in the URL bar.  This should not be
-                                            # used for cases where the user selected a choice that didn't look at all
-                                            # like a URL; see GENERATED below.
-                                            # We also use this for other 'explicit' navigation actions.
+                                           #  used for cases where the user selected a choice that didn't look at all
+                                           #  like a URL; see GENERATED below.
+                                           # We also use this for other 'explicit' navigation actions.
                 2: 'auto bookmark',        # User got to this page through a suggestion in the UI, for example)
-                                            # through the destinations page.
+                                           #  through the destinations page.
                 3: 'auto subframe',        # This is a subframe navigation. This is any content that is automatically
-                                            # loaded in a non-toplevel frame. For example, if a page consists of
-                                            # several frames containing ads, those ad URLs will have this transition
-                                            # type. The user may not even realize the content in these pages is a
-                                            # separate frame, so may not care about the URL (see MANUAL below).
+                                           #  loaded in a non-toplevel frame. For example, if a page consists of
+                                           #  several frames containing ads, those ad URLs will have this transition
+                                           #  type. The user may not even realize the content in these pages is a
+                                           #  separate frame, so may not care about the URL (see MANUAL below).
                 4: 'manual subframe',      # For subframe navigations that are explicitly requested by the user and
-                                            # generate new navigation entries in the back/forward list. These are
-                                            # probably more important than frames that were automatically loaded in
-                                            # the background because the user probably cares about the fact that this
-                                            # link was loaded.
+                                           #  generate new navigation entries in the back/forward list. These are
+                                           #  probably more important than frames that were automatically loaded in
+                                           #  the background because the user probably cares about the fact that this
+                                           #  link was loaded.
                 5: 'generated',            # User got to this page by typing in the URL bar and selecting an entry
-                                            # that did not look like a URL.  For example, a match might have the URL
-                                            # of a Google search result page, but appear like 'Search Google for ...'.
-                                            # These are not quite the same as TYPED navigations because the user
-                                            # didn't type or see the destination URL.
-                                            # See also KEYWORD.
+                                           #  that did not look like a URL.  For example, a match might have the URL
+                                           #  of a Google search result page, but appear like 'Search Google for ...'.
+                                           #  These are not quite the same as TYPED navigations because the user
+                                           #  didn't type or see the destination URL.
+                                           #  See also KEYWORD.
                 6: 'start page',           # This is a toplevel navigation. This is any content that is automatically
-                                            # loaded in a toplevel frame.  For example, opening a tab to show the ASH
-                                            # screen saver, opening the devtools window, opening the NTP after the safe
-                                            # browsing warning, opening web-based dialog boxes are examples of
-                                            # AUTO_TOPLEVEL navigations.
+                                           #  loaded in a toplevel frame.  For example, opening a tab to show the ASH
+                                           #  screen saver, opening the devtools window, opening the NTP after the safe
+                                           #  browsing warning, opening web-based dialog boxes are examples of
+                                           #  AUTO_TOPLEVEL navigations.
                 7: 'form submit',          # The user filled out values in a form and submitted it. NOTE that in
-                                            # some situations submitting a form does not result in this transition
-                                            # type. This can happen if the form uses script to submit the contents.
+                                           #  some situations submitting a form does not result in this transition
+                                           #  type. This can happen if the form uses script to submit the contents.
                 8: 'reload',               # The user 'reloaded' the page, either by hitting the reload button or by
-                                            # hitting enter in the address bar.  NOTE: This is distinct from the
-                                            # concept of whether a particular load uses 'reload semantics' (i.e.
-                                            # bypasses cached data).  For this reason, lots of code needs to pass
-                                            # around the concept of whether a load should be treated as a 'reload'
-                                            # separately from their tracking of this transition type, which is mainly
-                                            # used for proper scoring for consumers who care about how frequently a
-                                            # user typed/visited a particular URL.
-                                            # SessionRestore and undo tab close use this transition type too.
+                                           #  hitting enter in the address bar.  NOTE: This is distinct from the
+                                           #  concept of whether a particular load uses 'reload semantics' (i.e.
+                                           #  bypasses cached data).  For this reason, lots of code needs to pass
+                                           #  around the concept of whether a load should be treated as a 'reload'
+                                           #  separately from their tracking of this transition type, which is mainly
+                                           #  used for proper scoring for consumers who care about how frequently a
+                                           #  user typed/visited a particular URL.
+                                           #  SessionRestore and undo tab close use this transition type too.
                 9: 'keyword',              # The url was generated from a replaceable keyword other than the default
-                                            # search provider. If the user types a keyword (which also applies to
-                                            # tab-to-search) in the omnibox this qualifier is applied to the transition
-                                            # type of the generated url. TemplateURLModel then may generate an
-                                            # additional visit with a transition type of KEYWORD_GENERATED against the
-                                            # url 'http://' + keyword. For example, if you do a tab-to-search against
-                                            # wikipedia the generated url has a transition qualifer of KEYWORD, and
-                                            # TemplateURLModel generates a visit for 'wikipedia.org' with a transition
-                                            # type of KEYWORD_GENERATED.
+                                           #  search provider. If the user types a keyword (which also applies to
+                                           #  tab-to-search) in the omnibox this qualifier is applied to the transition
+                                           #  type of the generated url. TemplateURLModel then may generate an
+                                           #  additional visit with a transition type of KEYWORD_GENERATED against the
+                                           #  url 'http://' + keyword. For example, if you do a tab-to-search against
+                                           #  wikipedia the generated url has a transition qualifer of KEYWORD, and
+                                           #  TemplateURLModel generates a visit for 'wikipedia.org' with a transition
+                                           #  type of KEYWORD_GENERATED.
                 10: 'keyword generated'}   # Corresponds to a visit generated for a keyword. See description of
-                                            # KEYWORD for more details.
+                                           #  KEYWORD for more details.
 
             qualifiers_friendly = {
                 0x00800000: 'Blocked',                # A managed user attempted to visit a URL but was blocked.
                 0x01000000: 'Forward or Back',        # User used the Forward or Back button to navigate among browsing
-                                                       # history.
+                                                      #  history.
                 0x02000000: 'From Address Bar',       # User used the address bar to trigger this navigation.
                 0x04000000: 'Home Page',              # User is navigating to the home page.
                 0x08000000: 'From API',               # The transition originated from an external application; the exact
-                                                       # definition of this is embedder dependent.
+                                                      #  definition of this is embedder dependent.
                 0x10000000: 'Navigation Chain Start', # The beginning of a navigation chain.
                 0x20000000: 'Navigation Chain End',   # The last transition in a redirect chain.
                 0x40000000: 'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page.
                 0x80000000: 'Server Redirect'}        # Redirects sent from the server by HTTP headers. It might be nice to
-                                                       # break this out into 2 types in the future, permanent or temporary,
-                                                       # if we can get that information from WebKit.
+                                                      #  break this out into 2 types in the future, permanent or temporary,
+                                                      #  if we can get that information from WebKit.
             raw = self.transition
             # If the transition has already been translated to a string, just use that
             if isinstance(raw, str):
@@ -2040,12 +2034,12 @@ class Chrome(WebBrowser):
                 6:  'File Too Large',              # The file is too large for the file system to handle.
                 7:  'Virus',                       # The file contains a virus.
                 10: 'Temporary Problem',           # The file was in use. Too many files are opened at once. We have run
-                                                    # out of memory.
+                                                   #  out of memory.
                 11: 'Blocked',                     # The file was blocked due to local policy.
                 12: 'Security Check Failed',       # An attempt to check the safety of the download failed due to
-                                                    # unexpected reasons. See http://crbug.com/153212.
+                                                   #  unexpected reasons. See http://crbug.com/153212.
                 13: 'Resume Error',                # An attempt was made to seek past the end of a file in opening a file
-                                                    # (as part of resuming a previously interrupted download).
+                                                   #  (as part of resuming a previously interrupted download).
 
                 # Network errors
                 20: 'Network Error',               # Generic network failure.
@@ -2057,17 +2051,17 @@ class Chrome(WebBrowser):
                 30: 'Server Error',                # The server indicates that the operation has failed (generic).
                 31: 'Range Request Error',         # The server does not support range requests.
                 32: 'Server Precondition Error',   # The download request does not meet the specified precondition.
-                                                    # Internal use only:  the file has changed on the server.
+                                                   #  Internal use only:  the file has changed on the server.
                 33: 'Unable to get file',          # The server does not have the requested data.
                 34: 'Server Unauthorized',         # Server didn't authorize access to resource.
                 35: 'Server Certificate Problem',  # Server certificate problem.
                 36: 'Server Access Forbidden',     # Server access forbidden.
                 37: 'Server Unreachable',          # Unexpected server response. This might indicate that the responding
-                                                    # server may not be the intended server.
+                                                   #  server may not be the intended server.
                 38: 'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may indicate
-                                                    # that the connection was closed prematurely, or the Content-Length header was
-                                                    # invalid. The download is only interrupted if strong validators are present.
-                                                    # Otherwise, it is treated as finished.
+                                                   #  that the connection was closed prematurely, or the Content-Length header was
+                                                   #  invalid. The download is only interrupted if strong validators are present.
+                                                   #  Otherwise, it is treated as finished.
                 39: 'Cross Origin Redirect',       # An unexpected cross-origin redirect happened.
 
 
@@ -2091,22 +2085,22 @@ class Chrome(WebBrowser):
             dangers = {
                 0: 'Not Dangerous',                 # The download is safe.
                 1: 'Dangerous',                     # A dangerous file to the system (e.g.: a pdf or extension from places
-                                                     # other than gallery).
+                                                    #  other than gallery).
                 2: 'Dangerous URL',                 # SafeBrowsing download service shows this URL leads to malicious file
-                                                     # download.
+                                                    #  download.
                 3: 'Dangerous Content',             # SafeBrowsing download service shows this file content as being
-                                                     # malicious.
+                                                    #  malicious.
                 4: 'Content May Be Malicious',      # The content of this download may be malicious (e.g., extension is exe
-                                                     # but SafeBrowsing has not finished checking the content).
+                                                    #  but SafeBrowsing has not finished checking the content).
                 5: 'Uncommon Content',              # SafeBrowsing download service checked the contents of the download,
-                                                     # but didn't have enough data to determine whether it was malicious.
+                                                    #  but didn't have enough data to determine whether it was malicious.
                 6: 'Dangerous But User Validated',  # The download was evaluated to be one of the other types of danger,
-                                                     # but the user told us to go ahead anyway.
+                                                    #  but the user told us to go ahead anyway.
                 7: 'Dangerous Host',                # SafeBrowsing download service checked the contents of the download
-                                                     # and didn't have data on this specific file, but the file was served
-                                                     # from a host known to serve mostly malicious content.
+                                                    #  and didn't have data on this specific file, but the file was served
+                                                    #  from a host known to serve mostly malicious content.
                 8: 'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
-                                                     # settings
+                                                    #  settings
                 9: 'Whitelisted by Policy'}         # Download URL whitelisted by enterprise policy.
 
             if self.danger_type in list(dangers.keys()):

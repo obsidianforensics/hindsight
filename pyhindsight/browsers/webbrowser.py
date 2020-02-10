@@ -8,7 +8,7 @@ log = logging.getLogger(__name__)
 
 class WebBrowser(object):
     def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
-                 timezone=None, structure=None, parsed_artifacts=None, artifacts_counts=None,
+                 timezone=None, structure=None, parsed_artifacts=None, parsed_storage=None, artifacts_counts=None,
                  artifacts_display=None, preferences=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
@@ -18,6 +18,7 @@ class WebBrowser(object):
         self.timezone = timezone
         self.structure = structure
         self.parsed_artifacts = parsed_artifacts
+        self.parsed_storage = parsed_storage
         self.artifacts_counts = artifacts_counts
         self.artifacts_display = artifacts_display
         self.preferences = preferences
@@ -27,6 +28,9 @@ class WebBrowser(object):
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
@@ -72,8 +76,8 @@ class WebBrowser(object):
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 tables = cursor.fetchall()
             except sqlite3.OperationalError:
-                print("\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files " \
-                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
+                print("\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files "
+                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local "
                       "Chrome installation while it is running.  Please close Chrome and try again.")
                 sys.exit(1)
             except:
@@ -210,15 +214,6 @@ class WebBrowser(object):
             self.parent_folder = parent_folder
             self.sync_transaction_version = sync_transaction_version
 
-    class LocalStorageItem(HistoryItem):
-        def __init__(self, profile, url, date_created, key, value):
-            super(WebBrowser.LocalStorageItem, self).__init__('local storage', timestamp=date_created, profile=profile, name=key, value=value)
-            self.profile = profile
-            self.url = url
-            self.date_created = date_created
-            self.key = key
-            self.value = value
-
     class BrowserExtension(object):
         def __init__(self, profile, app_id, name, description, version):
             self.profile = profile
@@ -246,3 +241,38 @@ class WebBrowser(object):
             self.key = key
             self.value = value
             self.interpretation = interpretation
+
+    class StorageItem(object):
+        def __init__(self, item_type, profile, origin, key, value=None, last_modified=None, local_path=None, interpretation=None):
+            self.row_type = item_type
+            self.profile = profile
+            self.origin = origin
+            self.key = key
+            self.value = value
+            self.last_modified = last_modified
+            self.local_path = local_path
+            self.interpretation = interpretation
+
+        def __lt__(self, other):
+            return self.origin < other.origin
+
+        def __iter__(self):
+            return iter(self.__dict__)
+
+    class LocalStorageItem(StorageItem):
+        def __init__(self, profile, origin, key, value, last_modified=None):
+            super(WebBrowser.LocalStorageItem, self).__init__('local storage', profile=profile, origin=origin, key=key, value=value, last_modified=last_modified)
+            self.profile = profile
+            self.origin = origin
+            self.key = key
+            self.value = value
+            self.last_modified = last_modified
+
+    class FileSystemItem(StorageItem):
+        def __init__(self, profile, origin, key, value, last_modified=None):
+            super(WebBrowser.FileSystemItem, self).__init__('file system', profile=profile, origin=origin, key=key, value=value, last_modified=last_modified)
+            self.profile = profile
+            self.origin = origin
+            self.key = key
+            self.value = value
+            self.last_modified = last_modified
