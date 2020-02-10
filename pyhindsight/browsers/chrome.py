@@ -10,7 +10,8 @@ import codecs
 import logging
 import shutil
 from pyhindsight.browsers.webbrowser import WebBrowser
-from pyhindsight.utils import friendly_date, to_datetime
+# from pyhindsight.utils import friendly_date, to_datetime, get_ldb_pairs
+from pyhindsight import utils
 
 # Try to import optionally modules - do nothing on failure, as status is tracked elsewhere
 try:
@@ -36,7 +37,6 @@ class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
                  parsed_artifacts=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
                  available_decrypts=None, preferences=None):
-        # TODO: try to fix this to use super()
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
                             timezone=timezone, parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
                             artifacts_display=artifacts_display, preferences=preferences)
@@ -279,8 +279,8 @@ class Chrome(WebBrowser):
                         duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
                     new_row = Chrome.URLItem(self.profile_path, row.get('id'), row.get('url'), row.get('title'),
-                                             to_datetime(row.get('visit_time'), self.timezone),
-                                             to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
+                                             utils.to_datetime(row.get('visit_time'), self.timezone),
+                                             utils.to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
                                              row.get('typed_count'), row.get('from_visit'), row.get('transition'),
                                              row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
                                              str(duration), row.get('source'))
@@ -362,8 +362,8 @@ class Chrome(WebBrowser):
                         # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
                         new_row = Chrome.DownloadItem(self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
                                                       row.get('total_bytes'), row.get('state'), row.get('full_path'),
-                                                      to_datetime(row.get('start_time'), self.timezone),
-                                                      to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
+                                                      utils.to_datetime(row.get('start_time'), self.timezone),
+                                                      utils.to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
                                                       row.get('current_path'), row.get('opened'), row.get('danger_type'),
                                                       row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
                                                       row.get('chain_index'))
@@ -521,18 +521,18 @@ class Chrome(WebBrowser):
                         # print type(cookie_value), cookie_value
 
                     new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'),
-                                                cookie_value, to_datetime(row.get('creation_utc'), self.timezone),
-                                                to_datetime(row.get('last_access_utc'), self.timezone),
+                                                cookie_value, utils.to_datetime(row.get('creation_utc'), self.timezone),
+                                                utils.to_datetime(row.get('last_access_utc'), self.timezone),
                                                 row.get('secure'), row.get('httponly'), row.get('persistent'),
-                                                row.get('has_expires'), to_datetime(row.get('expires_utc'), self.timezone),
+                                                row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
                                                 row.get('priority'))
 
                     accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'),
                                                      row.get('name'), cookie_value,
-                                                     to_datetime(row.get('creation_utc'), self.timezone),
-                                                     to_datetime(row.get('last_access_utc'), self.timezone),
+                                                     utils.to_datetime(row.get('creation_utc'), self.timezone),
+                                                     utils.to_datetime(row.get('last_access_utc'), self.timezone),
                                                      row.get('secure'), row.get('httponly'), row.get('persistent'),
-                                                     row.get('has_expires'), to_datetime(row.get('expires_utc'), self.timezone),
+                                                     row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
                                                      row.get('priority'))
 
                     new_row.url = (new_row.host_key + new_row.path)
@@ -545,7 +545,7 @@ class Chrome(WebBrowser):
 
                     # If the cookie was created and accessed at the same time (only used once), or if the last accessed
                     # time is 0 (happens on iOS), don't create an accessed row
-                    if new_row.creation_utc != new_row.last_access_utc and accessed_row.last_access_utc != to_datetime(0, self.timezone):
+                    if new_row.creation_utc != new_row.last_access_utc and accessed_row.last_access_utc != utils.to_datetime(0, self.timezone):
                         accessed_row.row_type = 'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
@@ -593,7 +593,7 @@ class Chrome(WebBrowser):
 
                 for row in cursor:
                     if row.get('blacklisted_by_user') == 1:
-                        blacklist_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                        blacklist_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                                                          url=row.get('action_url'), name=row.get('username_element').decode(),
                                                          value='<User chose to "Never save password" for this site>',
                                                          count=row.get('times_used'))
@@ -601,7 +601,7 @@ class Chrome(WebBrowser):
                         results.append(blacklist_row)
 
                     if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
-                        username_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                        username_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                                                         url=row.get('action_url'), name=row.get('username_element'),
                                                         value=row.get('username_value'), count=row.get('times_used'))
                         username_row.row_type = 'login (username)'
@@ -615,7 +615,7 @@ class Chrome(WebBrowser):
                         except:
                             password = self.decrypt_cookie(row.get('password_value'))
 
-                        password_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                        password_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                                                         url=row.get('action_url'), name=row.get('password_element'),
                                                         value=password, count=row.get('times_used'))
                         password_row.row_type = 'login (password)'
@@ -663,11 +663,11 @@ class Chrome(WebBrowser):
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
-                    results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                    results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                                                        row.get('name'), row.get('value'), row.get('count')))
 
                     if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_last_used'),
+                        results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_last_used'),
                                                            self.timezone), row.get('name'), row.get('value'), row.get('count')))
 
                 db_file.close()
@@ -697,11 +697,11 @@ class Chrome(WebBrowser):
             def process_bookmark_children(parent, children):
                 for child in children:
                     if child["type"] == "url":
-                        results.append(Chrome.BookmarkItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
                                                            child["name"], child["url"], parent))
                     elif child["type"] == "folder":
                         new_parent = parent + " > " + child["name"]
-                        results.append(Chrome.BookmarkFolderItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkFolderItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
                                                                  child["date_modified"], child["name"], parent))
                         process_bookmark_children(new_parent, child["children"])
 
@@ -735,16 +735,18 @@ class Chrome(WebBrowser):
         log.debug(f' - {len(local_storage_listing)} files in Local Storage directory')
         filtered_listing = []
 
+        # Chrome v61+ used leveldb for LocalStorage, but kept old SQLite .localstorage files if upgraded.
         if 'leveldb' in local_storage_listing:
             ls_ldb_path = os.path.join(ls_path, 'leveldb')
-            ls_ldb_records = self.get_leveldb_pairs(ls_ldb_path)
+            ls_ldb_records = utils.get_ldb_pairs(ls_ldb_path)
             for record in ls_ldb_records:
                 ls_item = self.parse_ls_ldb_record(record)
                 if ls_item and ls_item.get('record_type') == 'entry':
-                    results.append(Chrome.LocalStorageItem(self.profile_path, ls_item['origin'],
-                                                           to_datetime(0, self.timezone),
-                                                           ls_item['key'], ls_item['value']))
+                    results.append(Chrome.LocalStorageItem(
+                        self.profile_path, ls_item['origin'], utils.to_datetime(0, self.timezone),
+                        ls_item['key'], ls_item['value']))
 
+        # Chrome v60 and earlier used a SQLite file (with a .localstorage file ext) for each origin
         for ls_file in local_storage_listing:
             if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
                     ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
@@ -786,9 +788,9 @@ class Chrome(WebBrowser):
                 try:
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
-                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(Chrome.LocalStorageItem(self.profile_path, ls_file.decode(), to_datetime(ls_created, self.timezone),
-                                                               row.get('key'), to_unicode(row.get('value'))))
+                        results.append(Chrome.LocalStorageItem(
+                            self.profile_path, ls_file.decode(), utils.to_datetime(ls_created, self.timezone),
+                            row.get('key'), to_unicode(row.get('value'))))
                 except Exception as e:
                     log.warning(" - Error reading key/values from {}: {}".format(ls_file_path, e))
                     pass
@@ -1202,7 +1204,7 @@ class Chrome(WebBrowser):
                         try:
                             for origin, pref_data in prefs['profile']['content_settings']['exceptions']['media_engagement'].items():
                                 if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=utils.to_datetime(pref_data["last_modified"], self.timezone),
                                                                       key="media_engagement [in {}.profile.content_settings.exceptions]"
                                                                       .format(preferences_file), value=str(pref_data), interpretation="")
                                     timestamped_preference_items.append(pref_item)
@@ -1519,38 +1521,6 @@ class Chrome(WebBrowser):
                 nodes[pair[0]] = {"dir": m.group("dir"), "id": m.group("id")}
         return nodes
 
-    def get_leveldb_pairs(self, lvl_db_path, prefix=b''):
-        """Open a LevelDB at given path and return a list of all key/value pairs, optionally filtered by a prefix
-        string. Key and value are kept as byte strings """
-
-        try:
-            import leveldb
-        except ImportError:
-            log.warning(f'Failed to import leveldb; unable to process {lvl_db_path}')
-            return []
-
-        try:
-            db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
-        except Exception as e:
-            log.warning(f' - Couldn\'t open {lvl_db_path} as LevelDB; {e}')
-            return []
-
-        cleaned_pairs = []
-        pairs = list(db.RangeIter())
-        for pair in pairs:
-            # Each leveldb pair should be a tuple of length 2 (key & value); if not, log it and skip it.
-            if not isinstance(pair, tuple) or len(pair) is not 2:
-                log.warning(f' - Found LevelDB key/value pair that is not formed as expected ({str(pair)}); skipping.')
-                continue
-
-            if pair[0].startswith(prefix):
-                # Split the tuple in the origin domain and origin ID, and remove the prefix from the domain
-                (key, value) = pair
-                key = key[len(prefix):]
-                cleaned_pairs.append({'key': key, 'value': value})
-
-        return cleaned_pairs
-
     @staticmethod
     def parse_ls_ldb_record(record):
         """
@@ -1576,13 +1546,24 @@ class Chrome(WebBrowser):
             parsed['record_type'] = 'META'
             parsed['origin'] = record['key'][5:].decode()
             parsed['key'] = record['key'][5:].decode()
-            parsed['value'] = record['value']
+
+            # From https://cs.chromium.org/chromium/src/components/services/storage/dom_storage/
+            #   local_storage_database.proto:
+            # message LocalStorageOriginMetaData
+            #   required int64 last_modified = 1;
+            #   required uint64 size_bytes = 2;
+            # TODO: consider redoing this using protobufs
+            if record['value'].startswith(b'\x08'):
+                ptr = 1
+                last_modified, bytes_read = utils.read_varint(record['value'][ptr:])
+                size_bytes, _ = utils.read_varint(record['value'][ptr + bytes_read:])
+                parsed['value'] = f'Last modified: {last_modified}; size: {size_bytes}'
             return parsed
 
         elif record['key'] == 'VERSION':
             return
 
-        elif record['key'][0] == ord('_'):
+        elif record['key'].startswith(b'_'):
             parsed['record_type'] = 'entry'
             try:
                 parsed['origin'], parsed['key'] = record['key'][1:].split(b'\x00', 1)
@@ -1600,7 +1581,7 @@ class Chrome(WebBrowser):
 
             try:
                 if record['value'].startswith(b'\x01'):
-                    parsed['value'] = record['value'].lstrip(b'\x01').decode()
+                    parsed['value'] = record['value'].lstrip(b'\x01').decode('utf-8', errors='replace')
 
                 elif record['value'].startswith(b'\x00'):
                     parsed['value'] = record['value'].lstrip(b'\x00').decode('utf-16', errors='replace')
@@ -1619,116 +1600,124 @@ class Chrome(WebBrowser):
         if not parent_path:
             parent_path = []
 
-        parent_path.append(node["name"])
-        node["path"] = parent_path
-        for child_node in node["children"].values():
-            self.build_logical_fs_path(child_node, parent_path=list(node["path"]))
+        parent_path.append(node['name'])
+        node['path'] = parent_path
+        for child_node in node['children'].values():
+            self.build_logical_fs_path(child_node, parent_path=list(node['path']))
 
     def flatten_nodes_to_list(self, profile_folder, output_list, node):
         output_row = {
-            "type": node["type"],
-            "display_type": node["display_type"],
-            "origin": node["path"][0],
-            "logical_path": "\\".join(node["path"][1:]),
-            "local_path": "{}\\File System\\{}\\{}".format(profile_folder, node["origin_id"], node["type"])
+            'type': node['type'],
+            'display_type': node['display_type'],
+            'origin': node['path'][0],
+            'logical_path': '\\'.join(node['path'][1:]),
+            'local_path': f'{profile_folder}\\File System\\{node["origin_id"]}\\{node["type"]}'
         }
-        if node.get("fs_path"):
-            output_row["local_path"] += "\\{}\\{}".format(node["fs_path"]["dir"], node["fs_path"]["id"])
+        if node.get('fs_path'):
+            fs_path = os.path.split(node['fs_path'])
+            output_row['local_path'] += f'\\{fs_path[0]}\\{fs_path[1]}'
+
+        if node.get('modification_time'):
+            output_row['modification_time'] = utils.to_datetime(node['modification_time'])
 
         output_list.append(output_row)
-        for child_node in node["children"].values():
+        for child_node in node['children'].values():
             self.flatten_nodes_to_list(profile_folder, output_list, child_node)
 
     def get_file_system(self, path, dir_name):
         try:
-            # TODO: add conditionally to imports/requirements?
             import leveldb
         except ImportError:
             self.artifacts_counts['File System'] = 0
-            log.info("File System: Failed to parse; couldn't import leveldb.")
+            log.info('File System: Failed to parse; couldn\'t import leveldb.')
             return
 
         result_list = []
         result_count = 0
-        try:
-            profile_folder = os.path.split(path)[1]
-        except:
-            profile_folder = "error"
-        log.info("File System ({}):".format(profile_folder))
 
         # Grab listing of 'File System' directory
+        log.info('File System:')
         fs_root_path = os.path.join(path, dir_name)
-        log.info(" - Reading from {}".format(fs_root_path))
+        log.info(f' - Reading from {fs_root_path}')
         fs_root_listing = os.listdir(fs_root_path)
-        log.debug(" - {count} files in File System directory: {list}".format(list=str(fs_root_listing),
-                                                                             count=len(fs_root_listing)))
-        # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to web origin (https_www.google.com_0)
+        log.debug(f' - {len(fs_root_listing)} files in File System directory: {str(fs_root_listing)}')
+
+        # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to
+        # web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
-            lvl_db_path = os.path.join(fs_root_path, 'Origins')
-            origins = self.get_leveldb_pairs(lvl_db_path, 'ORIGIN:')
+            ldb_path = os.path.join(fs_root_path, 'Origins')
+            origins = utils.get_ldb_pairs(ldb_path, 'ORIGIN:')
             for origin in origins:
-                origin_domain = origin["key"]
-                origin_id = origin["value"]
+                origin_domain = origin['key'].decode()
+                origin_id = origin['value'].decode()
                 origin_root_path = os.path.join(fs_root_path, origin_id)
-                t_tree = {}
-                p_tree = {}
+                if not os.path.isdir(origin_root_path):
+                    continue
 
-                if os.path.isdir(origin_root_path):
-                    origin_t_path = os.path.join(origin_root_path, 't')
-                    if os.path.isdir(origin_t_path):
-                        log.debug(" - Found 'temporary' data directory for origin {}".format(origin_domain))
-                        origin_t_paths_path = os.path.join(origin_t_path, 'Paths')
-                        if os.path.isdir(origin_t_paths_path):
-                            try:
-                                t_items = self.get_leveldb_pairs(origin_t_paths_path, "CHILD_OF:")
-                                t_fs_paths = self.get_fs_path_leveldb(origin_t_paths_path)
-                                t_nodes = {"0": {"name": origin_domain, "type": "t", "display_type": "file system (temporary)",
-                                                 "origin_id": origin_id, "fs_path": t_fs_paths.get('0'), "children": {}}}
-                                for item in t_items:
-                                    (parent, name) = item["key"].split(":")
-                                    t_nodes[item["value"]] = {"name": name, "type": "t", "display_type": "file system (temporary)",
-                                                              "origin_id": origin_id, "parent": parent, "fs_path": t_fs_paths.get(item["value"]),
-                                                              "children": {}}
-                                    result_count += 1
+                # Each Origin can have a temporary (t) and persistent (p) storage section.
+                for fs_type in ['t', 'p']:
+                    node_tree = {}
+                    fs_type_path = os.path.join(origin_root_path, fs_type)
+                    if not os.path.isdir(fs_type_path):
+                        continue
 
-                                for id in t_nodes:
-                                    if t_nodes[id].get("parent"):
-                                        t_nodes[t_nodes[id].get("parent")]["children"][id] = t_nodes[id]
-                                    else:
-                                        t_tree[id] = t_nodes[id]
+                    log.debug(f' - Found \'{fs_type}\' data directory for origin {origin_domain}')
 
-                                self.build_logical_fs_path(t_tree["0"])
-                                self.flatten_nodes_to_list(profile_folder, result_list, t_tree["0"])
-                            except Exception as e:
-                                log.error(" - Error accessing LevelDB {}: {}".format(origin_t_paths_path, str(e)))
+                    # Within each storage section is a 'Paths' leveldb, which holds the logical structure
+                    # relationship between the files stored in this section.
+                    fs_paths_path = os.path.join(fs_type_path, 'Paths')
+                    if not os.path.isdir(fs_paths_path):
+                        continue
 
-                    origin_p_path = os.path.join(origin_root_path, 'p')
-                    if os.path.isdir(origin_p_path):
-                        log.debug(" - Found 'persistent' data directory for origin {}".format(origin_domain))
-                        origin_p_paths_path = os.path.join(origin_p_path, 'Paths')
-                        if os.path.isdir(origin_p_paths_path):
-                            try:
-                                p_items = self.get_leveldb_pairs(origin_p_paths_path, "CHILD_OF:")
-                                p_fs_paths = self.get_fs_path_leveldb(origin_p_paths_path)
-                                p_nodes = {"0": {"name": origin_domain, "type": "p", "display_type": "file system (persistent)",
-                                                 "origin_id": origin_id, "fs_path": p_fs_paths.get('0'), "children": {}}}
-                                for item in p_items:
-                                    (parent, name) = item["key"].split(":")
-                                    p_nodes[item["value"]] = {"name": name, "type": "p", "display_type": "file system (persistent)",
-                                                              "origin_id": origin_id, "parent": parent, "fs_path": p_fs_paths.get(item["value"]),
-                                                              "children": {}}
-                                    result_count += 1
+                    # The 'Paths' ldbs can have entries of four different types:
+                    # // - ("CHILD_OF:|parent_id|:<name>", "|file_id|"),
+                    # // - ("LAST_FILE_ID", "|last_file_id|"),
+                    # // - ("LAST_INTEGER", "|last_integer|"),
+                    # // - ("|file_id|", "pickled FileInfo")
+                    # // where FileInfo has |parent_id|, |data_path|, |name| and |modification_time|
+                    # from https://cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
 
-                                for id in p_nodes:
-                                    if p_nodes[id].get("parent"):
-                                        p_nodes[p_nodes[id].get("parent")]["children"][id] = p_nodes[id]
-                                    else:
-                                        p_tree[id] = p_nodes[id]
+                    backing_files = {}
+                    path_nodes = {
+                        '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
+                              'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'children': {}}}
 
-                                self.build_logical_fs_path(p_tree["0"])
-                                self.flatten_nodes_to_list(profile_folder, result_list, p_tree["0"])
-                            except Exception as e:
-                                log.error(" - Error accessing LevelDB {}: {}".format(origin_p_paths_path, str(e)))
+                    path_items = utils.get_ldb_pairs(fs_paths_path)
+
+                    for item in path_items:
+                        # This will find keys that start with a number, rather than letter (ASCII code),
+                        # which only matches "file id" items (from above list of four types).
+                        if item['key'][0] < 58:
+                            overall_length, ptr = utils.read_int32(item['value'], 0)
+                            parent_id, ptr = utils.read_int64(item['value'], ptr)
+                            backing_file_path, ptr = utils.read_string(item['value'], ptr)
+                            name, ptr = utils.read_string(item['value'], ptr)
+                            mod_time, ptr = utils.read_int64(item['value'], ptr)
+                            backing_files[item['key'].decode()] = {
+                                'backing_file_path': backing_file_path,
+                                'modification_time': mod_time}
+
+                        elif item['key'].startswith(b'CHILD_OF:'):
+                            parent, name = item['key'][9:].split(b':')
+                            path_nodes[item['value'].decode()] = {
+                                'name': name.decode(),
+                                'type': fs_type,
+                                'display_type': f'file system ({fs_type})',
+                                'origin_id': origin_id,
+                                'parent': parent.decode(),
+                                'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
+                                'modification_time': backing_files[item['value'].decode()]['modification_time'],
+                                'children': {}}
+                            result_count += 1
+
+                    for entry_id in path_nodes:
+                        if path_nodes[entry_id].get('parent'):
+                            path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
+                        else:
+                            node_tree[entry_id] = path_nodes[entry_id]
+
+                    self.build_logical_fs_path(node_tree['0'])
+                    self.flatten_nodes_to_list(os.path.split(path)[1], result_list, node_tree['0'])
 
         log.info(" - Parsed {} items".format(len(result_list)))
         self.artifacts_counts['File System'] = len(result_list)
@@ -1750,9 +1739,8 @@ class Chrome(WebBrowser):
                         ]}
 
         self.storage.setdefault('data', [])
-        self.storage.setdefault('presentation', presentation)
         self.storage['data'].extend(result_list)
-        # self.storage = {'data': result_list, 'presentation': presentation}
+        self.storage.setdefault('presentation', presentation)
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
