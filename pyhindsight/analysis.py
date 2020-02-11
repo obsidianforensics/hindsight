@@ -860,6 +860,8 @@ class AnalysisSession(object):
                       "url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
                       "last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)")
 
+            c.execute("CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, modification_time TEXT, interpretation TEXT, profile TEXT)")
+
             c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, profile TEXT)")
 
             for item in self.parsed_artifacts:
@@ -925,6 +927,17 @@ class AnalysisSession(object):
                               "VALUES (?, ?, ?, ?, ?, ?, ?)",
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
                                item.interpretation, item.profile))
+
+            for item in self.parsed_storage:
+                if item.row_type.startswith("local"):
+                    c.execute("INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation, item.profile))
+
+                if item.row_type.startswith("file system"):
+                    c.execute("INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation, item.profile))
 
             if self.__dict__.get("installed_extensions"):
                 for extension in self.installed_extensions['data']:
