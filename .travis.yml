@@ -1,3 +1,3 @@
 language: python
 python: 3.7
-script: python -m unittest discover -s tests -t tests
+script: python -m unittest discover -s tests
