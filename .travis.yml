@@ -1,2 +1,3 @@
 language: python
-script: python -m unittest discover -s tests
+python: 3.7
+script: python -m unittest discover -s tests -t tests
