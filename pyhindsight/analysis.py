@@ -774,13 +774,70 @@ class AnalysisSession(object):
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
             except Exception as e:
-                log.error("Failed to write row to XLSX: {}".format(e))
+                log.error(f'Failed to write row to XLSX: {e}')
 
             row_number += 1
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
         w.autofilter(1, 0, row_number, 19)  # Add autofilter
+
+        s = workbook.add_worksheet('Storage')
+        # Title bar
+        s.merge_range('A1:H1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        s.merge_range('I1:M1', 'URL Specific', center_header_format)
+        s.merge_range('N1:P1', 'Download Specific', center_header_format)
+        s.merge_range('Q1:R1', '', center_header_format)
+        s.merge_range('S1:U1', 'Cache Specific', center_header_format)
+
+        # Write column headers
+        s.write(1, 0, 'Type', header_format)
+        s.write(1, 1, 'Origin', header_format)
+        s.write(1, 2, 'Key', header_format)
+        s.write(1, 3, 'Value', header_format)
+        s.write(1, 4, 'Modification Time ({})'.format(self.timezone), header_format)
+        s.write(1, 5, 'Interpretation', header_format)
+        s.write(1, 6, 'Profile', header_format)
+ 
+        # Set column widths
+        s.set_column('A:A', 16)  # Type
+        s.set_column('B:B', 30)  # Origin
+        s.set_column('C:C', 35)  # Key
+        s.set_column('D:D', 60)  # Value
+        s.set_column('E:E', 16)  # Mod Time
+        s.set_column('F:F', 50)  # Interpretation
+        s.set_column('G:G', 12)  # Profile
+
+        # Start at the row after the headers, and begin writing out the items in parsed_artifacts
+        row_number = 2
+        for item in self.parsed_storage:
+            try:
+                if item.row_type.startswith("file system"):
+                    s.write_string(row_number, 0, item.row_type, black_type_format)
+                    s.write_string(row_number, 1, item.origin, black_url_format)
+                    s.write_string(row_number, 2, item.key, black_field_format)
+                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+
+                elif item.row_type.startswith("local storage"):
+                    s.write_string(row_number, 0, item.row_type, black_type_format)
+                    s.write_string(row_number, 1, item.origin, black_url_format)
+                    s.write_string(row_number, 2, item.key, black_field_format)
+                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 4, friendly_date(item.modification_time), black_date_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+
+            except Exception as e:
+                log.error(f'Failed to write row to XLSX: {e}')
+
+            row_number += 1
+
+        # Formatting
+        s.freeze_panes(2, 0)  # Freeze top row
+        s.autofilter(1, 0, row_number, 6)  # Add autofilter
 
         for item in self.__dict__:
             try:
