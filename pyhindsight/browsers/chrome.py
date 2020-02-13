@@ -598,7 +598,7 @@ class Chrome(WebBrowser):
                 for row in cursor:
                     if row.get('blacklisted_by_user') == 1:
                         blacklist_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                                                         url=row.get('action_url'), name=row.get('username_element').decode(),
+                                                         url=row.get('origin_url'), name=row.get('username_element'),
                                                          value='<User chose to "Never save password" for this site>',
                                                          count=row.get('times_used'))
                         blacklist_row.row_type = 'login (blacklist)'
@@ -1715,25 +1715,7 @@ class Chrome(WebBrowser):
 
         log.info(" - Parsed {} items".format(len(result_list)))
         self.artifacts_counts['File System'] = len(result_list)
-
-        presentation = {'title': 'Storage',
-                        'columns': [
-                            {'display_name': 'Storage Type',
-                             'data_name': 'display_type',
-                             'display_width': 26},
-                            {'display_name': 'Origin',
-                             'data_name': 'origin',
-                             'display_width': 50},
-                            {'display_name': 'Logical Path / Key',
-                             'data_name': 'logical_path',
-                             'display_width': 50},
-                            {'display_name': 'Local Path',
-                             'data_name': 'local_path',
-                             'display_width': 36}
-                        ]}
-
         self.parsed_storage.extend(result_list)
-        # self.storage.setdefault('presentation', presentation)
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
