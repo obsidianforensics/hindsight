@@ -243,14 +243,13 @@ class WebBrowser(object):
             self.interpretation = interpretation
 
     class StorageItem(object):
-        def __init__(self, item_type, profile, origin, key, value=None, last_modified=None, local_path=None, interpretation=None):
+        def __init__(self, item_type, profile, origin, key, value=None, last_modified=None, interpretation=None):
             self.row_type = item_type
             self.profile = profile
             self.origin = origin
             self.key = key
             self.value = value
             self.last_modified = last_modified
-            self.local_path = local_path
             self.interpretation = interpretation
 
         def __lt__(self, other):

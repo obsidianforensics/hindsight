@@ -90,6 +90,8 @@ def to_datetime(timestamp, timezone=None):
 def friendly_date(timestamp):
     if isinstance(timestamp, (str, int)):
         return to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    elif timestamp is None:
+        return ''
     else:
         return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 

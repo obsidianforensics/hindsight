@@ -1528,7 +1528,6 @@ class Chrome(WebBrowser):
         //   value: <script controlled value>
         """
         parsed = {}
-        # origin, parsed['key'], ls_value, record_type = (None, None, None, None)
 
         if record['key'].startswith('META:'.encode('utf-8')):
             parsed['record_type'] = 'META'
@@ -1581,7 +1580,6 @@ class Chrome(WebBrowser):
                 log.error(f'Value parsing error: {e}')
                 return
 
-        log.info(parsed)
         return parsed
 
     def build_logical_fs_path(self, node, parent_path=None):
@@ -1593,24 +1591,24 @@ class Chrome(WebBrowser):
         for child_node in node['children'].values():
             self.build_logical_fs_path(child_node, parent_path=list(node['path']))
 
-    def flatten_nodes_to_list(self, profile_folder, output_list, node):
+    def flatten_nodes_to_list(self, output_list, node):
         output_row = {
             'type': node['type'],
             'display_type': node['display_type'],
             'origin': node['path'][0],
             'logical_path': '\\'.join(node['path'][1:]),
-            'local_path': f'{profile_folder}\\File System\\{node["origin_id"]}\\{node["type"]}'
+            'local_path': os.path.join('File System', node['origin_id'], node['type'])
         }
         if node.get('fs_path'):
             fs_path = os.path.split(node['fs_path'])
-            output_row['local_path'] += f'\\{fs_path[0]}\\{fs_path[1]}'
+            output_row['local_path'] = os.path.join(output_row['local_path'], fs_path[0], fs_path[1])
 
         if node.get('modification_time'):
             output_row['modification_time'] = utils.to_datetime(node['modification_time'])
 
         output_list.append(output_row)
         for child_node in node['children'].values():
-            self.flatten_nodes_to_list(profile_folder, output_list, child_node)
+            self.flatten_nodes_to_list(output_list, child_node)
 
     def get_file_system(self, path, dir_name):
         try:
@@ -1681,8 +1679,15 @@ class Chrome(WebBrowser):
                             backing_file_path, ptr = utils.read_string(item['value'], ptr)
                             name, ptr = utils.read_string(item['value'], ptr)
                             mod_time, ptr = utils.read_int64(item['value'], ptr)
+
+                            path_parts = backing_file_path.split('/')
+                            if path_parts != ['']:
+                                normalized_backing_file_path = os.path.join(path_parts[0], path_parts[1])
+                            else:
+                                normalized_backing_file_path = backing_file_path
+
                             backing_files[item['key'].decode()] = {
-                                'backing_file_path': backing_file_path,
+                                'backing_file_path': normalized_backing_file_path,
                                 'modification_time': mod_time}
 
                         elif item['key'].startswith(b'CHILD_OF:'):
@@ -1706,7 +1711,7 @@ class Chrome(WebBrowser):
 
                     self.build_logical_fs_path(node_tree['0'])
                     flattened_list = []
-                    self.flatten_nodes_to_list(os.path.split(path)[1], flattened_list, node_tree['0'])
+                    self.flatten_nodes_to_list(flattened_list, node_tree['0'])
 
                     for item in flattened_list:
                         result_list.append(Chrome.FileSystemItem(
