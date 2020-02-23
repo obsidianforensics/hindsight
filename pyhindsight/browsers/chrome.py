@@ -10,7 +10,8 @@ import codecs
 import logging
 import shutil
 from pyhindsight.browsers.webbrowser import WebBrowser
-from pyhindsight.utils import friendly_date, to_datetime
+# from pyhindsight.utils import friendly_date, to_datetime, get_ldb_pairs
+from pyhindsight import utils
 
 # Try to import optionally modules - do nothing on failure, as status is tracked elsewhere
 try:
@@ -34,11 +35,11 @@ log = logging.getLogger(__name__)
 
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
-                 parsed_artifacts=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
+                 parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
                  available_decrypts=None, preferences=None):
-        # TODO: try to fix this to use super()
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
-                            timezone=timezone, parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
+                            timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
+                            artifacts_counts=artifacts_counts,
                             artifacts_display=artifacts_display, preferences=preferences)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
@@ -58,6 +59,9 @@ class Chrome(WebBrowser):
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.installed_extensions is None:
             self.installed_extensions = []
@@ -279,8 +283,8 @@ class Chrome(WebBrowser):
                         duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
                     new_row = Chrome.URLItem(self.profile_path, row.get('id'), row.get('url'), row.get('title'),
-                                             to_datetime(row.get('visit_time'), self.timezone),
-                                             to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
+                                             utils.to_datetime(row.get('visit_time'), self.timezone),
+                                             utils.to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
                                              row.get('typed_count'), row.get('from_visit'), row.get('transition'),
                                              row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
                                              str(duration), row.get('source'))
@@ -362,8 +366,8 @@ class Chrome(WebBrowser):
                         # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
                         new_row = Chrome.DownloadItem(self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
                                                       row.get('total_bytes'), row.get('state'), row.get('full_path'),
-                                                      to_datetime(row.get('start_time'), self.timezone),
-                                                      to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
+                                                      utils.to_datetime(row.get('start_time'), self.timezone),
+                                                      utils.to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
                                                       row.get('current_path'), row.get('opened'), row.get('danger_type'),
                                                       row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
                                                       row.get('chain_index'))
@@ -521,18 +525,18 @@ class Chrome(WebBrowser):
                         # print type(cookie_value), cookie_value
 
                     new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'),
-                                                cookie_value, to_datetime(row.get('creation_utc'), self.timezone),
-                                                to_datetime(row.get('last_access_utc'), self.timezone),
+                                                cookie_value, utils.to_datetime(row.get('creation_utc'), self.timezone),
+                                                utils.to_datetime(row.get('last_access_utc'), self.timezone),
                                                 row.get('secure'), row.get('httponly'), row.get('persistent'),
-                                                row.get('has_expires'), to_datetime(row.get('expires_utc'), self.timezone),
+                                                row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
                                                 row.get('priority'))
 
                     accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'),
                                                      row.get('name'), cookie_value,
-                                                     to_datetime(row.get('creation_utc'), self.timezone),
-                                                     to_datetime(row.get('last_access_utc'), self.timezone),
+                                                     utils.to_datetime(row.get('creation_utc'), self.timezone),
+                                                     utils.to_datetime(row.get('last_access_utc'), self.timezone),
                                                      row.get('secure'), row.get('httponly'), row.get('persistent'),
-                                                     row.get('has_expires'), to_datetime(row.get('expires_utc'), self.timezone),
+                                                     row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
                                                      row.get('priority'))
 
                     new_row.url = (new_row.host_key + new_row.path)
@@ -545,7 +549,7 @@ class Chrome(WebBrowser):
 
                     # If the cookie was created and accessed at the same time (only used once), or if the last accessed
                     # time is 0 (happens on iOS), don't create an accessed row
-                    if new_row.creation_utc != new_row.last_access_utc and accessed_row.last_access_utc != to_datetime(0, self.timezone):
+                    if new_row.creation_utc != new_row.last_access_utc and accessed_row.last_access_utc != utils.to_datetime(0, self.timezone):
                         accessed_row.row_type = 'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
@@ -593,15 +597,15 @@ class Chrome(WebBrowser):
 
                 for row in cursor:
                     if row.get('blacklisted_by_user') == 1:
-                        blacklist_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
-                                                         url=row.get('action_url'), name=row.get('username_element').decode(),
+                        blacklist_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                                                         url=row.get('origin_url'), name=row.get('username_element'),
                                                          value='<User chose to "Never save password" for this site>',
                                                          count=row.get('times_used'))
                         blacklist_row.row_type = 'login (blacklist)'
                         results.append(blacklist_row)
 
                     if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
-                        username_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                        username_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                                                         url=row.get('action_url'), name=row.get('username_element'),
                                                         value=row.get('username_value'), count=row.get('times_used'))
                         username_row.row_type = 'login (username)'
@@ -615,7 +619,7 @@ class Chrome(WebBrowser):
                         except:
                             password = self.decrypt_cookie(row.get('password_value'))
 
-                        password_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                        password_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                                                         url=row.get('action_url'), name=row.get('password_element'),
                                                         value=password, count=row.get('times_used'))
                         password_row.row_type = 'login (password)'
@@ -663,11 +667,11 @@ class Chrome(WebBrowser):
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
-                    results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
+                    results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                                                        row.get('name'), row.get('value'), row.get('count')))
 
                     if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_last_used'),
+                        results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_last_used'),
                                                            self.timezone), row.get('name'), row.get('value'), row.get('count')))
 
                 db_file.close()
@@ -697,11 +701,11 @@ class Chrome(WebBrowser):
             def process_bookmark_children(parent, children):
                 for child in children:
                     if child["type"] == "url":
-                        results.append(Chrome.BookmarkItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
                                                            child["name"], child["url"], parent))
                     elif child["type"] == "folder":
                         new_parent = parent + " > " + child["name"]
-                        results.append(Chrome.BookmarkFolderItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkFolderItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
                                                                  child["date_modified"], child["name"], parent))
                         process_bookmark_children(new_parent, child["children"])
 
@@ -735,16 +739,18 @@ class Chrome(WebBrowser):
         log.debug(f' - {len(local_storage_listing)} files in Local Storage directory')
         filtered_listing = []
 
+        # Chrome v61+ used leveldb for LocalStorage, but kept old SQLite .localstorage files if upgraded.
         if 'leveldb' in local_storage_listing:
             ls_ldb_path = os.path.join(ls_path, 'leveldb')
-            ls_ldb_records = self.get_leveldb_pairs(ls_ldb_path)
+            ls_ldb_records = utils.get_ldb_pairs(ls_ldb_path)
             for record in ls_ldb_records:
                 ls_item = self.parse_ls_ldb_record(record)
                 if ls_item and ls_item.get('record_type') == 'entry':
-                    results.append(Chrome.LocalStorageItem(self.profile_path, ls_item['origin'],
-                                                           to_datetime(0, self.timezone),
-                                                           ls_item['key'], ls_item['value']))
+                    results.append(Chrome.LocalStorageItem(
+                        self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value']))
 
+        # TODO: Rework this for py3 once you have access to an example
+        # Chrome v60 and earlier used a SQLite file (with a .localstorage file ext) for each origin
         for ls_file in local_storage_listing:
             if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
                     ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
@@ -786,16 +792,16 @@ class Chrome(WebBrowser):
                 try:
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
-                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(Chrome.LocalStorageItem(self.profile_path, ls_file.decode(), to_datetime(ls_created, self.timezone),
-                                                               row.get('key'), to_unicode(row.get('value'))))
+                        results.append(Chrome.LocalStorageItem(
+                            self.profile_path, ls_file.decode(), utils.to_datetime(ls_created, self.timezone),
+                            row.get('key'), to_unicode(row.get('value'))))
                 except Exception as e:
                     log.warning(" - Error reading key/values from {}: {}".format(ls_file_path, e))
                     pass
 
         self.artifacts_counts['Local Storage'] = len(results)
         log.info(" - Parsed {} items from {} files".format(len(results), len(filtered_listing)))
-        self.parsed_artifacts.extend(results)
+        self.parsed_storage.extend(results)
 
     def get_extensions(self, path, dir_name):
         results = []
@@ -1202,7 +1208,7 @@ class Chrome(WebBrowser):
                         try:
                             for origin, pref_data in prefs['profile']['content_settings']['exceptions']['media_engagement'].items():
                                 if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
+                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=utils.to_datetime(pref_data["last_modified"], self.timezone),
                                                                       key="media_engagement [in {}.profile.content_settings.exceptions]"
                                                                       .format(preferences_file), value=str(pref_data), interpretation="")
                                     timestamped_preference_items.append(pref_item)
@@ -1503,54 +1509,6 @@ class Chrome(WebBrowser):
         log.info(" - Parsed {} items".format(len(results)))
         self.parsed_artifacts.extend(results)
 
-    def get_fs_path_leveldb(self, lvl_db_path):
-        import leveldb
-        db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
-        nodes = {}
-        pairs = list(db.RangeIter())
-        for pair in pairs:
-            # Each origin value should be a tuple of length 2; if not, log it and skip it.
-            if not isinstance(pair, tuple) or len(pair) is not 2:
-                log.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
-                continue
-            fs_path_re = re.compile(b"\x00(?P<dir>\d\d)(\\\\|/)(?P<id>\d{8})\x00")
-            m = fs_path_re.search(pair[1])
-            if m:
-                nodes[pair[0]] = {"dir": m.group("dir"), "id": m.group("id")}
-        return nodes
-
-    def get_leveldb_pairs(self, lvl_db_path, prefix=b''):
-        """Open a LevelDB at given path and return a list of all key/value pairs, optionally filtered by a prefix
-        string. Key and value are kept as byte strings """
-
-        try:
-            import leveldb
-        except ImportError:
-            log.warning(f'Failed to import leveldb; unable to process {lvl_db_path}')
-            return []
-
-        try:
-            db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
-        except Exception as e:
-            log.warning(f' - Couldn\'t open {lvl_db_path} as LevelDB; {e}')
-            return []
-
-        cleaned_pairs = []
-        pairs = list(db.RangeIter())
-        for pair in pairs:
-            # Each leveldb pair should be a tuple of length 2 (key & value); if not, log it and skip it.
-            if not isinstance(pair, tuple) or len(pair) is not 2:
-                log.warning(f' - Found LevelDB key/value pair that is not formed as expected ({str(pair)}); skipping.')
-                continue
-
-            if pair[0].startswith(prefix):
-                # Split the tuple in the origin domain and origin ID, and remove the prefix from the domain
-                (key, value) = pair
-                key = key[len(prefix):]
-                cleaned_pairs.append({'key': key, 'value': value})
-
-        return cleaned_pairs
-
     @staticmethod
     def parse_ls_ldb_record(record):
         """
@@ -1570,19 +1528,29 @@ class Chrome(WebBrowser):
         //   value: <script controlled value>
         """
         parsed = {}
-        # origin, parsed['key'], ls_value, record_type = (None, None, None, None)
 
         if record['key'].startswith('META:'.encode('utf-8')):
             parsed['record_type'] = 'META'
             parsed['origin'] = record['key'][5:].decode()
             parsed['key'] = record['key'][5:].decode()
-            parsed['value'] = record['value']
+
+            # From https://cs.chromium.org/chromium/src/components/services/storage/dom_storage/
+            #   local_storage_database.proto:
+            # message LocalStorageOriginMetaData
+            #   required int64 last_modified = 1;
+            #   required uint64 size_bytes = 2;
+            # TODO: consider redoing this using protobufs
+            if record['value'].startswith(b'\x08'):
+                ptr = 1
+                last_modified, bytes_read = utils.read_varint(record['value'][ptr:])
+                size_bytes, _ = utils.read_varint(record['value'][ptr + bytes_read:])
+                parsed['value'] = f'Last modified: {last_modified}; size: {size_bytes}'
             return parsed
 
         elif record['key'] == 'VERSION':
             return
 
-        elif record['key'][0] == ord('_'):
+        elif record['key'].startswith(b'_'):
             parsed['record_type'] = 'entry'
             try:
                 parsed['origin'], parsed['key'] = record['key'][1:].split(b'\x00', 1)
@@ -1600,7 +1568,7 @@ class Chrome(WebBrowser):
 
             try:
                 if record['value'].startswith(b'\x01'):
-                    parsed['value'] = record['value'].lstrip(b'\x01').decode()
+                    parsed['value'] = record['value'].lstrip(b'\x01').decode('utf-8', errors='replace')
 
                 elif record['value'].startswith(b'\x00'):
                     parsed['value'] = record['value'].lstrip(b'\x00').decode('utf-16', errors='replace')
@@ -1612,147 +1580,147 @@ class Chrome(WebBrowser):
                 log.error(f'Value parsing error: {e}')
                 return
 
-        log.info(parsed)
         return parsed
 
     def build_logical_fs_path(self, node, parent_path=None):
         if not parent_path:
             parent_path = []
 
-        parent_path.append(node["name"])
-        node["path"] = parent_path
-        for child_node in node["children"].values():
-            self.build_logical_fs_path(child_node, parent_path=list(node["path"]))
+        parent_path.append(node['name'])
+        node['path'] = parent_path
+        for child_node in node['children'].values():
+            self.build_logical_fs_path(child_node, parent_path=list(node['path']))
 
-    def flatten_nodes_to_list(self, profile_folder, output_list, node):
+    def flatten_nodes_to_list(self, output_list, node):
         output_row = {
-            "type": node["type"],
-            "display_type": node["display_type"],
-            "origin": node["path"][0],
-            "logical_path": "\\".join(node["path"][1:]),
-            "local_path": "{}\\File System\\{}\\{}".format(profile_folder, node["origin_id"], node["type"])
+            'type': node['type'],
+            'display_type': node['display_type'],
+            'origin': node['path'][0],
+            'logical_path': '\\'.join(node['path'][1:]),
+            'local_path': os.path.join('File System', node['origin_id'], node['type'])
         }
-        if node.get("fs_path"):
-            output_row["local_path"] += "\\{}\\{}".format(node["fs_path"]["dir"], node["fs_path"]["id"])
+        if node.get('fs_path'):
+            fs_path = os.path.split(node['fs_path'])
+            output_row['local_path'] = os.path.join(output_row['local_path'], fs_path[0], fs_path[1])
+
+        if node.get('modification_time'):
+            output_row['modification_time'] = utils.to_datetime(node['modification_time'])
 
         output_list.append(output_row)
-        for child_node in node["children"].values():
-            self.flatten_nodes_to_list(profile_folder, output_list, child_node)
+        for child_node in node['children'].values():
+            self.flatten_nodes_to_list(output_list, child_node)
 
     def get_file_system(self, path, dir_name):
         try:
-            # TODO: add conditionally to imports/requirements?
             import leveldb
         except ImportError:
             self.artifacts_counts['File System'] = 0
-            log.info("File System: Failed to parse; couldn't import leveldb.")
+            log.info('File System: Failed to parse; couldn\'t import leveldb.')
             return
 
         result_list = []
         result_count = 0
-        try:
-            profile_folder = os.path.split(path)[1]
-        except:
-            profile_folder = "error"
-        log.info("File System ({}):".format(profile_folder))
 
         # Grab listing of 'File System' directory
+        log.info('File System:')
         fs_root_path = os.path.join(path, dir_name)
-        log.info(" - Reading from {}".format(fs_root_path))
+        log.info(f' - Reading from {fs_root_path}')
         fs_root_listing = os.listdir(fs_root_path)
-        log.debug(" - {count} files in File System directory: {list}".format(list=str(fs_root_listing),
-                                                                             count=len(fs_root_listing)))
-        # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to web origin (https_www.google.com_0)
+        log.debug(f' - {len(fs_root_listing)} files in File System directory: {str(fs_root_listing)}')
+
+        # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to
+        # web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
-            lvl_db_path = os.path.join(fs_root_path, 'Origins')
-            origins = self.get_leveldb_pairs(lvl_db_path, 'ORIGIN:')
+            ldb_path = os.path.join(fs_root_path, 'Origins')
+            origins = utils.get_ldb_pairs(ldb_path, 'ORIGIN:')
             for origin in origins:
-                origin_domain = origin["key"]
-                origin_id = origin["value"]
+                origin_domain = origin['key'].decode()
+                origin_id = origin['value'].decode()
                 origin_root_path = os.path.join(fs_root_path, origin_id)
-                t_tree = {}
-                p_tree = {}
+                if not os.path.isdir(origin_root_path):
+                    continue
 
-                if os.path.isdir(origin_root_path):
-                    origin_t_path = os.path.join(origin_root_path, 't')
-                    if os.path.isdir(origin_t_path):
-                        log.debug(" - Found 'temporary' data directory for origin {}".format(origin_domain))
-                        origin_t_paths_path = os.path.join(origin_t_path, 'Paths')
-                        if os.path.isdir(origin_t_paths_path):
-                            try:
-                                t_items = self.get_leveldb_pairs(origin_t_paths_path, "CHILD_OF:")
-                                t_fs_paths = self.get_fs_path_leveldb(origin_t_paths_path)
-                                t_nodes = {"0": {"name": origin_domain, "type": "t", "display_type": "file system (temporary)",
-                                                 "origin_id": origin_id, "fs_path": t_fs_paths.get('0'), "children": {}}}
-                                for item in t_items:
-                                    (parent, name) = item["key"].split(":")
-                                    t_nodes[item["value"]] = {"name": name, "type": "t", "display_type": "file system (temporary)",
-                                                              "origin_id": origin_id, "parent": parent, "fs_path": t_fs_paths.get(item["value"]),
-                                                              "children": {}}
-                                    result_count += 1
+                # Each Origin can have a temporary (t) and persistent (p) storage section.
+                for fs_type in ['t', 'p']:
+                    node_tree = {}
+                    fs_type_path = os.path.join(origin_root_path, fs_type)
+                    if not os.path.isdir(fs_type_path):
+                        continue
 
-                                for id in t_nodes:
-                                    if t_nodes[id].get("parent"):
-                                        t_nodes[t_nodes[id].get("parent")]["children"][id] = t_nodes[id]
-                                    else:
-                                        t_tree[id] = t_nodes[id]
+                    log.debug(f' - Found \'{fs_type}\' data directory for origin {origin_domain}')
 
-                                self.build_logical_fs_path(t_tree["0"])
-                                self.flatten_nodes_to_list(profile_folder, result_list, t_tree["0"])
-                            except Exception as e:
-                                log.error(" - Error accessing LevelDB {}: {}".format(origin_t_paths_path, str(e)))
+                    # Within each storage section is a 'Paths' leveldb, which holds the logical structure
+                    # relationship between the files stored in this section.
+                    fs_paths_path = os.path.join(fs_type_path, 'Paths')
+                    if not os.path.isdir(fs_paths_path):
+                        continue
 
-                    origin_p_path = os.path.join(origin_root_path, 'p')
-                    if os.path.isdir(origin_p_path):
-                        log.debug(" - Found 'persistent' data directory for origin {}".format(origin_domain))
-                        origin_p_paths_path = os.path.join(origin_p_path, 'Paths')
-                        if os.path.isdir(origin_p_paths_path):
-                            try:
-                                p_items = self.get_leveldb_pairs(origin_p_paths_path, "CHILD_OF:")
-                                p_fs_paths = self.get_fs_path_leveldb(origin_p_paths_path)
-                                p_nodes = {"0": {"name": origin_domain, "type": "p", "display_type": "file system (persistent)",
-                                                 "origin_id": origin_id, "fs_path": p_fs_paths.get('0'), "children": {}}}
-                                for item in p_items:
-                                    (parent, name) = item["key"].split(":")
-                                    p_nodes[item["value"]] = {"name": name, "type": "p", "display_type": "file system (persistent)",
-                                                              "origin_id": origin_id, "parent": parent, "fs_path": p_fs_paths.get(item["value"]),
-                                                              "children": {}}
-                                    result_count += 1
+                    # The 'Paths' ldbs can have entries of four different types:
+                    # // - ("CHILD_OF:|parent_id|:<name>", "|file_id|"),
+                    # // - ("LAST_FILE_ID", "|last_file_id|"),
+                    # // - ("LAST_INTEGER", "|last_integer|"),
+                    # // - ("|file_id|", "pickled FileInfo")
+                    # // where FileInfo has |parent_id|, |data_path|, |name| and |modification_time|
+                    # from https://cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
 
-                                for id in p_nodes:
-                                    if p_nodes[id].get("parent"):
-                                        p_nodes[p_nodes[id].get("parent")]["children"][id] = p_nodes[id]
-                                    else:
-                                        p_tree[id] = p_nodes[id]
+                    backing_files = {}
+                    path_nodes = {
+                        '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
+                              'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'children': {}}}
 
-                                self.build_logical_fs_path(p_tree["0"])
-                                self.flatten_nodes_to_list(profile_folder, result_list, p_tree["0"])
-                            except Exception as e:
-                                log.error(" - Error accessing LevelDB {}: {}".format(origin_p_paths_path, str(e)))
+                    path_items = utils.get_ldb_pairs(fs_paths_path)
+
+                    for item in path_items:
+                        # This will find keys that start with a number, rather than letter (ASCII code),
+                        # which only matches "file id" items (from above list of four types).
+                        if item['key'][0] < 58:
+                            overall_length, ptr = utils.read_int32(item['value'], 0)
+                            parent_id, ptr = utils.read_int64(item['value'], ptr)
+                            backing_file_path, ptr = utils.read_string(item['value'], ptr)
+                            name, ptr = utils.read_string(item['value'], ptr)
+                            mod_time, ptr = utils.read_int64(item['value'], ptr)
+
+                            path_parts = backing_file_path.split('/')
+                            if path_parts != ['']:
+                                normalized_backing_file_path = os.path.join(path_parts[0], path_parts[1])
+                            else:
+                                normalized_backing_file_path = backing_file_path
+
+                            backing_files[item['key'].decode()] = {
+                                'backing_file_path': normalized_backing_file_path,
+                                'modification_time': mod_time}
+
+                        elif item['key'].startswith(b'CHILD_OF:'):
+                            parent, name = item['key'][9:].split(b':')
+                            path_nodes[item['value'].decode()] = {
+                                'name': name.decode(),
+                                'type': fs_type,
+                                'display_type': f'file system ({fs_type})',
+                                'origin_id': origin_id,
+                                'parent': parent.decode(),
+                                'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
+                                'modification_time': backing_files[item['value'].decode()]['modification_time'],
+                                'children': {}}
+                            result_count += 1
+
+                    for entry_id in path_nodes:
+                        if path_nodes[entry_id].get('parent'):
+                            path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
+                        else:
+                            node_tree[entry_id] = path_nodes[entry_id]
+
+                    self.build_logical_fs_path(node_tree['0'])
+                    flattened_list = []
+                    self.flatten_nodes_to_list(flattened_list, node_tree['0'])
+
+                    for item in flattened_list:
+                        result_list.append(Chrome.FileSystemItem(
+                            self.profile_path, item.get('origin'), item.get('logical_path'), item.get('local_path'),
+                            item.get('modification_time')))
 
         log.info(" - Parsed {} items".format(len(result_list)))
         self.artifacts_counts['File System'] = len(result_list)
-
-        presentation = {'title': 'Storage',
-                        'columns': [
-                            {'display_name': 'Storage Type',
-                             'data_name': 'display_type',
-                             'display_width': 26},
-                            {'display_name': 'Origin',
-                             'data_name': 'origin',
-                             'display_width': 50},
-                            {'display_name': 'Logical Path / Key',
-                             'data_name': 'logical_path',
-                             'display_width': 50},
-                            {'display_name': 'Local Path',
-                             'data_name': 'local_path',
-                             'display_width': 36}
-                        ]}
-
-        self.storage.setdefault('data', [])
-        self.storage.setdefault('presentation', presentation)
-        self.storage['data'].extend(result_list)
-        # self.storage = {'data': result_list, 'presentation': presentation}
+        self.parsed_storage.extend(result_list)
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
@@ -1918,80 +1886,81 @@ class Chrome(WebBrowser):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                      transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                      transition_friendly=None):
-            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time, last_visit_time=last_visit_time,
-                                        visit_count=visit_count, typed_count=typed_count, from_visit=from_visit, transition=transition,
-                                        hidden=hidden, favicon_id=favicon_id, indexed=indexed, visit_duration=visit_duration,
-                                        visit_source=visit_source, transition_friendly=transition_friendly)
+            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time,
+                                        last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
+                                        from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
+                                        indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
+                                        transition_friendly=transition_friendly)
 
         def decode_transition(self):
             # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
             transition_friendly = {
                 0: 'link',                 # User got to this page by clicking a link on another page.
                 1: 'typed',                # User got this page by typing the URL in the URL bar.  This should not be
-                                            # used for cases where the user selected a choice that didn't look at all
-                                            # like a URL; see GENERATED below.
-                                            # We also use this for other 'explicit' navigation actions.
+                                           #  used for cases where the user selected a choice that didn't look at all
+                                           #  like a URL; see GENERATED below.
+                                           # We also use this for other 'explicit' navigation actions.
                 2: 'auto bookmark',        # User got to this page through a suggestion in the UI, for example)
-                                            # through the destinations page.
+                                           #  through the destinations page.
                 3: 'auto subframe',        # This is a subframe navigation. This is any content that is automatically
-                                            # loaded in a non-toplevel frame. For example, if a page consists of
-                                            # several frames containing ads, those ad URLs will have this transition
-                                            # type. The user may not even realize the content in these pages is a
-                                            # separate frame, so may not care about the URL (see MANUAL below).
+                                           #  loaded in a non-toplevel frame. For example, if a page consists of
+                                           #  several frames containing ads, those ad URLs will have this transition
+                                           #  type. The user may not even realize the content in these pages is a
+                                           #  separate frame, so may not care about the URL (see MANUAL below).
                 4: 'manual subframe',      # For subframe navigations that are explicitly requested by the user and
-                                            # generate new navigation entries in the back/forward list. These are
-                                            # probably more important than frames that were automatically loaded in
-                                            # the background because the user probably cares about the fact that this
-                                            # link was loaded.
+                                           #  generate new navigation entries in the back/forward list. These are
+                                           #  probably more important than frames that were automatically loaded in
+                                           #  the background because the user probably cares about the fact that this
+                                           #  link was loaded.
                 5: 'generated',            # User got to this page by typing in the URL bar and selecting an entry
-                                            # that did not look like a URL.  For example, a match might have the URL
-                                            # of a Google search result page, but appear like 'Search Google for ...'.
-                                            # These are not quite the same as TYPED navigations because the user
-                                            # didn't type or see the destination URL.
-                                            # See also KEYWORD.
+                                           #  that did not look like a URL.  For example, a match might have the URL
+                                           #  of a Google search result page, but appear like 'Search Google for ...'.
+                                           #  These are not quite the same as TYPED navigations because the user
+                                           #  didn't type or see the destination URL.
+                                           #  See also KEYWORD.
                 6: 'start page',           # This is a toplevel navigation. This is any content that is automatically
-                                            # loaded in a toplevel frame.  For example, opening a tab to show the ASH
-                                            # screen saver, opening the devtools window, opening the NTP after the safe
-                                            # browsing warning, opening web-based dialog boxes are examples of
-                                            # AUTO_TOPLEVEL navigations.
+                                           #  loaded in a toplevel frame.  For example, opening a tab to show the ASH
+                                           #  screen saver, opening the devtools window, opening the NTP after the safe
+                                           #  browsing warning, opening web-based dialog boxes are examples of
+                                           #  AUTO_TOPLEVEL navigations.
                 7: 'form submit',          # The user filled out values in a form and submitted it. NOTE that in
-                                            # some situations submitting a form does not result in this transition
-                                            # type. This can happen if the form uses script to submit the contents.
+                                           #  some situations submitting a form does not result in this transition
+                                           #  type. This can happen if the form uses script to submit the contents.
                 8: 'reload',               # The user 'reloaded' the page, either by hitting the reload button or by
-                                            # hitting enter in the address bar.  NOTE: This is distinct from the
-                                            # concept of whether a particular load uses 'reload semantics' (i.e.
-                                            # bypasses cached data).  For this reason, lots of code needs to pass
-                                            # around the concept of whether a load should be treated as a 'reload'
-                                            # separately from their tracking of this transition type, which is mainly
-                                            # used for proper scoring for consumers who care about how frequently a
-                                            # user typed/visited a particular URL.
-                                            # SessionRestore and undo tab close use this transition type too.
+                                           #  hitting enter in the address bar.  NOTE: This is distinct from the
+                                           #  concept of whether a particular load uses 'reload semantics' (i.e.
+                                           #  bypasses cached data).  For this reason, lots of code needs to pass
+                                           #  around the concept of whether a load should be treated as a 'reload'
+                                           #  separately from their tracking of this transition type, which is mainly
+                                           #  used for proper scoring for consumers who care about how frequently a
+                                           #  user typed/visited a particular URL.
+                                           #  SessionRestore and undo tab close use this transition type too.
                 9: 'keyword',              # The url was generated from a replaceable keyword other than the default
-                                            # search provider. If the user types a keyword (which also applies to
-                                            # tab-to-search) in the omnibox this qualifier is applied to the transition
-                                            # type of the generated url. TemplateURLModel then may generate an
-                                            # additional visit with a transition type of KEYWORD_GENERATED against the
-                                            # url 'http://' + keyword. For example, if you do a tab-to-search against
-                                            # wikipedia the generated url has a transition qualifer of KEYWORD, and
-                                            # TemplateURLModel generates a visit for 'wikipedia.org' with a transition
-                                            # type of KEYWORD_GENERATED.
+                                           #  search provider. If the user types a keyword (which also applies to
+                                           #  tab-to-search) in the omnibox this qualifier is applied to the transition
+                                           #  type of the generated url. TemplateURLModel then may generate an
+                                           #  additional visit with a transition type of KEYWORD_GENERATED against the
+                                           #  url 'http://' + keyword. For example, if you do a tab-to-search against
+                                           #  wikipedia the generated url has a transition qualifer of KEYWORD, and
+                                           #  TemplateURLModel generates a visit for 'wikipedia.org' with a transition
+                                           #  type of KEYWORD_GENERATED.
                 10: 'keyword generated'}   # Corresponds to a visit generated for a keyword. See description of
-                                            # KEYWORD for more details.
+                                           #  KEYWORD for more details.
 
             qualifiers_friendly = {
                 0x00800000: 'Blocked',                # A managed user attempted to visit a URL but was blocked.
                 0x01000000: 'Forward or Back',        # User used the Forward or Back button to navigate among browsing
-                                                       # history.
+                                                      #  history.
                 0x02000000: 'From Address Bar',       # User used the address bar to trigger this navigation.
                 0x04000000: 'Home Page',              # User is navigating to the home page.
                 0x08000000: 'From API',               # The transition originated from an external application; the exact
-                                                       # definition of this is embedder dependent.
+                                                      #  definition of this is embedder dependent.
                 0x10000000: 'Navigation Chain Start', # The beginning of a navigation chain.
                 0x20000000: 'Navigation Chain End',   # The last transition in a redirect chain.
                 0x40000000: 'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page.
                 0x80000000: 'Server Redirect'}        # Redirects sent from the server by HTTP headers. It might be nice to
-                                                       # break this out into 2 types in the future, permanent or temporary,
-                                                       # if we can get that information from WebKit.
+                                                      #  break this out into 2 types in the future, permanent or temporary,
+                                                      #  if we can get that information from WebKit.
             raw = self.transition
             # If the transition has already been translated to a string, just use that
             if isinstance(raw, str):
@@ -2052,12 +2021,12 @@ class Chrome(WebBrowser):
                 6:  'File Too Large',              # The file is too large for the file system to handle.
                 7:  'Virus',                       # The file contains a virus.
                 10: 'Temporary Problem',           # The file was in use. Too many files are opened at once. We have run
-                                                    # out of memory.
+                                                   #  out of memory.
                 11: 'Blocked',                     # The file was blocked due to local policy.
                 12: 'Security Check Failed',       # An attempt to check the safety of the download failed due to
-                                                    # unexpected reasons. See http://crbug.com/153212.
+                                                   #  unexpected reasons. See http://crbug.com/153212.
                 13: 'Resume Error',                # An attempt was made to seek past the end of a file in opening a file
-                                                    # (as part of resuming a previously interrupted download).
+                                                   #  (as part of resuming a previously interrupted download).
 
                 # Network errors
                 20: 'Network Error',               # Generic network failure.
@@ -2069,17 +2038,17 @@ class Chrome(WebBrowser):
                 30: 'Server Error',                # The server indicates that the operation has failed (generic).
                 31: 'Range Request Error',         # The server does not support range requests.
                 32: 'Server Precondition Error',   # The download request does not meet the specified precondition.
-                                                    # Internal use only:  the file has changed on the server.
+                                                   #  Internal use only:  the file has changed on the server.
                 33: 'Unable to get file',          # The server does not have the requested data.
                 34: 'Server Unauthorized',         # Server didn't authorize access to resource.
                 35: 'Server Certificate Problem',  # Server certificate problem.
                 36: 'Server Access Forbidden',     # Server access forbidden.
                 37: 'Server Unreachable',          # Unexpected server response. This might indicate that the responding
-                                                    # server may not be the intended server.
+                                                   #  server may not be the intended server.
                 38: 'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may indicate
-                                                    # that the connection was closed prematurely, or the Content-Length header was
-                                                    # invalid. The download is only interrupted if strong validators are present.
-                                                    # Otherwise, it is treated as finished.
+                                                   #  that the connection was closed prematurely, or the Content-Length header was
+                                                   #  invalid. The download is only interrupted if strong validators are present.
+                                                   #  Otherwise, it is treated as finished.
                 39: 'Cross Origin Redirect',       # An unexpected cross-origin redirect happened.
 
 
@@ -2103,22 +2072,22 @@ class Chrome(WebBrowser):
             dangers = {
                 0: 'Not Dangerous',                 # The download is safe.
                 1: 'Dangerous',                     # A dangerous file to the system (e.g.: a pdf or extension from places
-                                                     # other than gallery).
+                                                    #  other than gallery).
                 2: 'Dangerous URL',                 # SafeBrowsing download service shows this URL leads to malicious file
-                                                     # download.
+                                                    #  download.
                 3: 'Dangerous Content',             # SafeBrowsing download service shows this file content as being
-                                                     # malicious.
+                                                    #  malicious.
                 4: 'Content May Be Malicious',      # The content of this download may be malicious (e.g., extension is exe
-                                                     # but SafeBrowsing has not finished checking the content).
+                                                    #  but SafeBrowsing has not finished checking the content).
                 5: 'Uncommon Content',              # SafeBrowsing download service checked the contents of the download,
-                                                     # but didn't have enough data to determine whether it was malicious.
+                                                    #  but didn't have enough data to determine whether it was malicious.
                 6: 'Dangerous But User Validated',  # The download was evaluated to be one of the other types of danger,
-                                                     # but the user told us to go ahead anyway.
+                                                    #  but the user told us to go ahead anyway.
                 7: 'Dangerous Host',                # SafeBrowsing download service checked the contents of the download
-                                                     # and didn't have data on this specific file, but the file was served
-                                                     # from a host known to serve mostly malicious content.
+                                                    #  and didn't have data on this specific file, but the file was served
+                                                    #  from a host known to serve mostly malicious content.
                 8: 'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
-                                                     # settings
+                                                    #  settings
                 9: 'Whitelisted by Policy'}         # Download URL whitelisted by enterprise policy.
 
             if self.danger_type in list(dangers.keys()):

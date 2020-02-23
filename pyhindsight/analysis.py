@@ -39,8 +39,11 @@ class HindsightEncoder(json.JSONEncoder):
                 value = value.isoformat()
 
             # JSONL requires utf-8 encoding
-            if isinstance(value, str):
+            if isinstance(value, bytes) or isinstance(value, bytearray):
                 value = value.decode('utf-8', errors='replace')
+
+            if isinstance(key, bytes) or isinstance(key, bytearray):
+                key = key.decode('utf-8', errors='replace')
 
             item[key] = value
 
@@ -213,7 +216,7 @@ class AnalysisSession(object):
     def __init__(self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
                  version=None, display_version=None, output_name=None, log_path=None, timezone=None,
                  available_output_formats=None, selected_output_format=None, available_decrypts=None,
-                 selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
+                 selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None, parsed_storage=None,
                  plugin_descriptions=None, selected_plugins=None, plugin_results=None, hindsight_version=None, preferences=None):
         self.input_path = input_path
         self.profile_paths = profile_paths
@@ -232,6 +235,7 @@ class AnalysisSession(object):
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_display = artifacts_display
         self.artifacts_counts = artifacts_counts
+        self.parsed_storage = parsed_storage
         self.plugin_descriptions = plugin_descriptions
         self.selected_plugins = selected_plugins
         self.plugin_results = plugin_results
@@ -249,6 +253,9 @@ class AnalysisSession(object):
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.available_output_formats is None:
             self.available_output_formats = ['sqlite', 'jsonl']
@@ -437,6 +444,7 @@ class AnalysisSession(object):
                                           cache_path=self.cache_path, timezone=self.timezone)
                 browser_analysis.process()
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
+                self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.artifacts_counts = self.sum_dict_counts(self.artifacts_counts, browser_analysis.artifacts_counts)
                 self.artifacts_display = browser_analysis.artifacts_display
                 self.version.extend(browser_analysis.version)
@@ -456,6 +464,7 @@ class AnalysisSession(object):
                 browser_analysis = Brave(found_profile_path, timezone=self.timezone)
                 browser_analysis.process()
                 self.parsed_artifacts = browser_analysis.parsed_artifacts
+                self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.artifacts_counts = browser_analysis.artifacts_counts
                 self.artifacts_display = browser_analysis.artifacts_display
                 self.version = browser_analysis.version
@@ -765,13 +774,70 @@ class AnalysisSession(object):
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
             except Exception as e:
-                log.error("Failed to write row to XLSX: {}".format(e))
+                log.error(f'Failed to write row to XLSX: {e}')
 
             row_number += 1
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
         w.autofilter(1, 0, row_number, 19)  # Add autofilter
+
+        s = workbook.add_worksheet('Storage')
+        # Title bar
+        s.merge_range('A1:H1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        s.merge_range('I1:M1', 'URL Specific', center_header_format)
+        s.merge_range('N1:P1', 'Download Specific', center_header_format)
+        s.merge_range('Q1:R1', '', center_header_format)
+        s.merge_range('S1:U1', 'Cache Specific', center_header_format)
+
+        # Write column headers
+        s.write(1, 0, 'Type', header_format)
+        s.write(1, 1, 'Origin', header_format)
+        s.write(1, 2, 'Key', header_format)
+        s.write(1, 3, 'Value', header_format)
+        s.write(1, 4, 'Modification Time ({})'.format(self.timezone), header_format)
+        s.write(1, 5, 'Interpretation', header_format)
+        s.write(1, 6, 'Profile', header_format)
+ 
+        # Set column widths
+        s.set_column('A:A', 16)  # Type
+        s.set_column('B:B', 30)  # Origin
+        s.set_column('C:C', 35)  # Key
+        s.set_column('D:D', 60)  # Value
+        s.set_column('E:E', 16)  # Mod Time
+        s.set_column('F:F', 50)  # Interpretation
+        s.set_column('G:G', 12)  # Profile
+
+        # Start at the row after the headers, and begin writing out the items in parsed_artifacts
+        row_number = 2
+        for item in self.parsed_storage:
+            try:
+                if item.row_type.startswith("file system"):
+                    s.write_string(row_number, 0, item.row_type, black_type_format)
+                    s.write_string(row_number, 1, item.origin, black_url_format)
+                    s.write_string(row_number, 2, item.key, black_field_format)
+                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+
+                elif item.row_type.startswith("local storage"):
+                    s.write_string(row_number, 0, item.row_type, black_type_format)
+                    s.write_string(row_number, 1, item.origin, black_url_format)
+                    s.write_string(row_number, 2, item.key, black_field_format)
+                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+
+            except Exception as e:
+                log.error(f'Failed to write row to XLSX: {e}')
+
+            row_number += 1
+
+        # Formatting
+        s.freeze_panes(2, 0)  # Freeze top row
+        s.autofilter(1, 0, row_number, 6)  # Add autofilter
 
         for item in self.__dict__:
             try:
@@ -851,6 +917,8 @@ class AnalysisSession(object):
                       "url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
                       "last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)")
 
+            c.execute("CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, modification_time TEXT, interpretation TEXT, profile TEXT)")
+
             c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, profile TEXT)")
 
             for item in self.parsed_artifacts:
@@ -917,6 +985,17 @@ class AnalysisSession(object):
                               (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
                                item.interpretation, item.profile))
 
+            for item in self.parsed_storage:
+                if item.row_type.startswith("local"):
+                    c.execute("INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation, item.profile))
+
+                if item.row_type.startswith("file system"):
+                    c.execute("INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) "
+                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                              (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation, item.profile))
+
             if self.__dict__.get("installed_extensions"):
                 for extension in self.installed_extensions['data']:
                     c.execute("INSERT INTO installed_extensions (name, description, version, app_id, profile) "
@@ -924,7 +1003,7 @@ class AnalysisSession(object):
                               (extension.name, extension.description, extension.version, extension.app_id, extension.profile))
 
     def generate_jsonl(self, output_file):
-        with open(output_file, mode='wb') as jsonl:
+        with open(output_file, mode='w') as jsonl:
             for parsed_artifact in self.parsed_artifacts:
                 parsed_artifact_json = json.dumps(parsed_artifact, cls=HindsightEncoder)
                 jsonl.write(parsed_artifact_json)

@@ -1,3 +1,3 @@
 __author__ = "Ryan Benson"
-__version__ = "2.4.0"
+__version__ = "3.0.0b"
 __email__ = "ryan@obsidianforensics.com"

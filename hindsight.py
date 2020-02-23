@@ -112,7 +112,7 @@ def main():
         import io
 
         # Set up a StringIO object to save the XLSX content to before saving to disk
-        string_buffer = io.StringIO()
+        string_buffer = io.BytesIO()
 
         # Generate the XLSX content using the function in the AnalysisSession and save it to the StringIO object
         analysis_session.generate_excel(string_buffer)
@@ -121,7 +121,7 @@ def main():
         string_buffer.seek(0)
 
         # Write the StringIO object to a file on disk named what the user specified
-        with open("{}.{}".format(os.path.join(real_path, analysis_session.output_name), analysis_session.selected_output_format), 'wb') as file_output:
+        with open(f'{os.path.join(real_path, analysis_session.output_name)}.{analysis_session.selected_output_format}', 'wb') as file_output:
             shutil.copyfileobj(string_buffer, file_output)
 
     def write_sqlite(analysis_session):
