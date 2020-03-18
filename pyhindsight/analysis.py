@@ -347,9 +347,9 @@ class AnalysisSession(object):
         `existing_files`. Return True if all required files are present.
         """
         is_profile = True
-        for required_file in ['History', 'Cookies']:
+        for required_file in ['History']:
             # This approach (checking the file names) is naive but should work.
-            if required_file not in existing_files:
+            if required_file not in existing_files or not os.path.isfile(os.path.join(base_path, required_file)):
                 if warn:
                     log.warning("The profile directory {} does not contain the "
                                 "file {}. Analysis may not be very useful."
@@ -383,9 +383,12 @@ class AnalysisSession(object):
         found_profile_paths = []
         base_dir_listing = os.listdir(base_path)
 
-        # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
-        # Chrome analysis. Warn if they are not present.
-        if not self.is_profile(base_path, base_dir_listing, warn=True):
+        # The 'History' SQLite file is kind of the minimum required for most
+        # Chrome analysis. Warn if not present.
+        if self.is_profile(base_path, base_dir_listing, warn=True):
+            found_profile_paths.append(base_path)
+
+        else:
             # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
             found_profile_paths.extend(self.search_subdirs(base_path))
 
