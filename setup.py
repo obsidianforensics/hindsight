@@ -8,7 +8,7 @@ setup(
   description='Internet history forensics for Google Chrome/Chromium',
   url='https://github.com/obsidianforensics/hindsight',
   author='Ryan Benson',
-  author_email='ryan@obsidianforensics.com',
+  author_email='ryan@dfir.blog',
   license='Apache',
   keywords=['chrome', 'forensics'],
   classifiers=[],

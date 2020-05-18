@@ -1403,6 +1403,10 @@ class Chrome(WebBrowser):
             log.error(" - Failed to parse index block file")
             return
 
+        if cacheBlock.version != 2:
+            log.error(" - Parsing CacheBlocks other than v2 is not supported")
+            return
+
         try:
             index = open(os.path.join(path, 'index'), 'rb')
         except:
@@ -1427,8 +1431,8 @@ class Chrome(WebBrowser):
                     # Checking if there is a next item in the bucket because
                     # such entries are not stored in the Index File so they will
                     # be ignored during iterative lookup in the hash table
-                    while entry.__next__ != 0:
-                        entry = CacheEntry(self.profile_path, CacheAddress(entry.__next__, path=path), row_type, self.timezone)
+                    while entry.next != 0:
+                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=path), row_type, self.timezone)
                         results.append(entry)
                 except Exception as e:
                     log.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
@@ -1498,8 +1502,8 @@ class Chrome(WebBrowser):
                     # Checking if there is a next item in the bucket because
                     # such entries are not stored in the Index File so they will
                     # be ignored during iterative lookup in the hash table
-                    while entry.__next__ != 0:
-                        entry = CacheEntry(self.profile_path, CacheAddress(entry.__next__, path=cache_path), row_type, self.timezone)
+                    while entry.next != 0:
+                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=cache_path), row_type, self.timezone)
                         cursor.execute('''SELECT url FROM Entries WHERE response_id=?''', [entry.key])
                         index_url = cursor.fetchone()
                         if index_url:
@@ -2246,36 +2250,36 @@ class CacheData:
 
         if isHTTPHeader and self.address.blockType != CacheAddress.SEPARATE_FILE:
             # Getting raw data
-            string = ""
+            block_bytes = b''
             block = open(os.path.join(self.address.path, self.address.fileSelector), 'rb')
 
             # Offset in file
             self.offset = 8192 + self.address.blockNumber*self.address.entrySize
             block.seek(self.offset)
             for _ in range(self.size):
-                string += struct.unpack('c', block.read(1))[0]
+                block_bytes += struct.unpack('c', block.read(1))[0]
             block.close()
 
             # Finding the beginning of the request
-            start = re.search("HTTP", string)
+            start = re.search(b'HTTP', block_bytes)
             if start is None:
                 return
             else:
-                string = string[start.start():]
+                block_bytes = block_bytes[start.start():]
 
             # Finding the end (some null characters : verified by experience)
-            end = re.search("\x00\x00", string)
+            end = re.search(b'\x00\x00', block_bytes)
             if end is None:
                 return
             else:
-                string = string[:end.end()-2]
+                block_bytes = block_bytes[:end.end()-2]
 
             # Creating the dictionary of headers
             self.headers = {}
-            for line in string.split('\0'):
-                stripped = line.split(':')
+            for line in block_bytes.split(b'\0'):
+                stripped = line.split(b':')
                 self.headers[stripped[0].lower()] = \
-                    ':'.join(stripped[1:]).strip()
+                    b':'.join(stripped[1:]).strip()
             self.type = CacheData.HTTP_HEADER
 
     def save(self, filename=None):
