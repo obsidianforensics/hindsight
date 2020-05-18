@@ -749,40 +749,18 @@ class Chrome(WebBrowser):
                     results.append(Chrome.LocalStorageItem(
                         self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value']))
 
-        # TODO: Rework this for py3 once you have access to an example
         # Chrome v60 and earlier used a SQLite file (with a .localstorage file ext) for each origin
         for ls_file in local_storage_listing:
-            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
-                    ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
+            if ls_file.startswith(('ftp', 'http', 'file', 'chrome-extension')) and ls_file.endswith('.localstorage'):
                 filtered_listing.append(ls_file)
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
-
-                def to_unicode(raw_data):
-                    if type(raw_data) in (int, int, float):
-                        return str(raw_data, 'utf-16', errors='replace')
-                    elif type(raw_data) is str:
-                        return raw_data
-                    elif type(raw_data) is buffer:
-                        try:
-                            # When Javascript uses localStorage, it saves everything in UTF-16
-                            uni = str(raw_data, 'utf-16', errors='replace')
-                            # However, some websites use custom compression to squeeze more data in, and just pretend
-                            # it's UTF-16, which can result in "characters" that are illegal in XML. We need to remove
-                            # these so Excel will be able to display the output.
-                            # TODO: complete work on decoding the compressed data
-                            return illegal_xml_re.sub('\ufffd', uni)
-
-                        except UnicodeDecodeError:
-                            return '<buffer decode error>'
-                    else:
-                        return '<unknown type decode error>'
 
                 # Connect to Local Storage file sqlite db
                 try:
                     db_file = sqlite3.connect(ls_file_path)
                 except Exception as e:
-                    log.warning(" - Error opening {}: {}".format(ls_file_path, e))
+                    log.warning(f' - Error opening {ls_file_path}: {e}')
                     break
 
                 # Use a dictionary cursor
@@ -792,117 +770,132 @@ class Chrome(WebBrowser):
                 try:
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
+                        try:
+                            printable_value = row.get('value', b'').decode('utf-16')
+                        except:
+                            printable_value = repr(row.get('value'))
+
                         results.append(Chrome.LocalStorageItem(
-                            self.profile_path, ls_file.decode(), utils.to_datetime(ls_created, self.timezone),
-                            row.get('key'), to_unicode(row.get('value'))))
+                            profile=self.profile_path, origin=ls_file[:-13], key=row.get('key', ''),
+                            value=printable_value,
+                            last_modified=utils.to_datetime(ls_created, self.timezone)))
                 except Exception as e:
-                    log.warning(" - Error reading key/values from {}: {}".format(ls_file_path, e))
+                    log.warning(f' - Error reading key/values from {ls_file_path}: {e}')
                     pass
 
         self.artifacts_counts['Local Storage'] = len(results)
-        log.info(" - Parsed {} items from {} files".format(len(results), len(filtered_listing)))
+        log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
         self.parsed_storage.extend(results)
 
     def get_extensions(self, path, dir_name):
         results = []
-        log.info("Extensions:")
+        log.info('Extensions:')
 
         # Profile folder
         try:
             profile = os.path.split(path)[1]
         except:
-            profile = "error"
+            profile = 'error'
 
         # Grab listing of 'Extensions' directory
         ext_path = os.path.join(path, dir_name)
-        log.info(" - Reading from {}".format(ext_path))
+        log.info(f' - Reading from {ext_path}')
         ext_listing = os.listdir(ext_path)
-        log.debug(" - {count} files in Extensions directory: {list}".format(list=str(ext_listing),
-                                                                            count=len(ext_listing)))
+        log.debug(f' - {len(ext_listing)} files in Extensions directory: {str(ext_listing)}')
 
         # Only process directories with the expected naming convention
         app_id_re = re.compile(r'^([a-z]{32})$')
         ext_listing = [x for x in ext_listing if app_id_re.match(x)]
-        log.debug(" - {count} files in Extensions directory will be processed: {list}".format(
-            list=str(ext_listing), count=len(ext_listing)))
+        log.debug(f' - {len(ext_listing)} files in Extensions directory will be processed: {str(ext_listing)}')
 
         # Process each directory with an app_id name
         for app_id in ext_listing:
             # Get listing of the contents of app_id directory; should contain subdirs for each version of the extension.
             ext_vers_listing = os.path.join(ext_path, app_id)
             ext_vers = os.listdir(ext_vers_listing)
+            manifest_file = None
+            selected_version = None
 
             # Connect to manifest.json in latest version directory
-            manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
-            try:
-                manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
-            except IOError:
-                log.error(" - Error opening {} for extension {}".format(manifest_path, app_id))
-                break
+            for version in sorted(ext_vers, reverse=True, key=lambda x: int(x.split('.', maxsplit=1)[0])):
+                manifest_path = os.path.join(ext_vers_listing, version, 'manifest.json')
+                try:
+                    manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
+                    selected_version = version
+                    break
+                except IOError:
+                    log.error(f' - Error opening {manifest_path} for extension {app_id}')
+                    continue
+
+            if not manifest_file:
+                log.error(f' - Error opening manifest info for extension {app_id}')
+                continue
 
             name = None
             description = None
 
-            if manifest_file:
-                try:
-                    decoded_manifest = json.loads(manifest_file.read())
-                    if decoded_manifest["name"][:2] == '__':
+            try:
+                decoded_manifest = json.loads(manifest_file.read())
+                if decoded_manifest['name'][:2] == '__':
+                    if decoded_manifest['default_locale']:
+                        locale_messages_path = os.path.join(
+                            ext_vers_listing, selected_version, '_locales', decoded_manifest['default_locale'],
+                            'messages.json')
+                        locale_messages_file = codecs.open(
+                            locale_messages_path, 'rb', encoding='utf-8', errors='replace')
+                        decoded_locale_messages = json.loads(locale_messages_file.read())
+
+                        try:
+                            name = decoded_locale_messages[decoded_manifest['name'][6:-2]]['message']
+                        except KeyError:
+                            try:
+                                name = decoded_locale_messages[decoded_manifest['name'][6:-2]].lower['message']
+                            except KeyError:
+                                try:
+                                    # Google Wallet / Chrome Payments is weird/hidden - name is saved different
+                                    # than other extensions
+                                    name = decoded_locale_messages['app_name']['message']
+                                except:
+                                    log.warning(f' - Error reading \'name\' for {app_id}')
+                                    name = '<error>'
+                else:
+                    try:
+                        name = decoded_manifest['name']
+                    except KeyError:
+                        name = None
+                        log.error(f' - Error reading \'name\' for {app_id}')
+
+                if "description" in list(decoded_manifest.keys()):
+                    if decoded_manifest["description"][:2] == '__':
                         if decoded_manifest["default_locale"]:
-                            locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
+                            locale_messages_path = os.path.join(ext_vers_listing, selected_version, '_locales',
                                                                 decoded_manifest["default_locale"], 'messages.json')
                             locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
                                                                errors='replace')
                             decoded_locale_messages = json.loads(locale_messages_file.read())
                             try:
-                                name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
+                                description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
                             except KeyError:
                                 try:
-                                    name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
+                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
                                 except KeyError:
                                     try:
                                         # Google Wallet / Chrome Payments is weird/hidden - name is saved different than other extensions
-                                        name = decoded_locale_messages["app_name"]["message"]
+                                        description = decoded_locale_messages["app_description"]["message"]
                                     except:
-                                        log.warning(" - Error reading 'name' for {}".format(app_id))
-                                        name = "<error>"
+                                        description = "<error>"
+                                        log.error(" - Error reading 'message' for {}".format(app_id))
                     else:
                         try:
-                            name = decoded_manifest["name"]
+                            description = decoded_manifest["description"]
                         except KeyError:
-                            name = None
-                            log.error(" - Error reading 'name' for {}".format(app_id))
+                            description = None
+                            log.warning(" - Error reading 'description' for {}".format(app_id))
 
-                    if "description" in list(decoded_manifest.keys()):
-                        if decoded_manifest["description"][:2] == '__':
-                            if decoded_manifest["default_locale"]:
-                                locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
-                                                                    decoded_manifest["default_locale"], 'messages.json')
-                                locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
-                                                                   errors='replace')
-                                decoded_locale_messages = json.loads(locale_messages_file.read())
-                                try:
-                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
-                                except KeyError:
-                                    try:
-                                        description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
-                                    except KeyError:
-                                        try:
-                                            # Google Wallet / Chrome Payments is weird/hidden - name is saved different than other extensions
-                                            description = decoded_locale_messages["app_description"]["message"]
-                                        except:
-                                            description = "<error>"
-                                            log.error(" - Error reading 'message' for {}".format(app_id))
-                        else:
-                            try:
-                                description = decoded_manifest["description"]
-                            except KeyError:
-                                description = None
-                                log.warning(" - Error reading 'description' for {}".format(app_id))
-
-                    results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest["version"]))
-                except:
-                    log.error(" - Error decoding manifest file for {}".format(app_id))
-                    pass
+                results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest["version"]))
+            except:
+                log.error(" - Error decoding manifest file for {}".format(app_id))
+                pass
 
         self.artifacts_counts['Extensions'] = len(results)
         log.info(" - Parsed {} items".format(len(results)))
@@ -948,7 +941,7 @@ class Chrome(WebBrowser):
                         'description': description})
 
             except Exception as e:
-                log.exception(" - Exception parsing Preference item: {})".format(e))
+                log.exception(f' - Exception parsing Preference item: {e}')
 
         def check_and_append_pref_and_children(parent, pref, value=None, description=None):
             # If the preference exists, continue
@@ -1094,23 +1087,17 @@ class Chrome(WebBrowser):
 
         results = []
         timestamped_preference_items = []
-        log.info("Preferences:")
-        prefs = None
+        log.info('Preferences:')
 
         # Open 'Preferences' file
         pref_path = os.path.join(path, preferences_file)
         try:
-            log.info(" - Reading from {}".format(pref_path))
+            log.info(f' - Reading from {pref_path}')
             pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
             prefs = json.loads(pref_file.read())
 
         except Exception as e:
             log.exception(f' - Error decoding Preferences file {pref_path}: {e}')
-            self.artifacts_counts[preferences_file] = 'Failed'
-            return
-
-        if not prefs:
-            log.error(" - Error loading Preferences file {}".format(pref_path))
             self.artifacts_counts[preferences_file] = 'Failed'
             return
 
@@ -1149,9 +1136,10 @@ class Chrome(WebBrowser):
             check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
             if prefs['browser'].get('clear_data'):
                 try:
-                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
-                                          description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
-                                                      "4: the beginning of time")
+                    check_and_append_pref(
+                        prefs['browser']['clear_data'], 'time_period',
+                        description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
+                                    "4: the beginning of time")
                     check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
                     check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
                     check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
@@ -1164,6 +1152,7 @@ class Chrome(WebBrowser):
 
         append_group('Per Host Zoom Levels', 'These settings persist even when the history is cleared, and may be '
                                              'useful in some cases.')
+
         # There are per_host_zoom_levels keys in at least two locations: profile.per_host_zoom_levels and
         # partition.per_host_zoom_levels.[integer].
         if prefs.get('profile'):
@@ -1305,7 +1294,7 @@ class Chrome(WebBrowser):
                 #     },
                 try:
                     if prefs['extensions']['autoupdate'].get('last_check'):
-                        pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
+                        pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=utils.to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
                                                           key="autoupdate.last_check [in {}.extensions]".format(preferences_file),
                                                           value=prefs['extensions']['autoupdate']['last_check'], interpretation="")
                         timestamped_preference_items.append(pref_item)
@@ -1319,7 +1308,7 @@ class Chrome(WebBrowser):
                 #     "signedin_time": "13196354823425155"
                 #  },
                 try:
-                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(prefs['signin']['signedin_time'], self.timezone),
+                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=utils.to_datetime(prefs['signin']['signedin_time'], self.timezone),
                                                       key="signedin_time [in {}.signin]".format(preferences_file),
                                                       value=prefs['signin']['signedin_time'], interpretation="")
                     timestamped_preference_items.append(pref_item)
@@ -1338,7 +1327,7 @@ class Chrome(WebBrowser):
                     if isinstance(timestamp, list):
                         timestamp = timestamp[0]
                     assert isinstance(timestamp, float)
-                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(timestamp, self.timezone),
+                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=utils.to_datetime(timestamp, self.timezone),
                                                       key="translate_last_denied_time_for_language [in {}]".format(preferences_file),
                                                       value="{}: {}".format(lang_code, timestamp),
                                                       interpretation="Declined to translate page from {}".format(expand_language_code(lang_code)))

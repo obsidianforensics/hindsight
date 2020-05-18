@@ -787,11 +787,7 @@ class AnalysisSession(object):
 
         s = workbook.add_worksheet('Storage')
         # Title bar
-        s.merge_range('A1:H1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
-        s.merge_range('I1:M1', 'URL Specific', center_header_format)
-        s.merge_range('N1:P1', 'Download Specific', center_header_format)
-        s.merge_range('Q1:R1', '', center_header_format)
-        s.merge_range('S1:U1', 'Cache Specific', center_header_format)
+        s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
 
         # Write column headers
         s.write(1, 0, 'Type', header_format)
@@ -809,7 +805,7 @@ class AnalysisSession(object):
         s.set_column('D:D', 60)  # Value
         s.set_column('E:E', 16)  # Mod Time
         s.set_column('F:F', 50)  # Interpretation
-        s.set_column('G:G', 12)  # Profile
+        s.set_column('G:G', 50)  # Profile
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
