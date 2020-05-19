@@ -6,11 +6,9 @@ import datetime
 import re
 import struct
 import json
-import codecs
 import logging
 import shutil
 from pyhindsight.browsers.webbrowser import WebBrowser
-# from pyhindsight.utils import friendly_date, to_datetime, get_ldb_pairs
 from pyhindsight import utils
 
 # Try to import optionally modules - do nothing on failure, as status is tracked elsewhere
@@ -693,8 +691,9 @@ class Chrome(WebBrowser):
         bookmarks_path = os.path.join(path, file)
 
         try:
-            bookmarks_file = codecs.open(bookmarks_path, 'rb', encoding='utf-8')
-            decoded_json = json.loads(bookmarks_file.read())
+            with open(bookmarks_path, encoding='utf-8', errors='replace') as f:
+                decoded_json = json.loads(f.read())
+
             log.info(" - Reading from file '{}'".format(bookmarks_path))
 
             # TODO: sync_id
@@ -715,7 +714,6 @@ class Chrome(WebBrowser):
                         process_bookmark_children(decoded_json["roots"][top_level_folder]["name"],
                                                   decoded_json["roots"][top_level_folder]["children"])
 
-            bookmarks_file.close()
             self.artifacts_counts['Bookmarks'] = len(results)
             log.info(" - Parsed {} items".format(len(results)))
             self.parsed_artifacts.extend(results)
@@ -820,14 +818,15 @@ class Chrome(WebBrowser):
             for version in sorted(ext_vers, reverse=True, key=lambda x: int(x.split('.', maxsplit=1)[0])):
                 manifest_path = os.path.join(ext_vers_listing, version, 'manifest.json')
                 try:
-                    manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
+                    with open(manifest_path, encoding='utf-8', errors='replace') as f:
+                        decoded_manifest = json.loads(f.read())
                     selected_version = version
                     break
-                except IOError:
-                    log.error(f' - Error opening {manifest_path} for extension {app_id}')
+                except (IOError, json.JSONDecodeError) as e:
+                    log.error(f' - Error opening {manifest_path} for extension {app_id}; {e}')
                     continue
 
-            if not manifest_file:
+            if not decoded_manifest:
                 log.error(f' - Error opening manifest info for extension {app_id}')
                 continue
 
@@ -835,15 +834,13 @@ class Chrome(WebBrowser):
             description = None
 
             try:
-                decoded_manifest = json.loads(manifest_file.read())
-                if decoded_manifest['name'][:2] == '__':
+                if decoded_manifest['name'].startswith('__'):
                     if decoded_manifest['default_locale']:
                         locale_messages_path = os.path.join(
                             ext_vers_listing, selected_version, '_locales', decoded_manifest['default_locale'],
                             'messages.json')
-                        locale_messages_file = codecs.open(
-                            locale_messages_path, 'rb', encoding='utf-8', errors='replace')
-                        decoded_locale_messages = json.loads(locale_messages_file.read())
+                        with open(locale_messages_path, encoding='utf-8', errors='replace') as f:
+                            decoded_locale_messages = json.loads(f.read())
 
                         try:
                             name = decoded_locale_messages[decoded_manifest['name'][6:-2]]['message']
@@ -865,40 +862,43 @@ class Chrome(WebBrowser):
                         name = None
                         log.error(f' - Error reading \'name\' for {app_id}')
 
-                if "description" in list(decoded_manifest.keys()):
-                    if decoded_manifest["description"][:2] == '__':
-                        if decoded_manifest["default_locale"]:
-                            locale_messages_path = os.path.join(ext_vers_listing, selected_version, '_locales',
-                                                                decoded_manifest["default_locale"], 'messages.json')
-                            locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
-                                                               errors='replace')
-                            decoded_locale_messages = json.loads(locale_messages_file.read())
+                if 'description' in list(decoded_manifest.keys()):
+                    if decoded_manifest['description'].startswith('__'):
+                        if decoded_manifest['default_locale']:
+                            locale_messages_path = os.path.join(
+                                ext_vers_listing, selected_version, '_locales', decoded_manifest['default_locale'],
+                                'messages.json')
+                            with open(locale_messages_path, encoding='utf-8', errors='replace') as f:
+                                decoded_locale_messages = json.loads(f.read())
+
                             try:
-                                description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
+                                description = decoded_locale_messages[decoded_manifest['description'][6:-2]]['message']
                             except KeyError:
                                 try:
-                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
+                                    description = decoded_locale_messages[
+                                        decoded_manifest['description'][6:-2]].lower['message']
                                 except KeyError:
                                     try:
-                                        # Google Wallet / Chrome Payments is weird/hidden - name is saved different than other extensions
-                                        description = decoded_locale_messages["app_description"]["message"]
+                                        # Google Wallet / Chrome Payments is weird/hidden - name is saved different
+                                        # than other extensions
+                                        description = decoded_locale_messages['app_description']['message']
                                     except:
-                                        description = "<error>"
-                                        log.error(" - Error reading 'message' for {}".format(app_id))
+                                        description = '<error>'
+                                        log.error(f' - Error reading \'message\' for {app_id}')
                     else:
                         try:
-                            description = decoded_manifest["description"]
+                            description = decoded_manifest['description']
                         except KeyError:
                             description = None
-                            log.warning(" - Error reading 'description' for {}".format(app_id))
+                            log.warning(f' - Error reading \'description\' for {app_id}')
 
-                results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest["version"]))
+                results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest['version']))
             except:
-                log.error(" - Error decoding manifest file for {}".format(app_id))
+                log.error(f' - Error decoding manifest file for {app_id}')
                 pass
 
         self.artifacts_counts['Extensions'] = len(results)
-        log.info(" - Parsed {} items".format(len(results)))
+        log.info(' - Parsed {} items'.format(len(results)))
         presentation = {'title': 'Installed Extensions',
                         'columns': [
                             {'display_name': 'Extension Name',
@@ -1093,8 +1093,8 @@ class Chrome(WebBrowser):
         pref_path = os.path.join(path, preferences_file)
         try:
             log.info(f' - Reading from {pref_path}')
-            pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
-            prefs = json.loads(pref_file.read())
+            with open(pref_path, encoding='utf-8', errors='replace') as f:
+                prefs = json.loads(f.read())
 
         except Exception as e:
             log.exception(f' - Error decoding Preferences file {pref_path}: {e}')
@@ -1426,6 +1426,8 @@ class Chrome(WebBrowser):
                 except Exception as e:
                     log.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
 
+        index.close()
+
         self.artifacts_counts[dir_name] = len(results)
         log.info(" - Parsed {} items".format(len(results)))
         self.parsed_artifacts.extend(results)
@@ -1501,6 +1503,7 @@ class Chrome(WebBrowser):
                 except Exception as e:
                     log.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
 
+        index.close()
         index_db.close()
 
         self.artifacts_counts[dir_name] = len(results)
@@ -1848,8 +1851,8 @@ class Chrome(WebBrowser):
             # Workaround to cap the version at 65 for Extension Cookies, as until that
             # point it has the same database format as Cookies
             ext_cookies_version = self.version
-            # if min(self.version) > 65:
-            #     ext_cookies_version.insert(0, 65)
+            if min(self.version) > 65:
+                ext_cookies_version.insert(0, 65)
 
             self.get_cookies(self.profile_path, 'Extension Cookies', ext_cookies_version)
             self.artifacts_display['Extension Cookies'] = "Extension Cookie records"
