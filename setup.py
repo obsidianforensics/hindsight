@@ -4,20 +4,21 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   scripts=['hindsight.py', 'hindsight_gui.py'],
-  version='2.4.0',
-  description='Internet history forensics for Google Chrome/Chromium',
+  version='20200607',
+  description='Browser forensics for Google Chrome/Chromium',
   url='https://github.com/obsidianforensics/hindsight',
   author='Ryan Benson',
   author_email='ryan@dfir.blog',
   license='Apache',
-  keywords=['chrome', 'forensics'],
+  keywords=['chrome', 'forensics', 'dfir', 'google-chrome', 'chromium'],
   classifiers=[],
   install_requires=[
-    'keyring>=9.0',
-    'pytz>=2016.4',
-    'pycryptodomex>=3.4.3',
-    'xlsxwriter>=0.8.4',
+    'bottle>=0.12.18',
+    'keyring>=21.2.1',
+    # 'plyvel>=1.2',
+    'pycryptodomex>=3.9.7',
     # 'pypiwin32>=219',
-    'bottle>=0.12.9'
+    'pytz>=2020.1',
+    'xlsxwriter>=1.2.9'
   ]
 )
