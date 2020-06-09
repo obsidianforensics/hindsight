@@ -29,8 +29,8 @@ class HindsightEncoder(json.JSONEncoder):
     @staticmethod
     def base_encoder(history_item):
         item = {'source_short': 'WEBHIST', 'source_long': 'Chrome History',
-                'parser': 'hindsight/{}'.format(__version__)}
-        for key, value in history_item.__dict__.items():
+                'parser': f'hindsight/{__version__}'}
+        for key, value in list(history_item.__dict__.items()):
             # Drop any keys that have None as value
             if value is None:
                 continue
@@ -39,8 +39,11 @@ class HindsightEncoder(json.JSONEncoder):
                 value = value.isoformat()
 
             # JSONL requires utf-8 encoding
-            if isinstance(value, str):
+            if isinstance(value, bytes) or isinstance(value, bytearray):
                 value = value.decode('utf-8', errors='replace')
+
+            if isinstance(key, bytes) or isinstance(key, bytearray):
+                key = key.decode('utf-8', errors='replace')
 
             item[key] = value
 
@@ -56,11 +59,10 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'Last Visited Time'
             item['data_type'] = 'chrome:history:page_visited'
             item['url_hidden'] = 'true' if item['hidden'] else 'false'
-            if item['visit_duration'] == u'None':
+            if item['visit_duration'] == 'None':
                 del (item['visit_duration'])
 
-            item['message'] = u'{} ({}) [count: {}]'.format(
-                item['url'], item['title'], item['visit_count'])
+            item['message'] = f"{item['url']} ({item['title']}) [count: {item['visit_count']}]"
 
             del(item['name'], item['row_type'], item['visit_time'],
                 item['last_visit_time'], item['hidden'])
@@ -72,10 +74,9 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'File Downloaded'
             item['data_type'] = 'chrome:history:file_downloaded'
 
-            item['message'] = u'{} ({}). Received {}/{} bytes'.format(
-                item['url'],
-                item['full_path'] if item.get('full_path') else item.get('target_path'),
-                item['received_bytes'], item['total_bytes'])
+            item['message'] = f"{item['url']} " \
+                              f"({item['full_path'] if item.get('full_path') else item.get('target_path')}). " \
+                              f"Received {item['received_bytes']}/{item['total_bytes']} bytes"
 
             del(item['row_type'], item['start_time'])
             return item
@@ -101,7 +102,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['httponly'] = 'true' if item['httponly'] else 'false'
             item['persistent'] = 'true' if item['persistent'] else 'false'
 
-            item['message'] = u'{} ({}) Flags: [HTTP only] = {} [Persistent] = {}'.format(
+            item['message'] = '{} ({}) Flags: [HTTP only] = {} [Persistent] = {}'.format(
                 item['url'],
                 item['cookie_name'],
                 item['httponly'], item['persistent'])
@@ -119,7 +120,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['usage_count'] = item['count']
             item['field_name'] = item['name']
 
-            item['message'] = u'{}: {} (times used: {})'.format(
+            item['message'] = '{}: {} (times used: {})'.format(
                 item['field_name'], item['value'], item['usage_count'])
 
             del(item['name'], item['row_type'], item['count'], item['date_created'])
@@ -132,7 +133,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:bookmark:entry'
             item['source_long'] = 'Chrome Bookmarks'
 
-            item['message'] = u'{} ({}) bookmarked in folder "{}"'.format(
+            item['message'] = '{} ({}) bookmarked in folder "{}"'.format(
                 item['name'], item['url'], item['parent_folder'])
 
             del(item['value'], item['row_type'], item['date_added'])
@@ -145,7 +146,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:bookmark:folder'
             item['source_long'] = 'Chrome Bookmarks'
 
-            item['message'] = u'"{}" bookmark folder created in folder "{}"'.format(
+            item['message'] = '"{}" bookmark folder created in folder "{}"'.format(
                 item['name'], item['parent_folder'])
 
             del(item['value'], item['row_type'], item['date_added'])
@@ -159,7 +160,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome LocalStorage'
             item['url'] = item['url'][1:]
 
-            item['message'] = u'key: {} value: {}'.format(
+            item['message'] = 'key: {} value: {}'.format(
                 item['key'], item['value'])
 
             del (item['row_type'])
@@ -173,7 +174,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Logins'
             item['usage_count'] = item['count']
 
-            item['message'] = u'{}: {} used on {} (total times used: {})'.format(
+            item['message'] = '{}: {} used on {} (total times used: {})'.format(
                 item['name'], item['value'], item['url'], item['usage_count'])
 
             del(item['row_type'], item['count'], item['date_created'])
@@ -186,7 +187,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:preferences:entry'
             item['source_long'] = 'Chrome Preferences'
 
-            item['message'] = u'Updated preference: {}: {})'.format(
+            item['message'] = 'Updated preference: {}: {})'.format(
                 item['key'], item['value'])
 
             del(item['row_type'], item['name'])
@@ -202,7 +203,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['cache_type'] = item['row_type']
             item['cached_state'] = item['name']
 
-            item['message'] = u'Original URL: {}'.format(
+            item['message'] = 'Original URL: {}'.format(
                 item['original_url'])
 
             del(item['row_type'], item['name'], item['timezone'])
@@ -210,11 +211,13 @@ class HindsightEncoder(json.JSONEncoder):
 
 
 class AnalysisSession(object):
-    def __init__(self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
-                 version=None, display_version=None, output_name=None, log_path=None, timezone=None,
-                 available_output_formats=None, selected_output_format=None, available_decrypts=None,
-                 selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
-                 plugin_descriptions=None, selected_plugins=None, plugin_results=None, hindsight_version=None, preferences=None):
+    def __init__(
+            self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
+            version=None, display_version=None, output_name=None, log_path=None, timezone=None,
+            available_output_formats=None, selected_output_format=None, available_decrypts=None,
+            selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
+            parsed_storage=None, plugin_descriptions=None, selected_plugins=None, plugin_results=None,
+            hindsight_version=None, preferences=None):
         self.input_path = input_path
         self.profile_paths = profile_paths
         self.cache_path = cache_path
@@ -232,6 +235,7 @@ class AnalysisSession(object):
         self.parsed_artifacts = parsed_artifacts
         self.artifacts_display = artifacts_display
         self.artifacts_counts = artifacts_counts
+        self.parsed_storage = parsed_storage
         self.plugin_descriptions = plugin_descriptions
         self.selected_plugins = selected_plugins
         self.plugin_results = plugin_results
@@ -249,6 +253,9 @@ class AnalysisSession(object):
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.available_output_formats is None:
             self.available_output_formats = ['sqlite', 'jsonl']
@@ -274,7 +281,7 @@ class AnalysisSession(object):
 
         # Set output name to default if not set by user
         if self.output_name is None:
-            self.output_name = "Hindsight Report ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
+            self.output_name = f'Hindsight Report ({time.strftime("%Y-%m-%dT%H-%M-%S")})'
 
         # Try to import modules for cookie decryption on different OSes.
         # Windows
@@ -303,7 +310,7 @@ class AnalysisSession(object):
     @staticmethod
     def sum_dict_counts(dict1, dict2):
         """Combine two dicts by summing the values of shared keys"""
-        for key, value in dict2.items():
+        for key, value in list(dict2.items()):
             # Case 1: dict2's value for key is a string (aka: it failed)
             if isinstance(value, str):
                 #  The value should only be non-int if it's a Failed message
@@ -340,9 +347,9 @@ class AnalysisSession(object):
         `existing_files`. Return True if all required files are present.
         """
         is_profile = True
-        for required_file in ['History', 'Cookies']:
+        for required_file in ['History']:
             # This approach (checking the file names) is naive but should work.
-            if required_file not in existing_files:
+            if required_file not in existing_files or not os.path.isfile(os.path.join(base_path, required_file)):
                 if warn:
                     log.warning("The profile directory {} does not contain the "
                                 "file {}. Analysis may not be very useful."
@@ -356,7 +363,7 @@ class AnalysisSession(object):
 
         try:
             base_dir_listing = os.listdir(base_path)
-        except Exception, e:
+        except Exception as e:
             log.warning('Exception reading directory {0:s}; possible permissions issue? Exception: {1:s}'
                         .format(base_path, e))
             return found_profile_paths
@@ -376,9 +383,12 @@ class AnalysisSession(object):
         found_profile_paths = []
         base_dir_listing = os.listdir(base_path)
 
-        # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
-        # Chrome analysis. Warn if they are not present.
-        if not self.is_profile(base_path, base_dir_listing, warn=True):
+        # The 'History' SQLite file is kind of the minimum required for most
+        # Chrome analysis. Warn if not present.
+        if self.is_profile(base_path, base_dir_listing, warn=True):
+            found_profile_paths.append(base_path)
+
+        else:
             # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
             found_profile_paths.extend(self.search_subdirs(base_path))
 
@@ -394,7 +404,7 @@ class AnalysisSession(object):
     def generate_display_version(self):
         self.version = sorted(self.version)
         if self.version[0] != self.version[-1]:
-            self.display_version = "%s-%s" % (self.version[0], self.version[-1])
+            self.display_version = f'{self.version[0]}-{self.version[-1]}'
         else:
             self.display_version = self.version[0]
 
@@ -437,6 +447,7 @@ class AnalysisSession(object):
                                           cache_path=self.cache_path, timezone=self.timezone)
                 browser_analysis.process()
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
+                self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.artifacts_counts = self.sum_dict_counts(self.artifacts_counts, browser_analysis.artifacts_counts)
                 self.artifacts_display = browser_analysis.artifacts_display
                 self.version.extend(browser_analysis.version)
@@ -447,15 +458,17 @@ class AnalysisSession(object):
                     if isinstance(browser_analysis.__dict__[item], dict):
                         try:
                             # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                            if browser_analysis.__dict__[item].get('presentation') and browser_analysis.__dict__[item].get('data'):
+                            if browser_analysis.__dict__[item].get('presentation') and \
+                                    browser_analysis.__dict__[item].get('data'):
                                 self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
                         except Exception as e:
-                            log.info("Exception occurred while analyzing {} for analysis session promotion: {}".format(item, e))
+                            log.info(f'Exception occurred while analyzing {item} for analysis session promotion: {e}')
 
             elif self.browser_type == "Brave":
                 browser_analysis = Brave(found_profile_path, timezone=self.timezone)
                 browser_analysis.process()
                 self.parsed_artifacts = browser_analysis.parsed_artifacts
+                self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.artifacts_counts = browser_analysis.artifacts_counts
                 self.artifacts_display = browser_analysis.artifacts_display
                 self.version = browser_analysis.version
@@ -465,10 +478,11 @@ class AnalysisSession(object):
                     if isinstance(browser_analysis.__dict__[item], dict):
                         try:
                             # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                            if browser_analysis.__dict__[item].get('presentation') and browser_analysis.__dict__[item].get('data'):
+                            if browser_analysis.__dict__[item].get('presentation') and \
+                                    browser_analysis.__dict__[item].get('data'):
                                 self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
                         except Exception as e:
-                            log.info("Exception occurred while analyzing {} for analysis session promotion: {}".format(item, e))
+                            log.info(f'Exception occurred while analyzing {item} for analysis session promotion: {e}')
 
         self.generate_display_version()
 
@@ -491,20 +505,20 @@ class AnalysisSession(object):
                     log.info(" - Loading '{}' [standard plugin]".format(plugin))
                     try:
                         module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
-                    except ImportError, e:
+                    except ImportError as e:
                         log.error(" - Error: {}".format(e))
-                        print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+                        print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
                         continue
                     try:
                         log.info(" - Running '{}' plugin".format(module.friendlyName))
                         parsed_items = module.plugin(self)
-                        print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                        print(format_plugin_output(module.friendlyName, module.version, parsed_items))
                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
                         log.info(" - Completed; {}".format(parsed_items))
                         completed_plugins.append(plugin)
                         break
-                    except Exception, e:
-                        print format_plugin_output(module.friendlyName, module.version, 'failed')
+                    except Exception as e:
+                        print(format_plugin_output(module.friendlyName, module.version, 'failed'))
                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
                         log.info(" - Failed; {}".format(e))
 
@@ -526,30 +540,30 @@ class AnalysisSession(object):
                                 if custom_plugin == plugin:
                                     # Check to see if we've already run this plugin (likely from a different path)
                                     if plugin in completed_plugins:
-                                        log.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
+                                        log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
                                         continue
 
                                     log.debug(" - Loading '{}' [custom plugin]".format(plugin))
                                     try:
                                         module = __import__(plugin)
-                                    except ImportError, e:
+                                    except ImportError as e:
                                         log.error(" - Error: {}".format(e))
-                                        print format_plugin_output(plugin, "-unknown", 'import failed (see log)')
+                                        print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
                                         continue
                                     try:
                                         log.info(" - Running '{}' plugin".format(module.friendlyName))
                                         parsed_items = module.plugin(self)
-                                        print format_plugin_output(module.friendlyName, module.version, parsed_items)
+                                        print(format_plugin_output(module.friendlyName, module.version, parsed_items))
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
                                         log.info(" - Completed; {}".format(parsed_items))
                                         completed_plugins.append(plugin)
-                                    except Exception, e:
-                                        print format_plugin_output(module.friendlyName, module.version, 'failed')
+                                    except Exception as e:
+                                        print(format_plugin_output(module.friendlyName, module.version, 'failed'))
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
                                         log.info(" - Failed; {}".format(e))
                     except Exception as e:
                         log.debug(' - Error loading plugins ({})'.format(e))
-                        print '  - Error loading plugins'
+                        print('  - Error loading plugins')
                     finally:
                         # Remove the current plugin location from the system path, so we don't loop over it again
                         sys.path.remove(potential_plugin_path)
@@ -557,7 +571,7 @@ class AnalysisSession(object):
     def generate_excel(self, output_object):
         import xlsxwriter
         workbook = xlsxwriter.Workbook(output_object, {'in_memory': True})
-        w = workbook.add_worksheet(u'Timeline')
+        w = workbook.add_worksheet('Timeline')
 
         # Define cell formats
         title_header_format = workbook.add_format({'font_color': 'white', 'bg_color': 'gray', 'bold': 'true'})
@@ -594,34 +608,34 @@ class AnalysisSession(object):
         blue_value_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
 
         # Title bar
-        w.merge_range('A1:H1', u'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
-        w.merge_range('I1:M1', u'URL Specific', center_header_format)
-        w.merge_range('N1:P1', u'Download Specific', center_header_format)
-        w.merge_range('Q1:R1', u'', center_header_format)
-        w.merge_range('S1:U1', u'Cache Specific', center_header_format)
+        w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
+        w.merge_range('I1:M1', 'URL Specific', center_header_format)
+        w.merge_range('N1:P1', 'Download Specific', center_header_format)
+        w.merge_range('Q1:R1', '', center_header_format)
+        w.merge_range('S1:U1', 'Cache Specific', center_header_format)
 
         # Write column headers
-        w.write(1, 0, u'Type', header_format)
-        w.write(1, 1, u'Timestamp ({})'.format(self.timezone), header_format)
-        w.write(1, 2, u'URL', header_format)
-        w.write(1, 3, u'Title / Name / Status', header_format)
-        w.write(1, 4, u'Data / Value / Path', header_format)
-        w.write(1, 5, u'Interpretation', header_format)
-        w.write(1, 6, u'Profile', header_format)
-        w.write(1, 7, u'Source', header_format)
-        w.write(1, 8, u'Duration', header_format)
-        w.write(1, 9, u'Visit Count', header_format)
-        w.write(1, 10, u'Typed Count', header_format)
-        w.write(1, 11, u'URL Hidden', header_format)
-        w.write(1, 12, u'Transition', header_format)
-        w.write(1, 13, u'Interrupt Reason', header_format)
-        w.write(1, 14, u'Danger Type', header_format)
-        w.write(1, 15, u'Opened?', header_format)
-        w.write(1, 16, u'ETag', header_format)
-        w.write(1, 17, u'Last Modified', header_format)
-        w.write(1, 18, u'Server Name', header_format)
-        w.write(1, 19, u'Data Location [Offset]', header_format)
-        w.write(1, 20, u'All HTTP Headers', header_format)
+        w.write(1, 0, 'Type', header_format)
+        w.write(1, 1, 'Timestamp ({})'.format(self.timezone), header_format)
+        w.write(1, 2, 'URL', header_format)
+        w.write(1, 3, 'Title / Name / Status', header_format)
+        w.write(1, 4, 'Data / Value / Path', header_format)
+        w.write(1, 5, 'Interpretation', header_format)
+        w.write(1, 6, 'Profile', header_format)
+        w.write(1, 7, 'Source', header_format)
+        w.write(1, 8, 'Duration', header_format)
+        w.write(1, 9, 'Visit Count', header_format)
+        w.write(1, 10, 'Typed Count', header_format)
+        w.write(1, 11, 'URL Hidden', header_format)
+        w.write(1, 12, 'Transition', header_format)
+        w.write(1, 13, 'Interrupt Reason', header_format)
+        w.write(1, 14, 'Danger Type', header_format)
+        w.write(1, 15, 'Opened?', header_format)
+        w.write(1, 16, 'ETag', header_format)
+        w.write(1, 17, 'Last Modified', header_format)
+        w.write(1, 18, 'Server Name', header_format)
+        w.write(1, 19, 'Data Location [Offset]', header_format)
+        w.write(1, 20, 'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -690,9 +704,9 @@ class AnalysisSession(object):
                     w.write(row_number, 14, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
-                        open_friendly = u'Yes'
+                        open_friendly = 'Yes'
                     elif item.opened == 0:
-                        open_friendly = u'No'
+                        open_friendly = 'No'
                     w.write_string(row_number, 15, open_friendly, green_value_format)  # opened
                     w.write(row_number, 16, item.etag, green_value_format)  # ETag
                     w.write(row_number, 17, item.last_modified, green_value_format)  # Last Modified
@@ -726,8 +740,8 @@ class AnalysisSession(object):
                     w.write(row_number, 1, friendly_date(item.timestamp), gray_date_format)  # date
                     try:
                         w.write_string(row_number, 2, item.url, gray_url_format)  # URL
-                    except Exception, e:
-                        print e, item.url, item.location
+                    except Exception as e:
+                        print(e, item.url, item.location)
                     w.write_string(row_number, 3, str(item.name), gray_field_format)  # cached status // Normal (data cached)
                     w.write_string(row_number, 4, item.value, gray_value_format)  # content-type (size) // image/jpeg (2035 bytes)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
@@ -764,14 +778,67 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
-            except Exception, e:
-                log.error("Failed to write row to XLSX: {}".format(e))
+            except Exception as e:
+                log.error(f'Failed to write row to XLSX: {e}')
 
             row_number += 1
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
         w.autofilter(1, 0, row_number, 19)  # Add autofilter
+
+        s = workbook.add_worksheet('Storage')
+        # Title bar
+        s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+
+        # Write column headers
+        s.write(1, 0, 'Type', header_format)
+        s.write(1, 1, 'Origin', header_format)
+        s.write(1, 2, 'Key', header_format)
+        s.write(1, 3, 'Value', header_format)
+        s.write(1, 4, 'Modification Time ({})'.format(self.timezone), header_format)
+        s.write(1, 5, 'Interpretation', header_format)
+        s.write(1, 6, 'Profile', header_format)
+ 
+        # Set column widths
+        s.set_column('A:A', 16)  # Type
+        s.set_column('B:B', 30)  # Origin
+        s.set_column('C:C', 35)  # Key
+        s.set_column('D:D', 60)  # Value
+        s.set_column('E:E', 16)  # Mod Time
+        s.set_column('F:F', 50)  # Interpretation
+        s.set_column('G:G', 50)  # Profile
+
+        # Start at the row after the headers, and begin writing out the items in parsed_artifacts
+        row_number = 2
+        for item in self.parsed_storage:
+            try:
+                if item.row_type.startswith("file system"):
+                    s.write_string(row_number, 0, item.row_type, black_type_format)
+                    s.write_string(row_number, 1, item.origin, black_url_format)
+                    s.write_string(row_number, 2, item.key, black_field_format)
+                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+
+                elif item.row_type.startswith("local storage"):
+                    s.write_string(row_number, 0, item.row_type, black_type_format)
+                    s.write_string(row_number, 1, item.origin, black_url_format)
+                    s.write_string(row_number, 2, item.key, black_field_format)
+                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+
+            except Exception as e:
+                log.error(f'Failed to write row to XLSX: {e}')
+
+            row_number += 1
+
+        # Formatting
+        s.freeze_panes(2, 0)  # Freeze top row
+        s.autofilter(1, 0, row_number, 6)  # Add autofilter
 
         for item in self.__dict__:
             try:
@@ -782,7 +849,7 @@ class AnalysisSession(object):
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += " (v{})".format(d['presentation']['version'])
-                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, "{}".format(title), title_header_format)
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
                         # print column
                         p.write(1, counter, column['display_name'], header_format)
@@ -814,9 +881,8 @@ class AnalysisSession(object):
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += " (v{})".format(d['presentation']['version'])
-                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, "{}".format(title), title_header_format)
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
-                        # print column
                         p.write(1, counter, column['display_name'], header_format)
                         if 'display_width' in column:
                             p.set_column(counter, counter, column['display_width'])
@@ -842,89 +908,125 @@ class AnalysisSession(object):
     def generate_sqlite(self, output_file_path='.temp_db'):
 
         output_db = sqlite3.connect(output_file_path)
-        output_db.text_factory = lambda x: unicode(x, 'utf-8', 'ignore')
+        output_db.text_factory = lambda x: str(x, 'utf-8', 'ignore')
 
         with output_db:
             c = output_db.cursor()
-            c.execute("CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, "
-                      "interpretation TEXT, profile TEXT, source TEXT, visit_duration TEXT, visit_count INT, typed_count INT, "
-                      "url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, "
-                      "last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)")
+            c.execute(
+                'CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, '
+                'interpretation TEXT, profile TEXT, source TEXT, visit_duration TEXT, visit_count INT, '
+                'typed_count INT, url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, '
+                'opened INT, etag TEXT, last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)')
 
-            c.execute("CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, profile TEXT)")
+            c.execute(
+                'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, modification_time TEXT, '
+                'interpretation TEXT, profile TEXT)')
+
+            c.execute(
+                'CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, '
+                'profile TEXT)')
 
             for item in self.parsed_artifacts:
-                if item.row_type.startswith("url"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source, visit_duration, visit_count, "
-                              "typed_count, url_hidden, transition) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, item.profile,
-                               item.visit_source, item.visit_duration, item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+                if item.row_type.startswith('url'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source, '
+                        'visit_duration, visit_count, typed_count, url_hidden, transition) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, 
+                         item.profile, item.visit_source, item.visit_duration, item.visit_count, item.typed_count, 
+                         item.hidden, item.transition_friendly))
 
-                elif item.row_type.startswith("autofill"):
-                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation, item.profile))
+                elif item.row_type.startswith('autofill'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation,
+                         item.profile))
 
-                elif item.row_type.startswith("download"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, "
-                              "interrupt_reason, danger_type, opened, etag, last_modified) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
-                               item.interpretation, item.profile, item.interrupt_reason_friendly, item.danger_type_friendly,
-                               item.opened, item.etag, item.last_modified))
+                elif item.row_type.startswith('download'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, '
+                        'interrupt_reason, danger_type, opened, etag, last_modified) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
+                         item.interpretation, item.profile, item.interrupt_reason_friendly, item.danger_type_friendly,
+                         item.opened, item.etag, item.last_modified))
 
-                elif item.row_type.startswith("bookmark folder"):
-                    c.execute("INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) "
-                              "VALUES (?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.name, item.value,
-                               item.interpretation, item.profile))
+                elif item.row_type.startswith('bookmark folder'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.name, item.value,
+                         item.interpretation, item.profile))
 
-                elif item.row_type.startswith("bookmark"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation, item.profile))
+                elif item.row_type.startswith('bookmark'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                         item.interpretation, item.profile))
 
-                elif item.row_type.startswith("cookie"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation, item.profile))
+                elif item.row_type.startswith('cookie'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                         item.interpretation, item.profile))
 
-                elif item.row_type.startswith("local storage"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation, item.profile))
+                elif item.row_type.startswith('local storage'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                        item.interpretation, item.profile))
 
-                elif item.row_type.startswith("cache"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, "
-                              "etag, last_modified, server_name, data_location)"
-                              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, str(item.name), item.value,
-                               item.interpretation, item.profile, item.etag, item.last_modified, item.server_name, item.location))
+                elif item.row_type.startswith('cache'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, '
+                        'etag, last_modified, server_name, data_location)'
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, str(item.name), item.value,
+                         item.interpretation, item.profile, item.etag, item.last_modified, item.server_name,
+                         item.location))
 
-                elif item.row_type.startswith("login"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation, item.profile))
+                elif item.row_type.startswith('login'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                         item.interpretation, item.profile))
 
-                elif item.row_type.startswith("preference"):
-                    c.execute("INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) "
-                              "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                              (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                               item.interpretation, item.profile))
+                elif item.row_type.startswith('preference'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                         item.interpretation, item.profile))
 
-            if self.__dict__.get("installed_extensions"):
+            for item in self.parsed_storage:
+                if item.row_type.startswith('local'):
+                    c.execute(
+                        'INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation,
+                         item.profile))
+
+                if item.row_type.startswith('file system'):
+                    c.execute(
+                        'INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation,
+                         item.profile))
+
+            if self.__dict__.get('installed_extensions'):
                 for extension in self.installed_extensions['data']:
-                    c.execute("INSERT INTO installed_extensions (name, description, version, app_id, profile) "
-                              "VALUES (?, ?, ?, ?, ?)",
-                              (extension.name, extension.description, extension.version, extension.app_id, extension.profile))
+                    c.execute(
+                        'INSERT INTO installed_extensions (name, description, version, app_id, profile) '
+                        'VALUES (?, ?, ?, ?, ?)',
+                        (extension.name, extension.description, extension.version, extension.app_id, extension.profile))
 
     def generate_jsonl(self, output_file):
-        with open(output_file, mode='wb') as jsonl:
+        with open(output_file, mode='w') as jsonl:
             for parsed_artifact in self.parsed_artifacts:
                 parsed_artifact_json = json.dumps(parsed_artifact, cls=HindsightEncoder)
                 jsonl.write(parsed_artifact_json)

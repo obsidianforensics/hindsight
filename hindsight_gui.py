@@ -35,12 +35,12 @@ def get_plugins_info():
             description['version'] = module.version
             try:
                 module.plugin()
-            except ImportError, e:
+            except ImportError as e:
                 description['error'] = 'import'
                 description['error_msg'] = e
                 continue
 
-        except Exception, e:
+        except Exception as e:
             description['error'] = 'other'
             description['error_msg'] = e
             continue
@@ -83,12 +83,12 @@ def get_plugins_info():
                             description['version'] = module.version
                             try:
                                 module.plugin()
-                            except ImportError, e:
+                            except ImportError as e:
                                 description['error'] = 'import'
                                 description['error_msg'] = e
                                 continue
 
-                        except Exception, e:
+                        except Exception as e:
                             description['error'] = 'other'
                             description['error_msg'] = e
                             continue
@@ -99,7 +99,7 @@ def get_plugins_info():
 
             except Exception as e:
                 # log.debug(' - Error loading plugins ({})'.format(e))
-                print '  - Error loading plugins'
+                print('  - Error loading plugins')
             finally:
                 # Remove the current plugin location from the system path, so we don't loop over it again
                 sys.path.remove(potential_plugin_path)
@@ -179,9 +179,10 @@ def generate_sqlite():
         # temp file deletion failed
         pass
 
+    import io
+    str_io = io.BytesIO()
     analysis_session.generate_sqlite(temp_output)
-    import StringIO
-    str_io = StringIO.StringIO()
+
     with open(temp_output, 'rb') as f:
         str_io.write(f.read())
 
@@ -199,18 +200,20 @@ def generate_sqlite():
 
 @bottle.route('/xlsx')
 def generate_xlsx():
-    import StringIO
-    strIO = StringIO.StringIO()
-    analysis_session.generate_excel(strIO)
-    # strIO.write()
-    strIO.seek(0)
-    bottle.response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
-    bottle.response.headers['Content-Disposition'] = 'attachment; filename="{}.xlsx"'.format(analysis_session.output_name)
-    return strIO.read()
+    import io
+    string_buffer = io.BytesIO()
+    analysis_session.generate_excel(string_buffer)
+    string_buffer.seek(0)
+
+    bottle.response.headers['Content-Type'] = \
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
+    bottle.response.headers['Content-Disposition'] = f'attachment; filename="{analysis_session.output_name}.xlsx"'
+    return string_buffer
 
 
 @bottle.route('/jsonl')
 def generate_jsonl():
+    # TODO: there has to be a way to do this without making a temp file...
     temp_output = '.tempjsonl'
     try:
         os.remove(temp_output)
@@ -219,10 +222,11 @@ def generate_jsonl():
         pass
 
     analysis_session.generate_jsonl(temp_output)
-    import StringIO
-    str_io = StringIO.StringIO()
+    import io
+    string_buffer = io.BytesIO()
+
     with open(temp_output, 'rb') as f:
-        str_io.write(f.read())
+        string_buffer.write(f.read())
 
     try:
         os.remove(temp_output)
@@ -231,9 +235,9 @@ def generate_jsonl():
         pass
 
     bottle.response.headers['Content-Type'] = 'application/json; charset=UTF-8'
-    bottle.response.headers['Content-Disposition'] = 'attachment; filename={}.jsonl'.format(analysis_session.output_name)
-    str_io.seek(0)
-    return str_io.read()
+    bottle.response.headers['Content-Disposition'] = f'attachment; filename={analysis_session.output_name}.jsonl'
+    string_buffer.seek(0)
+    return string_buffer
 
 
 def main():

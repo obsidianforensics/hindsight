@@ -7,9 +7,10 @@ log = logging.getLogger(__name__)
 
 
 class WebBrowser(object):
-    def __init__(self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
-                 timezone=None, structure=None, parsed_artifacts=None, artifacts_counts=None,
-                 artifacts_display=None, preferences=None):
+    def __init__(
+            self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
+            timezone=None, structure=None, parsed_artifacts=None, parsed_storage=None, artifacts_counts=None,
+            artifacts_display=None, preferences=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -18,6 +19,7 @@ class WebBrowser(object):
         self.timezone = timezone
         self.structure = structure
         self.parsed_artifacts = parsed_artifacts
+        self.parsed_storage = parsed_storage
         self.artifacts_counts = artifacts_counts
         self.artifacts_display = artifacts_display
         self.preferences = preferences
@@ -27,6 +29,9 @@ class WebBrowser(object):
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
@@ -55,7 +60,7 @@ class WebBrowser(object):
 
     def build_structure(self, path, database):
 
-        if database not in self.structure.keys():
+        if database not in list(self.structure.keys()):
             self.structure[database] = {}
 
             # Connect to SQLite db
@@ -64,7 +69,7 @@ class WebBrowser(object):
                 db = sqlite3.connect(database_path)
                 cursor = db.cursor()
             except sqlite3.OperationalError:
-                print "Not a database"
+                print("Not a database")
                 return
 
             # Find the names of each table in the db
@@ -72,9 +77,9 @@ class WebBrowser(object):
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 tables = cursor.fetchall()
             except sqlite3.OperationalError:
-                print "\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files " \
-                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local " \
-                      "Chrome installation while it is running.  Please close Chrome and try again."
+                print("\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files "
+                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local "
+                      "Chrome installation while it is running.  Please close Chrome and try again.")
                 sys.exit(1)
             except:
                 log.error(" - Couldn't connect to {}".format(database_path))
@@ -114,9 +119,10 @@ class WebBrowser(object):
             return iter(self.__dict__)
 
     class URLItem(HistoryItem):
-        def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
-                     transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
-                     transition_friendly=None):
+        def __init__(
+                self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
+                transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
+                transition_friendly=None):
             super(WebBrowser.URLItem, self).__init__('url', timestamp=visit_time, profile=profile, url=url, name=title)
             self.profile = profile
             self.url_id = url_id
@@ -136,11 +142,12 @@ class WebBrowser(object):
             self.transition_friendly = transition_friendly
 
     class DownloadItem(HistoryItem):
-        def __init__(self, profile, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
-                     end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
-                     interrupt_reason=None, etag=None, last_modified=None, chain_index=None, interrupt_reason_friendly=None,
-                     danger_type_friendly=None, state_friendly=None, status_friendly=None):
-            super(WebBrowser.DownloadItem, self).__init__(u'download', timestamp=start_time, profile=profile, url=url)
+        def __init__(
+                self, profile, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
+                end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
+                interrupt_reason=None, etag=None, last_modified=None, chain_index=None, interrupt_reason_friendly=None,
+                danger_type_friendly=None, state_friendly=None, status_friendly=None):
+            super(WebBrowser.DownloadItem, self).__init__('download', timestamp=start_time, profile=profile, url=url)
             self.profile = profile
             self.download_id = download_id
             self.url = url
@@ -166,7 +173,8 @@ class WebBrowser(object):
     class CookieItem(HistoryItem):
         def __init__(self, profile, host_key, path, name, value, creation_utc, last_access_utc, secure, http_only,
                      persistent=None, has_expires=None, expires_utc=None, priority=None):
-            super(WebBrowser.CookieItem, self).__init__('cookie', timestamp=creation_utc, profile=profile, url=host_key, name=name, value=value)
+            super(WebBrowser.CookieItem, self).__init__(
+                'cookie', timestamp=creation_utc, profile=profile, url=host_key, name=name, value=value)
             self.profile = profile
             self.host_key = host_key
             self.path = path
@@ -183,7 +191,8 @@ class WebBrowser(object):
 
     class AutofillItem(HistoryItem):
         def __init__(self, profile, date_created, name, value, count):
-            super(WebBrowser.AutofillItem, self).__init__(u'autofill', timestamp=date_created, profile=profile, name=name, value=value)
+            super(WebBrowser.AutofillItem, self).__init__(
+                'autofill', timestamp=date_created, profile=profile, name=name, value=value)
             self.profile = profile
             self.date_created = date_created
             self.name = name
@@ -192,7 +201,8 @@ class WebBrowser(object):
 
     class BookmarkItem(HistoryItem):
         def __init__(self, profile, date_added, name, url, parent_folder, sync_transaction_version=None):
-            super(WebBrowser.BookmarkItem, self).__init__(u'bookmark', timestamp=date_added, profile=profile, name=name, value=parent_folder)
+            super(WebBrowser.BookmarkItem, self).__init__(
+                'bookmark', timestamp=date_added, profile=profile, name=name, value=parent_folder)
             self.profile = profile
             self.date_added = date_added
             self.name = name
@@ -202,22 +212,14 @@ class WebBrowser(object):
 
     class BookmarkFolderItem(HistoryItem):
         def __init__(self, profile, date_added, date_modified, name, parent_folder, sync_transaction_version=None):
-            super(WebBrowser.BookmarkFolderItem, self).__init__(u'bookmark folder', timestamp=date_added, profile=profile, name=name, value=parent_folder)
+            super(WebBrowser.BookmarkFolderItem, self).__init__(
+                'bookmark folder', timestamp=date_added, profile=profile, name=name, value=parent_folder)
             self.profile = profile
             self.date_added = date_added
             self.date_modified = date_modified
             self.name = name
             self.parent_folder = parent_folder
             self.sync_transaction_version = sync_transaction_version
-
-    class LocalStorageItem(HistoryItem):
-        def __init__(self, profile, url, date_created, key, value):
-            super(WebBrowser.LocalStorageItem, self).__init__(u'local storage', timestamp=date_created, profile=profile, name=key, value=value)
-            self.profile = profile
-            self.url = url
-            self.date_created = date_created
-            self.key = key
-            self.value = value
 
     class BrowserExtension(object):
         def __init__(self, profile, app_id, name, description, version):
@@ -229,7 +231,8 @@ class WebBrowser(object):
 
     class LoginItem(HistoryItem):
         def __init__(self, profile, date_created, url, name, value, count):
-            super(WebBrowser.LoginItem, self).__init__(u'login', timestamp=date_created, profile=profile, url=url, name=name, value=value)
+            super(WebBrowser.LoginItem, self).__init__(
+                'login', timestamp=date_created, profile=profile, url=url, name=name, value=value)
             self.profile = profile
             self.date_created = date_created
             self.url = url
@@ -239,10 +242,60 @@ class WebBrowser(object):
 
     class PreferenceItem(HistoryItem):
         def __init__(self, profile, url, timestamp, key, value, interpretation):
-            super(WebBrowser.PreferenceItem, self).__init__(u'preference', timestamp=timestamp, profile=profile, name=key, value=value)
+            super(WebBrowser.PreferenceItem, self).__init__(
+                'preference', timestamp=timestamp, profile=profile, name=key, value=value)
             self.profile = profile
             self.url = url
             self.timestamp = timestamp
             self.key = key
             self.value = value
             self.interpretation = interpretation
+
+    class StorageItem(object):
+        def __init__(self, item_type, profile, origin, key, value=None, last_modified=None, interpretation=None):
+            self.row_type = item_type
+            self.profile = profile
+            self.origin = origin
+            self.key = key
+            self.value = value
+            self.last_modified = last_modified
+            self.interpretation = interpretation
+
+        def __lt__(self, other):
+            return self.origin < other.origin
+
+        def __iter__(self):
+            return iter(self.__dict__)
+
+    class LocalStorageItem(StorageItem):
+        def __init__(self, profile, origin, key, value, last_modified=None):
+            """
+
+            :param profile: The path to the browser profile this item is part of.
+            :param origin: The web origin this LocalStorage item belongs to.
+            :param key: The key of the LocalStorage item.
+            :param value: The value of the LocalStorage item. It will be rendered in UTF-16 if possible; if not, it
+            will be shown as a string repr of bytes.
+            :param last_modified: Approximation of time content under this origin was last modified.
+            If the LocalStorage items were stored in SQLite, this timestamp is when that SQLite file was last modified.
+            This means copying the file or otherwise altering the LocalStorage SQLite file's metadata will change this
+            value.
+            If the LocalStorage items were stored in LevelDB, this will be blank.
+            """
+            super(WebBrowser.LocalStorageItem, self).__init__(
+                'local storage', profile=profile, origin=origin, key=key, value=value, last_modified=last_modified)
+            self.profile = profile
+            self.origin = origin
+            self.key = key
+            self.value = value
+            self.last_modified = last_modified
+
+    class FileSystemItem(StorageItem):
+        def __init__(self, profile, origin, key, value, last_modified=None):
+            super(WebBrowser.FileSystemItem, self).__init__(
+                'file system', profile=profile, origin=origin, key=key, value=value, last_modified=last_modified)
+            self.profile = profile
+            self.origin = origin
+            self.key = key
+            self.value = value
+            self.last_modified = last_modified

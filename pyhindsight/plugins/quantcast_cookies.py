@@ -30,12 +30,12 @@ def plugin(analysis_session=None):
 
     for item in analysis_session.parsed_artifacts:
         if item.row_type in artifactTypes:
-            if item.name == u'__qca':
+            if item.name == '__qca':
                 m = re.search(timestamp_re, item.value)
                 if m:
                     item.interpretation = friendly_date(int(m.group(3))) \
-                                          + u' [Quantcast Cookie Timestamp]'
+                                          + ' [Quantcast Cookie Timestamp]'
                     parsedItems += 1
 
     # Description of what the plugin did
-    return u"{} cookies parsed".format(parsedItems)
+    return "{} cookies parsed".format(parsedItems)

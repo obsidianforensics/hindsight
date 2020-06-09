@@ -72,29 +72,29 @@ def plugin(analysis_session=None):
 
     for item in analysis_session.parsed_artifacts:
         if item.row_type.startswith(artifactTypes):
-            if item.row_type == u'cookie (created)':
+            if item.row_type == 'cookie (created)':
                 for site in cookie_set:
-                    if item.url in site or site.keys()[0] == '*':
-                        if site[site.keys()[0]]['name'] == item.name:
-                            m = re.search(site[site.keys()[0]]['regex'], item.value)
+                    if item.url in site or list(site.keys())[0] == '*':
+                        if site[list(site.keys())[0]]['name'] == item.name:
+                            m = re.search(site[list(site.keys())[0]]['regex'], item.value)
                             if m:
                                 server = to_datetime(m.group(1), pytz.utc)
                                 local = item.timestamp
                                 delta = abs(server - local)
-                                item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
-                                                      u'Difference: {} [Time Discrepancy]'.format(server, local, delta)
+                                item.interpretation = 'Server-side Timestamp: {} | Local Timestamp: {} | ' \
+                                                      'Difference: {} [Time Discrepancy]'.format(server, local, delta)
                                 parsedItems += 1
 
-            elif item.row_type == u'url' or item.row_type == u'url (archived)':
+            elif item.row_type == 'url' or item.row_type == 'url (archived)':
                 for site in url_set:
                     m = re.search(site, item.url)
                     if m:
                         server = to_datetime(m.group(1), pytz.utc)
                         local = item.timestamp
                         delta = abs(server - local)
-                        item.interpretation = u'Server-side Timestamp: {} | Local Timestamp: {} | ' \
-                                              u'Difference: {} [Time Discrepancy]'.format(server, local, delta)
+                        item.interpretation = 'Server-side Timestamp: {} | Local Timestamp: {} | ' \
+                                              'Difference: {} [Time Discrepancy]'.format(server, local, delta)
                         parsedItems += 1
 
     # Description of what the plugin did
-    return u"{} differences parsed".format(parsedItems)
+    return "{} differences parsed".format(parsedItems)
