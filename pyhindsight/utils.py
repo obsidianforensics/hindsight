@@ -101,9 +101,9 @@ def get_ldb_pairs(ldb_path, prefix=''):
     filtered by a prefix string. Key and value are kept as byte strings """
 
     try:
-        import leveldb
+        import plyvel
     except ImportError:
-        log.warning(f'Failed to import leveldb; unable to process {ldb_path}')
+        log.warning(f' - Failed to import plyvel; unable to process {ldb_path}')
         return []
 
     # The ldb key and value are both bytearrays, so the prefix must be too. We allow
@@ -112,13 +112,13 @@ def get_ldb_pairs(ldb_path, prefix=''):
         prefix = prefix.encode()
 
     try:
-        db = leveldb.LevelDB(ldb_path, create_if_missing=False)
+        db = plyvel.DB(ldb_path, create_if_missing=False)
     except Exception as e:
         log.warning(f' - Couldn\'t open {ldb_path} as LevelDB; {e}')
         return []
 
     cleaned_pairs = []
-    pairs = list(db.RangeIter())
+    pairs = list(db.iterator())
     for pair in pairs:
         # Each leveldb pair should be a tuple of length 2 (key & value); if not, log it and skip it.
         if not isinstance(pair, tuple) or len(pair) is not 2:

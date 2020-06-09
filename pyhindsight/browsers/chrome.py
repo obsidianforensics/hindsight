@@ -1653,10 +1653,10 @@ class Chrome(WebBrowser):
 
     def get_file_system(self, path, dir_name):
         try:
-            import leveldb
+            import plyvel
         except ImportError:
             self.artifacts_counts['File System'] = 'Failed'
-            log.info('File System: Failed to parse; couldn\'t import leveldb.')
+            log.info('File System: Failed to parse; couldn\'t import plyvel.')
             return
 
         result_list = []
