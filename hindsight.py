@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """Hindsight - Internet history forensics for Google Chrome/Chromium.
 
@@ -24,8 +24,8 @@ import time
 try:
     import pytz
 except ImportError:
-    print(("Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({})."
-          .format(time.tzname[time.daylight])))
+    print(f'Couldn\'t import module \'pytz\'; all timestamps in XLSX output '
+          f'will be in examiner local time ({time.tzname[time.daylight]}).')
 
 
 def parse_arguments(analysis_session):
@@ -194,17 +194,18 @@ def main():
 
     # Read the input directory
     analysis_session.input_path = args.input
-    print((format_meta_output("Input directory", args.input)))
-    log.info("Reading files from %s" % args.input)
+    print((format_meta_output('Input directory', args.input)))
+    log.info(f'Reading files from {args.input}')
     input_listing = os.listdir(args.input)
     log.debug("Input directory contents: " + str(input_listing))
 
     # Search input directory for browser profiles to analyze
     input_profiles = analysis_session.find_browser_profiles(args.input)
-    log.info(" - Found {} browser profile(s): {}".format(len(input_profiles), input_profiles))
+    log.info(f' - Found {len(input_profiles)} browser profile(s): {input_profiles}')
     analysis_session.profile_paths = input_profiles
 
-    print((format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format))))
+    print((format_meta_output(
+        'Output name', f'{analysis_session.output_name}.{analysis_session.selected_output_format}')))
 
     # Run the AnalysisSession
     print("\n Processing:")
@@ -247,7 +248,8 @@ def main():
     # Loop through all paths, to pick up all potential locations for custom plugins
     for potential_path in sys.path:
         # If a subdirectory exists called 'plugins' or 'pyhindsight/plugins' at the current path, continue on
-        for potential_plugin_path in [os.path.join(potential_path, 'plugins'), os.path.join(potential_path, 'pyhindsight', 'plugins')]:
+        for potential_plugin_path in [os.path.join(potential_path, 'plugins'),
+                                      os.path.join(potential_path, 'pyhindsight', 'plugins')]:
             if os.path.isdir(potential_plugin_path):
                 log.info(" Found custom plugin directory {}:".format(potential_plugin_path))
                 try:
@@ -291,7 +293,8 @@ def main():
                     sys.path.remove(potential_plugin_path)
 
     # Check if output directory exists; attempt to create if it doesn't
-    if os.path.dirname(analysis_session.output_name) != "" and not os.path.exists(os.path.dirname(analysis_session.output_name)):
+    if os.path.dirname(analysis_session.output_name) != "" \
+            and not os.path.exists(os.path.dirname(analysis_session.output_name)):
         os.makedirs(os.path.dirname(analysis_session.output_name))
 
     # Get desired output type form args.format and call the correct output creation function
@@ -316,8 +319,8 @@ def main():
         write_sqlite(analysis_session)
 
     # Display and log finish time
-    print(("\n Finish time: {}".format(str(datetime.datetime.now())[:-3])))
-    log.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
+    print(f'\n Finish time: {str(datetime.datetime.now())[:-3]}')
+    log.info(f'Finish time: {str(datetime.datetime.now())[:-3]}\n\n')
 
 
 if __name__ == "__main__":

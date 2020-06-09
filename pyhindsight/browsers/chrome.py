@@ -1702,7 +1702,7 @@ class Chrome(WebBrowser):
                     # // - ("LAST_INTEGER", "|last_integer|"),
                     # // - ("|file_id|", "pickled FileInfo")
                     # // where FileInfo has |parent_id|, |data_path|, |name| and |modification_time|
-                    # from https://cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
+                    # from cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
 
                     backing_files = {}
                     path_nodes = {

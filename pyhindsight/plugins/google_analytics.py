@@ -80,9 +80,8 @@ def plugin(analysis_session=None):
 
                     parameters = {}
                     raw_parameters = p.group(5)[3:]  # Strip off first 'utm' so later splitting will work
-                    # print(raw_parameters)
 
-                    #Parse out cookie fields
+                    # Parse out cookie fields
                     for pair in raw_parameters.split('|utm'):               # Split the cookie on the '|' delimiter
                         # print pair
                         rp = re.search(utmz_extract_parameters_re, pair)    # Split each parameter on the first '='

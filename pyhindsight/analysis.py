@@ -29,7 +29,7 @@ class HindsightEncoder(json.JSONEncoder):
     @staticmethod
     def base_encoder(history_item):
         item = {'source_short': 'WEBHIST', 'source_long': 'Chrome History',
-                'parser': 'hindsight/{}'.format(__version__)}
+                'parser': f'hindsight/{__version__}'}
         for key, value in list(history_item.__dict__.items()):
             # Drop any keys that have None as value
             if value is None:
@@ -62,8 +62,7 @@ class HindsightEncoder(json.JSONEncoder):
             if item['visit_duration'] == 'None':
                 del (item['visit_duration'])
 
-            item['message'] = '{} ({}) [count: {}]'.format(
-                item['url'], item['title'], item['visit_count'])
+            item['message'] = f"{item['url']} ({item['title']}) [count: {item['visit_count']}]"
 
             del(item['name'], item['row_type'], item['visit_time'],
                 item['last_visit_time'], item['hidden'])
@@ -75,10 +74,9 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'File Downloaded'
             item['data_type'] = 'chrome:history:file_downloaded'
 
-            item['message'] = '{} ({}). Received {}/{} bytes'.format(
-                item['url'],
-                item['full_path'] if item.get('full_path') else item.get('target_path'),
-                item['received_bytes'], item['total_bytes'])
+            item['message'] = f"{item['url']} " \
+                              f"({item['full_path'] if item.get('full_path') else item.get('target_path')}). " \
+                              f"Received {item['received_bytes']}/{item['total_bytes']} bytes"
 
             del(item['row_type'], item['start_time'])
             return item
@@ -213,11 +211,13 @@ class HindsightEncoder(json.JSONEncoder):
 
 
 class AnalysisSession(object):
-    def __init__(self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
-                 version=None, display_version=None, output_name=None, log_path=None, timezone=None,
-                 available_output_formats=None, selected_output_format=None, available_decrypts=None,
-                 selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None, parsed_storage=None,
-                 plugin_descriptions=None, selected_plugins=None, plugin_results=None, hindsight_version=None, preferences=None):
+    def __init__(
+            self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
+            version=None, display_version=None, output_name=None, log_path=None, timezone=None,
+            available_output_formats=None, selected_output_format=None, available_decrypts=None,
+            selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
+            parsed_storage=None, plugin_descriptions=None, selected_plugins=None, plugin_results=None,
+            hindsight_version=None, preferences=None):
         self.input_path = input_path
         self.profile_paths = profile_paths
         self.cache_path = cache_path
@@ -281,7 +281,7 @@ class AnalysisSession(object):
 
         # Set output name to default if not set by user
         if self.output_name is None:
-            self.output_name = "Hindsight Report ({})".format(time.strftime('%Y-%m-%dT%H-%M-%S'))
+            self.output_name = f'Hindsight Report ({time.strftime("%Y-%m-%dT%H-%M-%S")})'
 
         # Try to import modules for cookie decryption on different OSes.
         # Windows
@@ -404,7 +404,7 @@ class AnalysisSession(object):
     def generate_display_version(self):
         self.version = sorted(self.version)
         if self.version[0] != self.version[-1]:
-            self.display_version = "%s-%s" % (self.version[0], self.version[-1])
+            self.display_version = f'{self.version[0]}-{self.version[-1]}'
         else:
             self.display_version = self.version[0]
 
@@ -458,10 +458,11 @@ class AnalysisSession(object):
                     if isinstance(browser_analysis.__dict__[item], dict):
                         try:
                             # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                            if browser_analysis.__dict__[item].get('presentation') and browser_analysis.__dict__[item].get('data'):
+                            if browser_analysis.__dict__[item].get('presentation') and \
+                                    browser_analysis.__dict__[item].get('data'):
                                 self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
                         except Exception as e:
-                            log.info("Exception occurred while analyzing {} for analysis session promotion: {}".format(item, e))
+                            log.info(f'Exception occurred while analyzing {item} for analysis session promotion: {e}')
 
             elif self.browser_type == "Brave":
                 browser_analysis = Brave(found_profile_path, timezone=self.timezone)
@@ -477,10 +478,11 @@ class AnalysisSession(object):
                     if isinstance(browser_analysis.__dict__[item], dict):
                         try:
                             # If the browser_analysis attribute has 'presentation' and 'data' subkeys, promote from
-                            if browser_analysis.__dict__[item].get('presentation') and browser_analysis.__dict__[item].get('data'):
+                            if browser_analysis.__dict__[item].get('presentation') and \
+                                    browser_analysis.__dict__[item].get('data'):
                                 self.promote_object_to_analysis_session(item, browser_analysis.__dict__[item])
                         except Exception as e:
-                            log.info("Exception occurred while analyzing {} for analysis session promotion: {}".format(item, e))
+                            log.info(f'Exception occurred while analyzing {item} for analysis session promotion: {e}')
 
         self.generate_display_version()
 
@@ -538,7 +540,7 @@ class AnalysisSession(object):
                                 if custom_plugin == plugin:
                                     # Check to see if we've already run this plugin (likely from a different path)
                                     if plugin in completed_plugins:
-                                        log.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
+                                        log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
                                         continue
 
                                     log.debug(" - Loading '{}' [custom plugin]".format(plugin))
@@ -847,7 +849,7 @@ class AnalysisSession(object):
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += " (v{})".format(d['presentation']['version'])
-                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, "{}".format(title), title_header_format)
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
                         # print column
                         p.write(1, counter, column['display_name'], header_format)
@@ -879,9 +881,8 @@ class AnalysisSession(object):
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += " (v{})".format(d['presentation']['version'])
-                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, "{}".format(title), title_header_format)
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
-                        # print column
                         p.write(1, counter, column['display_name'], header_format)
                         if 'display_width' in column:
                             p.set_column(counter, counter, column['display_width'])
