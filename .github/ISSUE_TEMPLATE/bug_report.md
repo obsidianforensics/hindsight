@@ -28,9 +28,11 @@ If possible, attaching the (sanitized if necessary) hindsight.log file output co
 
 **System Details**
  - Analysis System OS (your forensic workstation): [e.g. Windows 10]
- - Target System OS (the OS you pulled the browser files from): [e.g. macOS]
- - Target Browser [e.g. Chrome]
- - Target Browser Version [e.g. 83]
+ - Method of Running Hindsight: [e.g. hindsight.py using Python 3.7 on macOS, hindsight_gui.exe on Windows]
+ - Hindsight version: [e.g. 20200607]
+ - Target System OS: (the OS you pulled the browser files from): [e.g. macOS]
+ - Target Browser: [e.g. Chrome]
+ - Target Browser Version: [e.g. 83]
 
 **Additional context**
 Add any other context about the problem here.
