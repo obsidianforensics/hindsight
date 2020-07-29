@@ -96,7 +96,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 84))
+        possible_versions = list(range(1, 85))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
