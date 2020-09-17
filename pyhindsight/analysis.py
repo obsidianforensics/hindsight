@@ -767,6 +767,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 2, item.url, red_url_format)  # URL
                     w.write_string(row_number, 3, item.name, red_field_format)  # form field name
                     w.write_string(row_number, 4, item.value, red_value_format)  # username or pw value
+                    w.write_string(row_number, 5, item.interpretation, red_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, red_value_format)  # Profile
 
                 elif item.row_type.startswith("preference"):

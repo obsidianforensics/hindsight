@@ -33,8 +33,8 @@ log = logging.getLogger(__name__)
 
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
-                 parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
-                 available_decrypts=None, preferences=None):
+                 parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None,
+                 artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None):
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
                             timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
                             artifacts_counts=artifacts_counts,
@@ -579,10 +579,13 @@ class Chrome(WebBrowser):
         # Set up empty return array
         results = []
 
-        log.info("Password items from {}:".format(database))
+        log.info("Login items from {}:".format(database))
 
-        # Queries for different versions
-        query = {29:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+        # Queries for "logins" table for different versions
+        query = {78:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+                            password_value, date_created, date_last_used, blacklisted_by_user, 
+                            times_used FROM logins''',
+                 29:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
                             password_value, date_created, blacklisted_by_user, times_used FROM logins''',
                  6:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
                             password_value, date_created, blacklisted_by_user FROM logins'''}
@@ -600,51 +603,67 @@ class Chrome(WebBrowser):
                 db_file = sqlite3.connect(db_path)
                 log.info(" - Reading from file '{}'".format(db_path))
 
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
-
-                for row in cursor:
-                    if row.get('blacklisted_by_user') == 1:
-                        blacklist_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                                                         url=row.get('origin_url'), name=row.get('username_element'),
-                                                         value='<User chose to "Never save password" for this site>',
-                                                         count=row.get('times_used'))
-                        blacklist_row.row_type = 'login (blacklist)'
-                        results.append(blacklist_row)
-
-                    if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
-                        username_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                                                        url=row.get('action_url'), name=row.get('username_element'),
-                                                        value=row.get('username_value'), count=row.get('times_used'))
-                        username_row.row_type = 'login (username)'
-                        results.append(username_row)
-
-                    if row.get('password_value') is not None and row.get('blacklisted_by_user') == 0:
-                        password = None
-                        try:
-                            # Windows is all I've had time to test; Ubuntu uses built-in password manager
-                            password = win32crypt.CryptUnprotectData(row.get('password_value').decode(), None, None, None, 0)[1]
-                        except:
-                            password = self.decrypt_cookie(row.get('password_value'))
-
-                        password_row = Chrome.LoginItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                                                        url=row.get('action_url'), name=row.get('password_element'),
-                                                        value=password, count=row.get('times_used'))
-                        password_row.row_type = 'login (password)'
-                        results.append(password_row)
-
-                db_file.close()
-                self.artifacts_counts['Login Data'] = len(results)
-                log.info(" - Parsed {} items".format(len(results)))
-                self.parsed_artifacts.extend(results)
-
             except Exception as e:
                 self.artifacts_counts['Login Data'] = 'Failed'
                 log.error(" - Couldn't open {}: {}".format(os.path.join(path, database), e))
+                return
+
+            # Use a dictionary cursor
+            db_file.row_factory = WebBrowser.dict_factory
+            cursor = db_file.cursor()
+
+            # Use highest compatible version SQL to select download data
+            cursor.execute(query[compatible_version])
+
+            for row in cursor:
+                if row.get('blacklisted_by_user') == 1:
+                    never_save_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('origin_url'), name=row.get('username_element'),
+                        value='', count=row.get('times_used'),
+                        interpretation='User chose to "Never save password" for this site')
+                    never_save_row.row_type = 'login (never save)'
+                    results.append(never_save_row)
+
+                elif row.get('username_value'):
+                    username_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('action_url'), name=row.get('username_element'),
+                        value=row.get('username_value'), count=row.get('times_used'),
+                        interpretation='User chose to save the credentials entered')
+                    username_row.row_type = 'login (saved credentials)'
+                    results.append(username_row)
+
+                    # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
+                    if row.get('date_last_used') and int(row.get('date_last_used')) > 13100000000000000:
+                        username_row = Chrome.LoginItem(
+                            self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
+                            url=row.get('action_url'), name=row.get('username_element'),
+                            value=row.get('username_value'), count=row.get('times_used'),
+                            interpretation='User tried to log in with this username; may or may not have succeeded.')
+                        username_row.row_type = 'login (username)'
+                        results.append(username_row)
+
+                if row.get('password_value') is not None and self.available_decrypts['windows'] is 1:
+                    try:
+                        # Windows is all I've had time to test; Ubuntu uses built-in password manager
+                        password = win32crypt.CryptUnprotectData(
+                            row.get('password_value').decode(), None, None, None, 0)[1]
+                    except:
+                        password = self.decrypt_cookie(row.get('password_value'))
+
+                    password_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('action_url'), name=row.get('password_element'),
+                        value=password, count=row.get('times_used'),
+                        interpretation='User chose to save the credentials entered')
+                    password_row.row_type = 'login (password)'
+                    results.append(password_row)
+
+            db_file.close()
+            self.artifacts_counts['Login Data'] = len(results)
+            log.info(" - Parsed {} items".format(len(results)))
+            self.parsed_artifacts.extend(results)
 
     def get_autofill(self, path, database, version):
         # Set up empty return array
