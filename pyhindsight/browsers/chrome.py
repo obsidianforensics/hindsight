@@ -579,7 +579,7 @@ class Chrome(WebBrowser):
         # Set up empty return array
         results = []
 
-        log.info("Login items from {}:".format(database))
+        log.info(f'Login items from {database}:')
 
         # Queries for "logins" table for different versions
         query = {78:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
@@ -596,16 +596,16 @@ class Chrome(WebBrowser):
             compatible_version -= 1
 
         if compatible_version is not 0:
-            log.info(" - Using SQL query for Password items for Chrome v{}".format(compatible_version))
+            log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
             try:
                 # Connect to 'Login Data' sqlite db
                 db_path = os.path.join(path, database)
                 db_file = sqlite3.connect(db_path)
-                log.info(" - Reading from file '{}'".format(db_path))
+                log.info(f' - Reading from file "{db_path}"')
 
             except Exception as e:
                 self.artifacts_counts['Login Data'] = 'Failed'
-                log.error(" - Couldn't open {}: {}".format(os.path.join(path, database), e))
+                log.error(f' - Couldn\'t open {os.path.join(path, database)}: {e}')
                 return
 
             # Use a dictionary cursor
@@ -630,7 +630,8 @@ class Chrome(WebBrowser):
                         self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                         url=row.get('action_url'), name=row.get('username_element'),
                         value=row.get('username_value'), count=row.get('times_used'),
-                        interpretation='User chose to save the credentials entered')
+                        interpretation=f'User chose to save the credentials entered '
+                                       f'(times used: {row.get("times_used")})')
                     username_row.row_type = 'login (saved credentials)'
                     results.append(username_row)
 
@@ -640,7 +641,8 @@ class Chrome(WebBrowser):
                             self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
                             url=row.get('action_url'), name=row.get('username_element'),
                             value=row.get('username_value'), count=row.get('times_used'),
-                            interpretation='User tried to log in with this username; may or may not have succeeded.')
+                            interpretation=f'User tried to log in with this username (may or may not '
+                                           f'have succeeded; times used: {row.get("times_used")})')
                         username_row.row_type = 'login (username)'
                         results.append(username_row)
 
@@ -661,9 +663,49 @@ class Chrome(WebBrowser):
                     results.append(password_row)
 
             db_file.close()
-            self.artifacts_counts['Login Data'] = len(results)
-            log.info(" - Parsed {} items".format(len(results)))
-            self.parsed_artifacts.extend(results)
+
+            # Queries for "stats" table for different versions
+            query = {48: '''SELECT origin_domain, username_value, dismissal_count, update_time FROM stats'''}
+
+            # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+            compatible_version = version[0]
+            while compatible_version not in list(query.keys()) and compatible_version > 0:
+                compatible_version -= 1
+
+            if compatible_version is not 0:
+                log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
+                try:
+                    # Connect to 'Login Data' sqlite db
+                    db_path = os.path.join(path, database)
+                    db_file = sqlite3.connect(db_path)
+                    log.info(f' - Reading from file "{db_path}"')
+
+                except Exception as e:
+                    self.artifacts_counts['Login Data'] = 'Failed'
+                    log.error(f' - Couldn\'t open {os.path.join(path, database)}: {e}')
+                    return
+
+                # Use a dictionary cursor
+                db_file.row_factory = WebBrowser.dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
+
+                for row in cursor:
+                    stats_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('update_time'), self.timezone),
+                        url=row.get('origin_domain'), name='',
+                        value=row.get('username_value'), count=row.get('dismissal_count'),
+                        interpretation=f'User declined to save the password for this site '
+                                       f'(dismissal count: {row.get("dismissal_count")})')
+                    stats_row.row_type = 'login (declined save)'
+                    results.append(stats_row)
+                db_file.close()
+
+        self.artifacts_counts['Login Data'] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_autofill(self, path, database, version):
         # Set up empty return array
