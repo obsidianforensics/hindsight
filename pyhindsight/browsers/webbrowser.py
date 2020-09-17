@@ -230,7 +230,7 @@ class WebBrowser(object):
             self.version = version
 
     class LoginItem(HistoryItem):
-        def __init__(self, profile, date_created, url, name, value, count):
+        def __init__(self, profile, date_created, url, name, value, count, interpretation):
             super(WebBrowser.LoginItem, self).__init__(
                 'login', timestamp=date_created, profile=profile, url=url, name=name, value=value)
             self.profile = profile
@@ -239,6 +239,7 @@ class WebBrowser(object):
             self.name = name
             self.value = value
             self.count = count
+            self.interpretation = interpretation
 
     class PreferenceItem(HistoryItem):
         def __init__(self, profile, url, timestamp, key, value, interpretation):
