@@ -783,11 +783,15 @@ class Chrome(WebBrowser):
                                                                  child["date_modified"], child["name"], parent))
                         process_bookmark_children(new_parent, child["children"])
 
-            for top_level_folder in list(decoded_json["roots"].keys()):
-                if top_level_folder != "sync_transaction_version" and top_level_folder != "synced" and top_level_folder != "meta_info":
-                    if decoded_json["roots"][top_level_folder]["children"] is not None:
-                        process_bookmark_children(decoded_json["roots"][top_level_folder]["name"],
-                                                  decoded_json["roots"][top_level_folder]["children"])
+            for top_level_folder in list(decoded_json['roots'].keys()):
+                if top_level_folder == 'synced':
+                    if decoded_json['roots'][top_level_folder]['children'] is not None:
+                        process_bookmark_children(f"Synced > {decoded_json['roots'][top_level_folder]['name']}",
+                                                  decoded_json['roots'][top_level_folder]['children'])
+                elif top_level_folder != 'sync_transaction_version' and top_level_folder != 'meta_info':
+                    if decoded_json['roots'][top_level_folder]['children'] is not None:
+                        process_bookmark_children(decoded_json['roots'][top_level_folder]['name'],
+                                                  decoded_json['roots'][top_level_folder]['children'])
 
             self.artifacts_counts['Bookmarks'] = len(results)
             log.info(" - Parsed {} items".format(len(results)))
