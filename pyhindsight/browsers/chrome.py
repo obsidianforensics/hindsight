@@ -96,7 +96,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 85))
+        possible_versions = list(range(1, 87))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -138,6 +138,7 @@ class Chrome(WebBrowser):
             if 'visits' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('visit_duration', self.structure['History']['visits'], 20)
                 trim_lesser_versions_if('incremented_omnibox_typed_score', self.structure['History']['visits'], 68)
+                trim_lesser_versions_if('publicly_routable', self.structure['History']['visits'], 85)
             if 'visit_source' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
             if 'downloads' in list(self.structure['History'].keys()):
@@ -182,7 +183,8 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('validity_bitfield', self.structure['Web Data']['autofill_profiles'], 63)
                 trim_lesser_versions_if(
                     'is_client_validity_states_updated', self.structure['Web Data']['autofill_profiles'], 71)
-
+            if 'autofill_profile_addresses' in list(self.structure['Web Data'].keys()):
+                trim_lesser_versions(86)
             if 'autofill_sync_metadata' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions(57)
                 trim_lesser_versions_if('model_type', self.structure['Web Data']['autofill_sync_metadata'], 69)
@@ -190,6 +192,7 @@ class Chrome(WebBrowser):
                 trim_lesser_versions(38)
             if 'credit_cards' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions_if('billing_address_id', self.structure['Web Data']['credit_cards'], 53)
+                trim_lesser_versions_if('nickname', self.structure['Web Data']['credit_cards'], 85)
             log.debug(f' - Finishing possible versions: {possible_versions}')
 
         possible_versions, previous_possible_versions = \
@@ -204,6 +207,7 @@ class Chrome(WebBrowser):
                 trim_greater_versions_if('ssl_valid', self.structure['Login Data']['logins'], 53)
                 trim_lesser_versions_if('possible_username_pairs', self.structure['Login Data']['logins'], 59)
                 trim_lesser_versions_if('id', self.structure['Login Data']['logins'], 73)
+                trim_lesser_versions_if('moving_blocked_for', self.structure['Login Data']['logins'], 84)
             if 'field_info' in list(self.structure['Login Data'].keys()):
                 trim_lesser_versions(80)
             if 'compromised_credentials' in list(self.structure['Login Data'].keys()):
