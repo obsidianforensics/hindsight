@@ -2,6 +2,7 @@ import sqlite3
 import os
 import sys
 import logging
+from pyhindsight import utils
 
 log = logging.getLogger(__name__)
 
@@ -63,8 +64,15 @@ class WebBrowser(object):
         if database not in list(self.structure.keys()):
             self.structure[database] = {}
 
-            # Connect to SQLite db
-            database_path = os.path.join(path, database)
+            # Create temp copy of database
+            utils.create_temp_db(path, database)
+
+            # Get directory of temporay database
+            temp_db_directory = utils.get_temp_db_directory()
+
+            # Connect to temp SQLite db
+            database_path = os.path.join(temp_db_directory, database)
+
             try:
                 db = sqlite3.connect(database_path)
                 cursor = db.cursor()

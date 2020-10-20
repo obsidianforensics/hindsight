@@ -239,6 +239,12 @@ class Chrome(WebBrowser):
 
         log.info("History items from {}:".format(history_file))
 
+        # Create temp copy of database
+        utils.create_temp_db(path, history_file)
+
+        # Get directory of temporay database
+        path = utils.get_temp_db_directory()
+
         # TODO: visit_source table?  don't have good sample data
         # TODO: visits where visit_count = 0; means it should be in Archived History but could be helpful to have if
         # that file is missing.  Changing the first JOIN to a LEFT JOIN adds these in.
@@ -276,7 +282,7 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(" - Using SQL query for History items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'History' sqlite db
+                # Connect to temp 'History' sqlite db
                 history_path = os.path.join(path, history_file)
                 db_file = sqlite3.connect(history_path)
                 log.info(" - Reading from file '{}'".format(history_path))
@@ -332,6 +338,9 @@ class Chrome(WebBrowser):
 
         log.info("Download items from {}:".format(database))
 
+        # Get directory of temporay database
+        path = utils.get_temp_db_directory()
+
         # Queries for different versions
         query = {30: '''SELECT downloads.id, downloads_url_chains.url, downloads.received_bytes, downloads.total_bytes,
                             downloads.state, downloads.target_path, downloads.start_time, downloads.end_time,
@@ -359,7 +368,7 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(" - Using SQL query for Download items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'History' sqlite db
+                # Connect to temp 'History' sqlite db
                 history_path = os.path.join(path, database)
                 db_file = sqlite3.connect(history_path)
                 log.info(" - Reading from file '{}'".format(history_path))
@@ -488,6 +497,12 @@ class Chrome(WebBrowser):
 
         log.info("Cookie items from {}:".format(database))
 
+        # Create temp copy of database
+        utils.create_temp_db(path, database)
+
+        # Get directory of temporay database
+        path = utils.get_temp_db_directory()
+
         # Queries for different versions
         query = {66: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
                             cookies.last_access_utc, cookies.expires_utc, cookies.is_secure AS secure, 
@@ -518,7 +533,7 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'Cookies' sqlite db
+                # Connect to temp 'Cookies' sqlite db
                 db_path = os.path.join(path, database)
                 db_file = sqlite3.connect(db_path)
                 log.info(" - Reading from file '{}'".format(db_path))
@@ -585,6 +600,12 @@ class Chrome(WebBrowser):
 
         log.info(f'Login items from {database}:')
 
+        # Create temp copy of database
+        utils.create_temp_db(path, database)
+
+        # Get directory of temporay database
+        path = utils.get_temp_db_directory()
+
         # Queries for "logins" table for different versions
         query = {78:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
                             password_value, date_created, date_last_used, blacklisted_by_user, 
@@ -602,7 +623,7 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
             try:
-                # Connect to 'Login Data' sqlite db
+                # Connect to temp 'Login Data' sqlite db
                 db_path = os.path.join(path, database)
                 db_file = sqlite3.connect(db_path)
                 log.info(f' - Reading from file "{db_path}"')
@@ -679,7 +700,7 @@ class Chrome(WebBrowser):
             if compatible_version is not 0:
                 log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
                 try:
-                    # Connect to 'Login Data' sqlite db
+                    # Connect to temp 'Login Data' sqlite db
                     db_path = os.path.join(path, database)
                     db_file = sqlite3.connect(db_path)
                     log.info(f' - Reading from file "{db_path}"')
@@ -717,6 +738,12 @@ class Chrome(WebBrowser):
 
         log.info("Autofill items from {}:".format(database))
 
+        # Create temp copy of database
+        utils.create_temp_db(path, database)
+
+        # Get directory of temporay database
+        path = utils.get_temp_db_directory()
+
         # Queries for different versions
         query = {35: '''SELECT autofill.date_created, autofill.date_last_used, autofill.name, autofill.value,
                         autofill.count FROM autofill''',
@@ -731,7 +758,7 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'Web Data' SQLite db
+                # Connect to temp 'Web Data' SQLite db
                 db_path = os.path.join(path, database)
                 db_file = sqlite3.connect(db_path)
                 log.info(" - Reading from file '{}'".format(db_path))
