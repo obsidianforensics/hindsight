@@ -4,9 +4,14 @@ import logging
 import pytz
 import struct
 from pyhindsight import __version__
+import os
+import shutil
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+# Temp directory name
+temp_directory_name="temp"
 
 def format_plugin_output(name, version, items):
     width = 80
@@ -162,6 +167,15 @@ def read_int32(input_bytes, ptr):
 def read_int64(input_bytes, ptr):
     value = struct.unpack('<Q', input_bytes[ptr:ptr + 8])[0]
     return value, ptr + 8
+
+
+def create_temp_db(path, database):
+
+    # Create 'temp' directory if doesn't exists
+    Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
+
+    # Copy database to temp directory
+    shutil.copyfile(os.path.join(path, database), os.path.join(temp_directory_name, database))
 
 
 banner = '''
