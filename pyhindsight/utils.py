@@ -178,6 +178,9 @@ def create_temp_db(path, database):
     shutil.copyfile(os.path.join(path, database), os.path.join(temp_directory_name, database))
 
 
+def get_temp_db_directory():
+    return temp_directory_name
+
 banner = '''
 ################################################################################
 
