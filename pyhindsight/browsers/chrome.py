@@ -864,7 +864,15 @@ class Chrome(WebBrowser):
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
 
-                # Connect to Local Storage file sqlite db
+                # Create temp copy of database
+                utils.create_temp_db(ls_path, ls_file)
+
+                # Get directory of temporay database
+                ls_path = utils.get_temp_db_directory()
+
+                # Connect to temp Local Storage file sqlite db
+                ls_file_path = os.path.join(ls_path, ls_file)
+
                 try:
                     db_file = sqlite3.connect(ls_file_path)
                 except Exception as e:
@@ -1583,7 +1591,13 @@ class Chrome(WebBrowser):
         cache_path = os.path.join(base_path, 'Cache')
         log.info(f'Application Cache items from {path}:')
 
-        # Connect to 'Index' sqlite db
+        # Create temp copy of database
+        utils.create_temp_db(base_path, 'Index')
+
+        # Get directory of temporay database
+        base_path = utils.get_temp_db_directory()
+
+        # Connect to temp 'Index' sqlite db
         db_path = os.path.join(base_path, 'Index')
         try:
             index_db = sqlite3.connect(db_path)
