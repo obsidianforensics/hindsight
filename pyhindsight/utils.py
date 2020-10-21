@@ -123,7 +123,13 @@ def get_ldb_pairs(ldb_path, prefix=''):
         return []
 
     cleaned_pairs = []
-    pairs = list(db.iterator())
+
+    try:
+        pairs = list(db.iterator())
+    except Exception as e:
+        log.warning(f' - Couldn\'t read {ldb_path} LevelDB data; {e}')
+        return []
+
     for pair in pairs:
         # Each leveldb pair should be a tuple of length 2 (key & value); if not, log it and skip it.
         if not isinstance(pair, tuple) or len(pair) is not 2:
