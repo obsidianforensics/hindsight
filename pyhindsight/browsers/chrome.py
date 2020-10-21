@@ -2052,6 +2052,10 @@ class Chrome(WebBrowser):
 
         self.parsed_artifacts.sort()
 
+        # Clean temp directory after processsing profile
+        shutil.rmtree(utils.get_temp_db_directory())
+
+
     class URLItem(WebBrowser.URLItem):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                      transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
