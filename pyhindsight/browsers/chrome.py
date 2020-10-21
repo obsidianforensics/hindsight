@@ -338,6 +338,9 @@ class Chrome(WebBrowser):
 
         log.info("Download items from {}:".format(database))
 
+        # Create temp copy of database
+        utils.create_temp_db(path, database)
+
         # Get directory of temporay database
         path = utils.get_temp_db_directory()
 
