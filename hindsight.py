@@ -67,7 +67,7 @@ The Chrome data folder default locations are:
     parser.add_argument('-f', '--format', choices=analysis_session.available_output_formats,
                         default=analysis_session.available_output_formats[-1], help='Output format')
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
-                        default='hindsight.log')
+                        default=os.path.join(os.getcwd(), 'hindsight.log'))
     parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
     parser.add_argument('-d', '--decrypt', choices=['mac', 'linux'], default=None,
                         help='Try to decrypt Chrome data from a Linux or Mac system; support for both is currently '
@@ -174,8 +174,6 @@ def main():
     analysis_session.browser_type = args.browser_type
     analysis_session.timezone = args.timezone
 
-    if args.log == 'hindsight.log':
-        args.log = os.path.join(real_path, args.log)
     analysis_session.log_path = args.log
 
     # Set up logging
