@@ -234,39 +234,34 @@ class Chrome(WebBrowser):
         self.version = possible_versions
 
     def get_history(self, path, history_file, version, row_type):
-        # Set up empty return array
         results = []
 
-        log.info("History items from {}:".format(history_file))
-
-        # TODO: visit_source table?  don't have good sample data
-        # TODO: visits where visit_count = 0; means it should be in Archived History but could be helpful to have if
-        # that file is missing.  Changing the first JOIN to a LEFT JOIN adds these in.
+        log.info(f'History items from {history_file}')
 
         # Queries for different versions
         query = {59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  29: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source, visits.is_indexed
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source, visits.is_indexed
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  20: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source, visits.is_indexed
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source, visits.is_indexed
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  7:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
-                             visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
+                            visit_source.source
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  1:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
-                          FROM urls, visits WHERE urls.id = visits.url'''}
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
+                        FROM urls, visits WHERE urls.id = visits.url'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -274,12 +269,12 @@ class Chrome(WebBrowser):
             compatible_version -= 1
 
         if compatible_version is not 0:
-            log.info(" - Using SQL query for History items for Chrome v{}".format(compatible_version))
+            log.info(f' - Using SQL query for History items for Chrome {compatible_version}')
             try:
-                # Connect to 'History' sqlite db
+                # Connect to 'History' SQLite DB
                 history_path = os.path.join(path, history_file)
                 db_file = sqlite3.connect(history_path)
-                log.info(" - Reading from file '{}'".format(history_path))
+                log.info(f" - Reading from file '{history_path}'")
 
                 # Use a dictionary cursor
                 db_file.row_factory = WebBrowser.dict_factory
@@ -289,7 +284,7 @@ class Chrome(WebBrowser):
                 try:
                     cursor.execute(query[compatible_version])
                 except Exception as e:
-                    log.error(" - Error querying '{}': {}".format(history_path, e))
+                    log.error(f" - Error querying '{history_path}': {e}")
                     self.artifacts_counts[history_file] = 'Failed'
                     return
 
@@ -298,12 +293,13 @@ class Chrome(WebBrowser):
                     if row.get('visit_duration'):
                         duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
-                    new_row = Chrome.URLItem(self.profile_path, row.get('id'), row.get('url'), row.get('title'),
-                                             utils.to_datetime(row.get('visit_time'), self.timezone),
-                                             utils.to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
-                                             row.get('typed_count'), row.get('from_visit'), row.get('transition'),
-                                             row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
-                                             str(duration), row.get('source'))
+                    new_row = Chrome.URLItem(
+                        self.profile_path, row.get('id'), row.get('url'), row.get('title'),
+                        utils.to_datetime(row.get('visit_time'), self.timezone),
+                        utils.to_datetime(row.get('last_visit_time'), self.timezone),
+                        row.get('visit_count'), row.get('typed_count'), row.get('from_visit'),
+                        row.get('transition'), row.get('hidden'), row.get('favicon_id'),
+                        row.get('is_indexed'), str(duration), row.get('source'))
 
                     # Set the row type as determined earlier
                     new_row.row_type = row_type
@@ -319,12 +315,79 @@ class Chrome(WebBrowser):
 
                 db_file.close()
                 self.artifacts_counts[history_file] = len(results)
-                log.info(" - Parsed {} items".format(len(results)))
+                log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
 
             except Exception as e:
                 self.artifacts_counts[history_file] = 'Failed'
-                log.error(" - Exeception parsing {}; {}".format(os.path.join(path, history_file), e))
+                log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
+
+    def get_media_history(self, path, history_file, version, row_type):
+        results = []
+
+        log.info(f'Media History items from {history_file}')
+
+        # Queries for different versions
+        query = {86: '''SELECT playbackSession.url, playbackSession.title, playbackSession.source_title, 
+                            playbackSession.duration_ms, playbackSession.position_ms, 
+                            playbackSession.last_updated_time_s, playback.watch_time_s 
+                        FROM playbackSession LEFT JOIN playback ON playbackSession.url = playback.url'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            log.info(f' - Using SQL query for Media History items for Chrome {compatible_version}')
+            try:
+                # Connect to 'Media History' SQLite DB
+                history_path = os.path.join(path, history_file)
+                db_file = sqlite3.connect(history_path)
+                log.info(f" - Reading from file '{history_path}'")
+
+                # Use a dictionary cursor
+                db_file.row_factory = WebBrowser.dict_factory
+                cursor = db_file.cursor()
+
+                # Use highest compatible version SQL to select download data
+                try:
+                    cursor.execute(query[compatible_version])
+                except Exception as e:
+                    log.error(f" - Error querying '{history_path}': {e}")
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
+
+                for row in cursor:
+                    duration = ''
+                    if row.get('duration_ms'):
+                        duration = str(datetime.timedelta(milliseconds=row.get('duration_ms')))[:-3]
+                    position = ''
+                    if row.get('position_ms'):
+                        position = str(datetime.timedelta(milliseconds=row.get('position_ms')))[:-3]
+                    watch_time = ''
+                    if row.get('watch_time_s'):
+                        watch_time = ' ' + str(datetime.timedelta(seconds=row.get('watch_time_s')))
+
+                    new_row = Chrome.MediaItem(
+                        self.profile_path, row.get('url'), row.get('title'),
+                        utils.to_datetime(row.get('last_updated_time_s'), self.timezone),
+                        position, duration, row.get('source_title'), watch_time)
+
+                    # Set the row type as determined earlier
+                    new_row.row_type = row_type
+
+                    # Add the new row to the results array
+                    results.append(new_row)
+
+                db_file.close()
+                self.artifacts_counts[history_file] = len(results)
+                log.info(f' - Parsed {len(results)} items')
+                self.parsed_artifacts.extend(results)
+
+            except Exception as e:
+                self.artifacts_counts[history_file] = 'Failed'
+                log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
 
     def get_downloads(self, path, database, version, row_type):
         # Set up empty return array
@@ -1833,7 +1896,8 @@ class Chrome(WebBrowser):
         self.parsed_storage.extend(result_list)
 
     def process(self):
-        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
+        supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies', 'Login Data',
+                               'Extension Cookies']
         supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications']
         supported_jsons = ['Bookmarks']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
@@ -1899,6 +1963,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['Archived History'],
                 self.artifacts_counts.get('Archived History', '0')))
+
+        if 'Media History' in input_listing:
+            self.get_media_history(self.profile_path, 'Media History', self.version, 'media (playback end)')
+            self.artifacts_display['Media History'] = "Media History records"
+            print(self.format_processing_output(
+                self.artifacts_display['Media History'],
+                self.artifacts_counts.get('Media History', '0')))
 
         if self.cache_path is not None and self.cache_path != '':
             c_path, c_dir = os.path.split(self.cache_path)
