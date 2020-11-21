@@ -2,16 +2,43 @@ import datetime
 import json
 import logging
 import pytz
+import sqlite3
 import struct
 from pyhindsight import __version__
+# from pyhindsight.browsers.webbrowser import WebBrowser
+
 import os
 import shutil
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Temp directory name
-temp_directory_name="temp"
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
+
+
+def connect_to_copied_sqlite_db(database_path, database_name, temp_directory_name='temp'):
+    # Create 'temp' directory if doesn't exists
+    Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
+
+    # Copy database to temp directory
+    copied_db_path = os.path.join(temp_directory_name, database_name)
+    shutil.copyfile(os.path.join(database_path, database_name), copied_db_path)
+
+    # Connect to copied database
+    db_conn = sqlite3.connect(copied_db_path)
+
+    # Use a dictionary cursor
+    # TODO: move this to sqlite3.Row?
+    # db_conn.row_factory = WebBrowser.dict_factory
+    db_conn.row_factory = dict_factory
+
+    return db_conn
+
 
 def format_plugin_output(name, version, items):
     width = 80
@@ -174,18 +201,19 @@ def read_int64(input_bytes, ptr):
     value = struct.unpack('<Q', input_bytes[ptr:ptr + 8])[0]
     return value, ptr + 8
 
+#
+# def create_temp_db(path, database):
+#
+#     # Create 'temp' directory if doesn't exists
+#     Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
+#
+#     # Copy database to temp directory
+#     shutil.copyfile(os.path.join(path, database), os.path.join(temp_directory_name, database))
 
-def create_temp_db(path, database):
+#
+# def get_temp_db_directory():
+#     return temp_directory_name
 
-    # Create 'temp' directory if doesn't exists
-    Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
-
-    # Copy database to temp directory
-    shutil.copyfile(os.path.join(path, database), os.path.join(temp_directory_name, database))
-
-
-def get_temp_db_directory():
-    return temp_directory_name
 
 banner = '''
 ################################################################################

@@ -239,11 +239,11 @@ class Chrome(WebBrowser):
 
         log.info("History items from {}:".format(history_file))
 
-        # Create temp copy of database
-        utils.create_temp_db(path, history_file)
-
-        # Get directory of temporay database
-        path = utils.get_temp_db_directory()
+        # # Create temp copy of database
+        # utils.create_temp_db(path, history_file)
+        #
+        # # Get directory of temporay database
+        # path = utils.get_temp_db_directory()
 
         # TODO: visit_source table?  don't have good sample data
         # TODO: visits where visit_count = 0; means it should be in Archived History but could be helpful to have if
@@ -283,19 +283,25 @@ class Chrome(WebBrowser):
             log.info(" - Using SQL query for History items for Chrome v{}".format(compatible_version))
             try:
                 # Connect to temp 'History' sqlite db
-                history_path = os.path.join(path, history_file)
-                db_file = sqlite3.connect(history_path)
-                log.info(" - Reading from file '{}'".format(history_path))
 
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                log.info(f' - Reading from {history_file} in {path}')
+                conn = utils.connect_to_copied_sqlite_db(path, history_file)
+                cursor = conn.cursor()
+
+                # history_path = os.path.join(path, history_file)
+                # db_file = sqlite3.connect(history_path)
+                # log.info(" - Reading from file '{}'".format(history_path))
+                #
+                # # Use a dictionary cursor
+                # db_file.row_factory = WebBrowser.dict_factory
+                # cursor = db_file.cursor()
 
                 # Use highest compatible version SQL to select download data
                 try:
                     cursor.execute(query[compatible_version])
                 except Exception as e:
-                    log.error(" - Error querying '{}': {}".format(history_path, e))
+                    # log.error(" - Error querying '{}': {}".format(history_path, e))
+                    log.error(" - Error querying '{}': {}".format(history_file, e))
                     self.artifacts_counts[history_file] = 'Failed'
                     return
 
@@ -323,7 +329,8 @@ class Chrome(WebBrowser):
                     # Add the new row to the results array
                     results.append(new_row)
 
-                db_file.close()
+                conn.close()
+                # db_file.close()
                 self.artifacts_counts[history_file] = len(results)
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
