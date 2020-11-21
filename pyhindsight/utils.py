@@ -1,14 +1,12 @@
 import datetime
 import json
 import logging
+import os
 import pytz
+import shutil
 import sqlite3
 import struct
 from pyhindsight import __version__
-# from pyhindsight.browsers.webbrowser import WebBrowser
-
-import os
-import shutil
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -21,21 +19,29 @@ def dict_factory(cursor, row):
     return d
 
 
-def connect_to_copied_sqlite_db(database_path, database_name, temp_directory_name='temp'):
-    # Create 'temp' directory if doesn't exists
-    Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
+def copy_and_connect_to_sqlite_db(database_path, database_name, temp_directory_name='temp'):
+    log.info(f' - Reading from {database_name} in {database_path}')
 
-    # Copy database to temp directory
-    copied_db_path = os.path.join(temp_directory_name, database_name)
-    shutil.copyfile(os.path.join(database_path, database_name), copied_db_path)
+    try:
+        # Create 'temp' directory if doesn't exists
+        Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
 
-    # Connect to copied database
-    db_conn = sqlite3.connect(copied_db_path)
+        # Copy database to temp directory
+        copied_db_path = os.path.join(temp_directory_name, database_name)
+        shutil.copyfile(os.path.join(database_path, database_name), copied_db_path)
+    except Exception as e:
+        log.error(f' - Error copying {database_name}: {e}')
+        return None
 
-    # Use a dictionary cursor
-    # TODO: move this to sqlite3.Row?
-    # db_conn.row_factory = WebBrowser.dict_factory
-    db_conn.row_factory = dict_factory
+    try:
+        # Connect to copied database
+        db_conn = sqlite3.connect(copied_db_path)
+
+        # Use a dictionary cursor
+        db_conn.row_factory = dict_factory
+    except Exception as e:
+        log.error(f' - Error opening {database_name}: {e}')
+        return None
 
     return db_conn
 
