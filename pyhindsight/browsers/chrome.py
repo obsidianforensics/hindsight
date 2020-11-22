@@ -34,11 +34,12 @@ log = logging.getLogger(__name__)
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
                  parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None,
-                 artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None):
+                 artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None,
+                 no_copy=None, temp_dir=None):
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
                             timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
-                            artifacts_counts=artifacts_counts,
-                            artifacts_display=artifacts_display, preferences=preferences)
+                            artifacts_counts=artifacts_counts, artifacts_display=artifacts_display,
+                            preferences=preferences, no_copy=no_copy, temp_dir=temp_dir)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.cache_path = cache_path
@@ -48,6 +49,8 @@ class Chrome(WebBrowser):
         self.available_decrypts = available_decrypts
         self.storage = storage
         self.preferences = preferences
+        self.no_copy = no_copy
+        self.temp_dir = temp_dir
 
         if self.version is None:
             self.version = []
@@ -271,20 +274,18 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(f' - Using SQL query for History items for Chrome {compatible_version}')
             try:
-                # Connect to 'History' SQLite DB
-                history_path = os.path.join(path, history_file)
-                db_file = sqlite3.connect(history_path)
-                log.info(f" - Reading from file '{history_path}'")
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                # Copy and connect to copy of 'History' SQLite DB
+                conn = utils.open_sqlite_db(self, path, history_file)
+                if not conn:
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 try:
                     cursor.execute(query[compatible_version])
                 except Exception as e:
-                    log.error(f" - Error querying '{history_path}': {e}")
+                    log.error(f' - Error querying {history_file}: {e}')
                     self.artifacts_counts[history_file] = 'Failed'
                     return
 
@@ -313,7 +314,8 @@ class Chrome(WebBrowser):
                     # Add the new row to the results array
                     results.append(new_row)
 
-                db_file.close()
+                conn.close()
+
                 self.artifacts_counts[history_file] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -341,20 +343,18 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(f' - Using SQL query for Media History items for Chrome {compatible_version}')
             try:
-                # Connect to 'Media History' SQLite DB
-                history_path = os.path.join(path, history_file)
-                db_file = sqlite3.connect(history_path)
-                log.info(f" - Reading from file '{history_path}'")
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                # Copy and connect to copy of 'Media History' SQLite DB
+                conn = utils.open_sqlite_db(self, path, history_file)
+                if not conn:
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 try:
                     cursor.execute(query[compatible_version])
                 except Exception as e:
-                    log.error(f" - Error querying '{history_path}': {e}")
+                    log.error(f" - Error querying '{history_file}': {e}")
                     self.artifacts_counts[history_file] = 'Failed'
                     return
 
@@ -380,7 +380,8 @@ class Chrome(WebBrowser):
                     # Add the new row to the results array
                     results.append(new_row)
 
-                db_file.close()
+                conn.close()
+
                 self.artifacts_counts[history_file] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -420,38 +421,31 @@ class Chrome(WebBrowser):
             compatible_version -= 1
 
         if compatible_version is not 0:
-            log.info(" - Using SQL query for Download items for Chrome v{}".format(compatible_version))
+            log.info(f' - Using SQL query for Download items for Chrome v{compatible_version}')
             try:
-                # Connect to 'History' sqlite db
-                history_path = os.path.join(path, database)
-                db_file = sqlite3.connect(history_path)
-                log.info(" - Reading from file '{}'".format(history_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
-                try:
-                    cursor.execute(query[compatible_version])
-                except Exception as e:
-                    log.error(" - Error querying '{}': {}".format(history_path, e))
+                # Copy and connect to copy of 'History' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
                     self.artifacts_counts[database + '_downloads'] = 'Failed'
                     return
+                cursor = conn.cursor()
+
+                # Use highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
 
                 for row in cursor:
                     try:
                         # TODO: collapse download chain into one entry per download
-                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        new_row = Chrome.DownloadItem(self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
-                                                      row.get('total_bytes'), row.get('state'), row.get('full_path'),
-                                                      utils.to_datetime(row.get('start_time'), self.timezone),
-                                                      utils.to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
-                                                      row.get('current_path'), row.get('opened'), row.get('danger_type'),
-                                                      row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
-                                                      row.get('chain_index'))
+                        new_row = Chrome.DownloadItem(
+                            self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
+                            row.get('total_bytes'), row.get('state'), row.get('full_path'),
+                            utils.to_datetime(row.get('start_time'), self.timezone),
+                            utils.to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
+                            row.get('current_path'), row.get('opened'), row.get('danger_type'),
+                            row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
+                            row.get('chain_index'))
                     except:
-                        log.exception(" - Exception processing record; skipped.")
+                        log.exception(' - Exception processing record; skipped.')
                         continue
 
                     new_row.decode_interrupt_reason()
@@ -474,7 +468,8 @@ class Chrome(WebBrowser):
                     new_row.row_type = row_type
                     results.append(new_row)
 
-                db_file.close()
+                conn.close()
+
                 self.artifacts_counts[database + '_downloads'] = len(results)
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
@@ -581,14 +576,12 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'Cookies' sqlite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                log.info(" - Reading from file '{}'".format(db_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                # Copy and connect to copy of 'Cookies' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts[database] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
@@ -601,7 +594,6 @@ class Chrome(WebBrowser):
                             cookie_value = row.get('value')
                     else:
                         cookie_value = row.get('value')
-                        # print type(cookie_value), cookie_value
 
                     new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'),
                                                 cookie_value, utils.to_datetime(row.get('creation_utc'), self.timezone),
@@ -633,13 +625,13 @@ class Chrome(WebBrowser):
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
 
-                db_file.close()
+                conn.close()
                 self.artifacts_counts[database] = len(results)
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
             except Exception as e:
-                self.artifacts_counts[database] = 'Failed - {}'.format(e)
+                self.artifacts_counts[database] = 'Failed'
                 log.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_login_data(self, path, database, version):
@@ -664,20 +656,13 @@ class Chrome(WebBrowser):
 
         if compatible_version is not 0:
             log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
-            try:
-                # Connect to 'Login Data' sqlite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                log.info(f' - Reading from file "{db_path}"')
 
-            except Exception as e:
-                self.artifacts_counts['Login Data'] = 'Failed'
-                log.error(f' - Couldn\'t open {os.path.join(path, database)}: {e}')
+            # Copy and connect to copy of 'Login Data' SQLite DB
+            conn = utils.open_sqlite_db(self, path, database)
+            if not conn:
+                self.artifacts_counts[database] = 'Failed'
                 return
-
-            # Use a dictionary cursor
-            db_file.row_factory = WebBrowser.dict_factory
-            cursor = db_file.cursor()
+            cursor = conn.cursor()
 
             # Use highest compatible version SQL to select download data
             cursor.execute(query[compatible_version])
@@ -729,7 +714,7 @@ class Chrome(WebBrowser):
                     password_row.row_type = 'login (password)'
                     results.append(password_row)
 
-            db_file.close()
+            conn.close()
 
             # Queries for "stats" table for different versions
             query = {48: '''SELECT origin_domain, username_value, dismissal_count, update_time FROM stats'''}
@@ -741,20 +726,13 @@ class Chrome(WebBrowser):
 
             if compatible_version is not 0:
                 log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
-                try:
-                    # Connect to 'Login Data' sqlite db
-                    db_path = os.path.join(path, database)
-                    db_file = sqlite3.connect(db_path)
-                    log.info(f' - Reading from file "{db_path}"')
 
-                except Exception as e:
-                    self.artifacts_counts['Login Data'] = 'Failed'
-                    log.error(f' - Couldn\'t open {os.path.join(path, database)}: {e}')
+                # Copy and connect to copy of 'Login Data' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts[database] = 'Failed'
                     return
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
@@ -768,7 +746,7 @@ class Chrome(WebBrowser):
                                        f'(dismissal count: {row.get("dismissal_count")})')
                     stats_row.row_type = 'login (declined save)'
                     results.append(stats_row)
-                db_file.close()
+                conn.close()
 
         self.artifacts_counts['Login Data'] = len(results)
         log.info(f' - Parsed {len(results)} items')
@@ -794,14 +772,12 @@ class Chrome(WebBrowser):
         if compatible_version is not 0:
             log.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'Web Data' SQLite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                log.info(" - Reading from file '{}'".format(db_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                # Copy and connect to copy of 'Web Data' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts['Autofill'] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
@@ -814,7 +790,7 @@ class Chrome(WebBrowser):
                         results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_last_used'),
                                                            self.timezone), row.get('name'), row.get('value'), row.get('count')))
 
-                db_file.close()
+                conn.close()
                 self.artifacts_counts['Autofill'] = len(results)
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
@@ -900,18 +876,11 @@ class Chrome(WebBrowser):
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
 
-                # Connect to Local Storage file sqlite db
                 try:
-                    db_file = sqlite3.connect(ls_file_path)
-                except Exception as e:
-                    log.warning(f' - Error opening {ls_file_path}: {e}')
-                    break
+                    # Copy and connect to copy of the Local Storage SQLite DB
+                    conn = utils.open_sqlite_db(self, ls_path, ls_file)
+                    cursor = conn.cursor()
 
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
-
-                try:
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
                         try:
@@ -923,6 +892,9 @@ class Chrome(WebBrowser):
                             profile=self.profile_path, origin=ls_file[:-13], key=row.get('key', ''),
                             value=printable_value,
                             last_modified=utils.to_datetime(ls_created, self.timezone)))
+
+                    conn.close()
+
                 except Exception as e:
                     log.warning(f' - Error reading key/values from {ls_file_path}: {e}')
                     pass
@@ -1619,19 +1591,12 @@ class Chrome(WebBrowser):
         cache_path = os.path.join(base_path, 'Cache')
         log.info(f'Application Cache items from {path}:')
 
-        # Connect to 'Index' sqlite db
-        db_path = os.path.join(base_path, 'Index')
-        try:
-            index_db = sqlite3.connect(db_path)
-            log.info(f' - Reading from file \'{db_path}\'')
-
-            # Use a dictionary cursor
-            index_db.row_factory = WebBrowser.dict_factory
-            cursor = index_db.cursor()
-        except:
-            log.error(f' - Error opening Application Cache Index SQLite DB {db_path}')
+        # Copy and connect to copy of 'Index' SQLite DB
+        conn = utils.open_sqlite_db(self, base_path, 'Index')
+        if not conn:
             self.artifacts_counts[dir_name] = 'Failed'
             return
+        cursor = conn.cursor()
 
         try:
             cache_block = CacheBlock(os.path.join(cache_path, 'index'))
@@ -1676,7 +1641,7 @@ class Chrome(WebBrowser):
                     log.error(f' - Error parsing cache entry {raw}: {str(e)}')
 
         index.close()
-        index_db.close()
+        conn.close()
 
         self.artifacts_counts[dir_name] = len(results)
         log.info(f' - Parsed {len(results)} items')
@@ -2045,6 +2010,8 @@ class Chrome(WebBrowser):
         if 'Extension Cookies' in input_listing:
             # Workaround to cap the version at 65 for Extension Cookies, as until that
             # point it has the same database format as Cookies
+            # TODO: Need to revisit this, as in v69 the structures are the same again, but
+            # I don't have test data for v67 or v68 to tell when it changed back.
             ext_cookies_version = self.version
             # if min(self.version) > 65:
             #     ext_cookies_version.insert(0, 65)
@@ -2081,6 +2048,11 @@ class Chrome(WebBrowser):
         self.cached_key = None
 
         self.parsed_artifacts.sort()
+
+        # Clean temp directory after processing profile
+        if not self.no_copy:
+            log.info(f'Deleting temporary directory {self.temp_dir}')
+            shutil.rmtree(self.temp_dir)
 
     class URLItem(WebBrowser.URLItem):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,

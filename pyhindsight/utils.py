@@ -1,11 +1,53 @@
 import datetime
 import json
 import logging
+import os
 import pytz
+import shutil
+import sqlite3
 import struct
 from pyhindsight import __version__
+from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
+
+
+def open_sqlite_db(chrome, database_path, database_name):
+    log.info(f' - Reading from {database_name} in {database_path}')
+
+    if chrome.no_copy:
+        db_path_to_open = os.path.join(database_path, database_name)
+
+    else:
+        try:
+            # Create 'temp' directory if doesn't exists
+            Path(chrome.temp_dir).mkdir(parents=True, exist_ok=True)
+
+            # Copy database to temp directory
+            db_path_to_open = os.path.join(chrome.temp_dir, database_name)
+            shutil.copyfile(os.path.join(database_path, database_name), db_path_to_open)
+        except Exception as e:
+            log.error(f' - Error copying {database_name}: {e}')
+            return None
+
+    try:
+        # Connect to copied database
+        db_conn = sqlite3.connect(db_path_to_open)
+
+        # Use a dictionary cursor
+        db_conn.row_factory = dict_factory
+    except Exception as e:
+        log.error(f' - Error opening {database_name}: {e}')
+        return None
+
+    return db_conn
 
 
 def format_plugin_output(name, version, items):
@@ -121,7 +163,13 @@ def get_ldb_pairs(ldb_path, prefix=''):
         return []
 
     cleaned_pairs = []
-    pairs = list(db.iterator())
+
+    try:
+        pairs = list(db.iterator())
+    except Exception as e:
+        log.warning(f' - Couldn\'t read {ldb_path} LevelDB data; {e}')
+        return []
+
     for pair in pairs:
         # Each leveldb pair should be a tuple of length 2 (key & value); if not, log it and skip it.
         if not isinstance(pair, tuple) or len(pair) is not 2:
@@ -165,6 +213,19 @@ def read_int32(input_bytes, ptr):
 def read_int64(input_bytes, ptr):
     value = struct.unpack('<Q', input_bytes[ptr:ptr + 8])[0]
     return value, ptr + 8
+
+#
+# def create_temp_db(path, database):
+#
+#     # Create 'temp' directory if doesn't exists
+#     Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
+#
+#     # Copy database to temp directory
+#     shutil.copyfile(os.path.join(path, database), os.path.join(temp_directory_name, database))
+
+#
+# def get_temp_db_directory():
+#     return temp_directory_name
 
 
 banner = '''

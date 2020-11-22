@@ -2,6 +2,7 @@ import sqlite3
 import os
 import sys
 import logging
+from pyhindsight import utils
 
 log = logging.getLogger(__name__)
 
@@ -10,7 +11,7 @@ class WebBrowser(object):
     def __init__(
             self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
             timezone=None, structure=None, parsed_artifacts=None, parsed_storage=None, artifacts_counts=None,
-            artifacts_display=None, preferences=None):
+            artifacts_display=None, preferences=None, no_copy=None, temp_dir=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -23,6 +24,8 @@ class WebBrowser(object):
         self.artifacts_counts = artifacts_counts
         self.artifacts_display = artifacts_display
         self.preferences = preferences
+        self.no_copy = no_copy
+        self.temp_dir = temp_dir
 
         if self.version is None:
             self.version = []
@@ -63,14 +66,12 @@ class WebBrowser(object):
         if database not in list(self.structure.keys()):
             self.structure[database] = {}
 
-            # Connect to SQLite db
-            database_path = os.path.join(path, database)
-            try:
-                db = sqlite3.connect(database_path)
-                cursor = db.cursor()
-            except sqlite3.OperationalError:
-                print("Not a database")
+            # Copy and connect to copy of SQLite DB
+            conn = utils.open_sqlite_db(self, path, database)
+            if not conn:
+                self.artifacts_counts[database] = 'Failed'
                 return
+            cursor = conn.cursor()
 
             # Find the names of each table in the db
             try:
@@ -82,18 +83,20 @@ class WebBrowser(object):
                       "Chrome installation while it is running.  Please close Chrome and try again.")
                 sys.exit(1)
             except:
-                log.error(" - Couldn't connect to {}".format(database_path))
+                log.error(f' - Couldn\'t query {database} in {path}')
                 return
 
             # For each table, find all the columns in it
             for table in tables:
-                cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
+                # cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
+                cursor.execute('PRAGMA table_info({})'.format(table['name']))
                 columns = cursor.fetchall()
 
                 # Create a dict of lists of the table/column names
-                self.structure[database][str(table[0])] = []
+                # self.structure[database][str(table[0])] = []
+                self.structure[database][table['name']] = []
                 for column in columns:
-                    self.structure[database][str(table[0])].append(str(column[1]))
+                    self.structure[database][table['name']].append(column['name'])
 
     @staticmethod
     def dict_factory(cursor, row):

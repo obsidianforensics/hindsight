@@ -36,7 +36,7 @@ This script parses the files in the Chrome/Chromium/Brave data folder, runs vari
    against the data, and then outputs the results in a spreadsheet. '''.format(pyhindsight.__version__)
 
     epi = '''
-Example:  C:\>hindsight.py -i "C:\\Users\Ryan\AppData\Local\Google\Chrome\\User Data\Default" -o test_case
+Example:  C:\\hindsight.py -i "C:\\Users\Ryan\AppData\Local\Google\Chrome\\User Data\Default" -o test_case
 
 The Chrome data folder default locations are:
         WinXP: <userdir>\Local Settings\Application Data\Google\Chrome
@@ -76,6 +76,10 @@ The Chrome data folder default locations are:
                              'Chrome data is from.')
     parser.add_argument('-c', '--cache', help='Path to the cache directory; only needed if the directory is outside '
                                               'the given "input" directory. Mac systems are setup this way by default.')
+    parser.add_argument('--nocopy', '--no_copy', help='Don\'t copy files before opening them; this might run faster, '
+                                                      'but some locked files may be inaccessible', action='store_true')
+    parser.add_argument('--temp_dir', default='hindsight-temp',
+                        help='If files are copied before being opened, use this directory as the copy destination')
 
     args = parser.parse_args()
 
@@ -121,7 +125,8 @@ def main():
         string_buffer.seek(0)
 
         # Write the StringIO object to a file on disk named what the user specified
-        with open(f'{os.path.join(real_path, analysis_session.output_name)}.{analysis_session.selected_output_format}', 'wb') as file_output:
+        with open(f'{os.path.join(real_path, analysis_session.output_name)}.{analysis_session.selected_output_format}',
+                  'wb') as file_output:
             shutil.copyfileobj(string_buffer, file_output)
 
     def write_sqlite(analysis_session):
@@ -173,6 +178,8 @@ def main():
     analysis_session.selected_output_format = args.format
     analysis_session.browser_type = args.browser_type
     analysis_session.timezone = args.timezone
+    analysis_session.no_copy = args.nocopy
+    analysis_session.temp_dir = args.temp_dir
 
     analysis_session.log_path = args.log
 
