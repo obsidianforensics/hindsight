@@ -200,8 +200,16 @@ def main():
     # Read the input directory
     analysis_session.input_path = args.input
     print((format_meta_output('Input directory', args.input)))
+
     log.info(f'Reading files from {args.input}')
-    input_listing = os.listdir(args.input)
+    try:
+        input_listing = os.listdir(args.input)
+    except PermissionError as e:
+        fail_message = f'Unable to read input directory; {e}'
+        log.error(fail_message)
+        print(fail_message)
+        return False
+
     log.debug("Input directory contents: " + str(input_listing))
 
     # Search input directory for browser profiles to analyze
