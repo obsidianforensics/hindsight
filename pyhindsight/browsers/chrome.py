@@ -34,11 +34,12 @@ log = logging.getLogger(__name__)
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
                  parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None,
-                 artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None):
+                 artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None,
+                 no_copy=None, temp_dir=None):
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
                             timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
-                            artifacts_counts=artifacts_counts,
-                            artifacts_display=artifacts_display, preferences=preferences)
+                            artifacts_counts=artifacts_counts, artifacts_display=artifacts_display,
+                            preferences=preferences, no_copy=no_copy, temp_dir=temp_dir)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.cache_path = cache_path
@@ -48,6 +49,8 @@ class Chrome(WebBrowser):
         self.available_decrypts = available_decrypts
         self.storage = storage
         self.preferences = preferences
+        self.no_copy = no_copy
+        self.temp_dir = temp_dir
 
         if self.version is None:
             self.version = []
@@ -273,7 +276,7 @@ class Chrome(WebBrowser):
             log.info(f' - Using SQL query for History items for Chrome v{compatible_version}')
             try:
                 # Copy and connect to copy of 'History' SQLite DB
-                conn = utils.copy_and_connect_to_sqlite_db(path, history_file)
+                conn = utils.open_sqlite_db(self, path, history_file)
                 if not conn:
                     self.artifacts_counts[history_file] = 'Failed'
                     return
@@ -356,7 +359,7 @@ class Chrome(WebBrowser):
             log.info(f' - Using SQL query for Download items for Chrome v{compatible_version}')
             try:
                 # Copy and connect to copy of 'History' SQLite DB
-                conn = utils.copy_and_connect_to_sqlite_db(path, database)
+                conn = utils.open_sqlite_db(self, path, database)
                 if not conn:
                     self.artifacts_counts[database + '_downloads'] = 'Failed'
                     return
@@ -509,7 +512,7 @@ class Chrome(WebBrowser):
             log.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
             try:
                 # Copy and connect to copy of 'Cookies' SQLite DB
-                conn = utils.copy_and_connect_to_sqlite_db(path, database)
+                conn = utils.open_sqlite_db(self, path, database)
                 if not conn:
                     self.artifacts_counts[database] = 'Failed'
                     return
@@ -590,7 +593,7 @@ class Chrome(WebBrowser):
             log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
 
             # Copy and connect to copy of 'Login Data' SQLite DB
-            conn = utils.copy_and_connect_to_sqlite_db(path, database)
+            conn = utils.open_sqlite_db(self, path, database)
             if not conn:
                 self.artifacts_counts[database] = 'Failed'
                 return
@@ -660,7 +663,7 @@ class Chrome(WebBrowser):
                 log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
 
                 # Copy and connect to copy of 'Login Data' SQLite DB
-                conn = utils.copy_and_connect_to_sqlite_db(path, database)
+                conn = utils.open_sqlite_db(self, path, database)
                 if not conn:
                     self.artifacts_counts[database] = 'Failed'
                     return
@@ -705,7 +708,7 @@ class Chrome(WebBrowser):
             log.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
             try:
                 # Copy and connect to copy of 'Web Data' SQLite DB
-                conn = utils.copy_and_connect_to_sqlite_db(path, database)
+                conn = utils.open_sqlite_db(self, path, database)
                 if not conn:
                     self.artifacts_counts['Autofill'] = 'Failed'
                     return
@@ -810,7 +813,7 @@ class Chrome(WebBrowser):
 
                 try:
                     # Copy and connect to copy of the Local Storage SQLite DB
-                    conn = utils.copy_and_connect_to_sqlite_db(ls_path, ls_file)
+                    conn = utils.open_sqlite_db(self, ls_path, ls_file)
                     cursor = conn.cursor()
 
                     cursor.execute('SELECT key,value FROM ItemTable')
@@ -1524,7 +1527,7 @@ class Chrome(WebBrowser):
         log.info(f'Application Cache items from {path}:')
 
         # Copy and connect to copy of 'Index' SQLite DB
-        conn = utils.copy_and_connect_to_sqlite_db(base_path, 'Index')
+        conn = utils.open_sqlite_db(self, base_path, 'Index')
         if not conn:
             self.artifacts_counts[dir_name] = 'Failed'
             return
@@ -1974,7 +1977,9 @@ class Chrome(WebBrowser):
         self.parsed_artifacts.sort()
 
         # Clean temp directory after processing profile
-        # shutil.rmtree(utils.get_temp_db_directory())
+        if not self.no_copy:
+            log.info(f'Deleting temporary directory {self.temp_dir}')
+            shutil.rmtree(self.temp_dir)
 
     class URLItem(WebBrowser.URLItem):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,

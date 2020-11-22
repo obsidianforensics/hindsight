@@ -19,23 +19,27 @@ def dict_factory(cursor, row):
     return d
 
 
-def copy_and_connect_to_sqlite_db(database_path, database_name, temp_directory_name='temp'):
+def open_sqlite_db(chrome, database_path, database_name):
     log.info(f' - Reading from {database_name} in {database_path}')
 
-    try:
-        # Create 'temp' directory if doesn't exists
-        Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
+    if chrome.no_copy:
+        db_path_to_open = os.path.join(database_path, database_name)
 
-        # Copy database to temp directory
-        copied_db_path = os.path.join(temp_directory_name, database_name)
-        shutil.copyfile(os.path.join(database_path, database_name), copied_db_path)
-    except Exception as e:
-        log.error(f' - Error copying {database_name}: {e}')
-        return None
+    else:
+        try:
+            # Create 'temp' directory if doesn't exists
+            Path(chrome.temp_dir).mkdir(parents=True, exist_ok=True)
+
+            # Copy database to temp directory
+            db_path_to_open = os.path.join(chrome.temp_dir, database_name)
+            shutil.copyfile(os.path.join(database_path, database_name), db_path_to_open)
+        except Exception as e:
+            log.error(f' - Error copying {database_name}: {e}')
+            return None
 
     try:
         # Connect to copied database
-        db_conn = sqlite3.connect(copied_db_path)
+        db_conn = sqlite3.connect(db_path_to_open)
 
         # Use a dictionary cursor
         db_conn.row_factory = dict_factory

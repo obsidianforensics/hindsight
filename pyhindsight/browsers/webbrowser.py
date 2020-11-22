@@ -11,7 +11,7 @@ class WebBrowser(object):
     def __init__(
             self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
             timezone=None, structure=None, parsed_artifacts=None, parsed_storage=None, artifacts_counts=None,
-            artifacts_display=None, preferences=None):
+            artifacts_display=None, preferences=None, no_copy=None, temp_dir=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -24,6 +24,8 @@ class WebBrowser(object):
         self.artifacts_counts = artifacts_counts
         self.artifacts_display = artifacts_display
         self.preferences = preferences
+        self.no_copy = no_copy
+        self.temp_dir = temp_dir
 
         if self.version is None:
             self.version = []
@@ -65,7 +67,7 @@ class WebBrowser(object):
             self.structure[database] = {}
 
             # Copy and connect to copy of SQLite DB
-            conn = utils.copy_and_connect_to_sqlite_db(path, database)
+            conn = utils.open_sqlite_db(self, path, database)
             if not conn:
                 self.artifacts_counts[database] = 'Failed'
                 return

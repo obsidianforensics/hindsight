@@ -213,8 +213,8 @@ class HindsightEncoder(json.JSONEncoder):
 class AnalysisSession(object):
     def __init__(
             self, input_path=None, profile_paths=None, cache_path=None, browser_type=None, available_input_types=None,
-            version=None, display_version=None, output_name=None, log_path=None, timezone=None,
-            available_output_formats=None, selected_output_format=None, available_decrypts=None,
+            version=None, display_version=None, output_name=None, log_path=None, no_copy=None, temp_dir=None,
+            timezone=None, available_output_formats=None, selected_output_format=None, available_decrypts=None,
             selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
             parsed_storage=None, plugin_descriptions=None, selected_plugins=None, plugin_results=None,
             hindsight_version=None, preferences=None):
@@ -227,6 +227,8 @@ class AnalysisSession(object):
         self.display_version = display_version
         self.output_name = output_name
         self.log_path = log_path
+        self.no_copy = no_copy
+        self.temp_dir = temp_dir
         self.timezone = timezone
         self.available_output_formats = available_output_formats
         self.selected_output_format = selected_output_format
@@ -444,7 +446,8 @@ class AnalysisSession(object):
 
             if self.browser_type == "Chrome":
                 browser_analysis = Chrome(found_profile_path, available_decrypts=self.available_decrypts,
-                                          cache_path=self.cache_path, timezone=self.timezone)
+                                          cache_path=self.cache_path, timezone=self.timezone,
+                                          no_copy=self.no_copy, temp_dir=self.temp_dir)
                 browser_analysis.process()
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
                 self.parsed_storage.extend(browser_analysis.parsed_storage)
