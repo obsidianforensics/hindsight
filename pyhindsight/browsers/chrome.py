@@ -279,7 +279,6 @@ class Chrome(WebBrowser):
                 if not conn:
                     self.artifacts_counts[history_file] = 'Failed'
                     return
-
                 cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
@@ -332,9 +331,9 @@ class Chrome(WebBrowser):
 
         # Queries for different versions
         query = {86: '''SELECT playbackSession.url, playbackSession.title, playbackSession.source_title, 
-                             playbackSession.duration_ms, playbackSession.position_ms, 
-                             playbackSession.last_updated_time_s, playback.watch_time_s 
-                         FROM playbackSession LEFT JOIN playback ON playbackSession.url = playback.url'''}
+                            playbackSession.duration_ms, playbackSession.position_ms, 
+                            playbackSession.last_updated_time_s, playback.watch_time_s 
+                        FROM playbackSession LEFT JOIN playback ON playbackSession.url = playback.url'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -349,7 +348,6 @@ class Chrome(WebBrowser):
                 if not conn:
                     self.artifacts_counts[history_file] = 'Failed'
                     return
-
                 cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
@@ -383,6 +381,7 @@ class Chrome(WebBrowser):
                     results.append(new_row)
 
                 conn.close()
+
                 self.artifacts_counts[history_file] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
