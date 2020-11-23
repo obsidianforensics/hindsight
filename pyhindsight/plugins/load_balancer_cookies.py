@@ -18,20 +18,19 @@
 ###################################################################################################
 
 # Config
-friendlyName = u"Load Balancer Cookie Decoder"
-description = u"Decodes persistence cookies set by load balancers"
-artifactTypes = (u'cookie',)  # Artifacts that this plugin processes
+friendlyName = "Load Balancer Cookie Decoder"
+description = "Decodes persistence cookies set by load balancers"
+artifactTypes = ('cookie',)  # Artifacts that this plugin processes
 remoteLookups = 0  # if this plugin will query online sources/databases
 browser = []  # browsers that the plugin applies to; empty list if no restrictions
 browserVersion = []  # browser versions that the plugin applies to; empty list if no restrictions
-version = u"20160621"  # version of the plugin (use the date)
+version = "20200213"  # version of the plugin (use the date)
 parsedItems = 0  # count of items that the plugin parsed; initialized to 0
 
 
 def plugin(analysis_session=None):
     import re
     import struct
-    from string import maketrans
     if analysis_session is None:
         return
 
@@ -39,8 +38,8 @@ def plugin(analysis_session=None):
         """Decrypts the Caesar Substitution Cipher Encryption used on the NetScaler Cookie Name"""
         # This decrypts the Caesar Substitution Cipher Encryption used on the NetScaler Cookie Name
         service_name_s = str(service_name)
-        trans = maketrans('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
-                          'zabcdefghijklmnopqrstuvwxyZABCDEFGHIJKLMNOPQRSTUVWXY')
+        trans = str.maketrans('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+                              'zabcdefghijklmnopqrstuvwxyZABCDEFGHIJKLMNOPQRSTUVWXY')
         real_name = service_name_s.translate(trans)
         return real_name
 

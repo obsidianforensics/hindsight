@@ -8,7 +8,7 @@
                 <td align="right">{{display_version}}</td>
                 <td width=10%></td>
             </tr>
-         % display_items = artifacts_display.keys()
+         % display_items = list(artifacts_display.keys())
          % display_order = ['Archived History', 'History', 'History_downloads', 'Cache', 'Application Cache', 'Media Cache', 'GPUCache', 'Cookies', 'Local Storage', 'Bookmarks', 'Autofill', 'Login Data', 'Preferences', 'Extensions', 'Extension Cookies' ]
          % while len(display_order) > 0:
          %   if display_order[0] in display_items:

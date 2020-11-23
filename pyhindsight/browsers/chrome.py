@@ -7,11 +7,10 @@ import datetime
 import re
 import struct
 import json
-import codecs
 import logging
 import shutil
 from pyhindsight.browsers.webbrowser import WebBrowser
-from pyhindsight.utils import friendly_date, to_datetime
+from pyhindsight import utils
 
 # Try to import optionally modules - do nothing on failure, as status is tracked elsewhere
 try:
@@ -35,12 +34,13 @@ log = logging.getLogger(__name__)
 
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
-                 parsed_artifacts=None, storage=None, installed_extensions=None, artifacts_counts=None, artifacts_display=None,
-                 available_decrypts=None, preferences=None):
-        # TODO: try to fix this to use super()
+                 parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None,
+                 artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None,
+                 no_copy=None, temp_dir=None):
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
-                            timezone=timezone, parsed_artifacts=parsed_artifacts, artifacts_counts=artifacts_counts,
-                            artifacts_display=artifacts_display, preferences=preferences)
+                            timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
+                            artifacts_counts=artifacts_counts, artifacts_display=artifacts_display,
+                            preferences=preferences, no_copy=no_copy, temp_dir=temp_dir)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.cache_path = cache_path
@@ -50,6 +50,8 @@ class Chrome(WebBrowser):
         self.available_decrypts = available_decrypts
         self.storage = storage
         self.preferences = preferences
+        self.no_copy = no_copy
+        self.temp_dir = temp_dir
 
         if self.version is None:
             self.version = []
@@ -59,6 +61,9 @@ class Chrome(WebBrowser):
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
+
+        if self.parsed_storage is None:
+            self.parsed_storage = []
 
         if self.installed_extensions is None:
             self.installed_extensions = []
@@ -92,10 +97,20 @@ class Chrome(WebBrowser):
 
     def determine_version(self):
         """Determine version of Chrome databases files by looking for combinations of columns in certain tables.
-
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
-        possible_versions = range(1, 74)
+
+        possible_versions = list(range(1, 87))
+        # TODO: remove 82?
+        previous_possible_versions = possible_versions[:]
+
+        def update_and_rollback_if_empty(version_list, prev_version_list):
+            if len(version_list) == 0:
+                version_list = prev_version_list
+                log.warning('Last version structure check eliminated all possible versions; skipping that file.')
+            else:
+                prev_version_list = version_list[:]
+            return version_list, prev_version_list
 
         def trim_lesser_versions_if(column, table, version):
             """Remove version numbers < 'version' from 'possible_versions' if 'column' isn't in 'table', and keep
@@ -121,137 +136,157 @@ class Chrome(WebBrowser):
             """Remove version numbers < 'version' from 'possible_versions'"""
             possible_versions[:] = [x for x in possible_versions if x >= version]
 
-        if 'History' in self.structure.keys():
-            log.debug("Analyzing 'History' structure")
-            log.debug(" - Starting possible versions:  {}".format(possible_versions))
-            if 'visits' in self.structure['History'].keys():
+        if 'History' in list(self.structure.keys()):
+            log.debug('Analyzing \'History\' structure')
+            log.debug(f' - Starting possible versions:  {possible_versions}')
+            if 'visits' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('visit_duration', self.structure['History']['visits'], 20)
                 trim_lesser_versions_if('incremented_omnibox_typed_score', self.structure['History']['visits'], 68)
-            if 'visit_source' in self.structure['History'].keys():
+                trim_lesser_versions_if('publicly_routable', self.structure['History']['visits'], 85)
+            if 'visit_source' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
-            if 'downloads' in self.structure['History'].keys():
+            if 'downloads' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('target_path', self.structure['History']['downloads'], 26)
                 trim_lesser_versions_if('opened', self.structure['History']['downloads'], 16)
                 trim_lesser_versions_if('etag', self.structure['History']['downloads'], 30)
                 trim_lesser_versions_if('original_mime_type', self.structure['History']['downloads'], 37)
                 trim_lesser_versions_if('last_access_time', self.structure['History']['downloads'], 59)
-            if 'downloads_slices' in self.structure['History'].keys():
+            if 'downloads_slices' in list(self.structure['History'].keys()):
                 trim_lesser_versions(58)
-            log.debug(" - Finishing possible versions: {}".format(possible_versions))
+            log.debug(f' - Finishing possible versions: {possible_versions}')
 
         # the pseudo-History file generated by the ChromeNative Volatility plugin should use the v30 query
-        elif (db.startswith('History__') for db in self.structure.keys()):
+        elif (db.startswith('History__') for db in list(self.structure.keys())):
             trim_lesser_versions(30)
 
-        if 'Cookies' in self.structure.keys():
-            log.debug("Analyzing 'Cookies' structure")
-            log.debug(" - Starting possible versions:  {}".format(possible_versions))
-            if 'cookies' in self.structure['Cookies'].keys():
-                trim_lesser_versions_if('is_persistent', self.structure['Cookies']['cookies'], 66)
-                trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
-                trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
-                trim_lesser_versions_if('firstpartyonly', self.structure['Cookies']['cookies'], 44)
-            log.debug(" - Finishing possible versions: {}".format(possible_versions))
+        possible_versions, previous_possible_versions = \
+            update_and_rollback_if_empty(possible_versions, previous_possible_versions)
 
-        if 'Web Data' in self.structure.keys():
+        if 'Cookies' in list(self.structure.keys()):
+            log.debug("Analyzing 'Cookies' structure")
+            log.debug(f' - Starting possible versions:  {possible_versions}')
+            if 'cookies' in list(self.structure['Cookies'].keys()):
+                trim_lesser_versions_if('source_scheme', self.structure['Cookies']['cookies'], 80)
+                trim_lesser_versions_if('samesite', self.structure['Cookies']['cookies'], 76)
+                trim_lesser_versions_if('is_persistent', self.structure['Cookies']['cookies'], 66)
+                trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
+                trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
+            log.debug(f' - Finishing possible versions: {possible_versions}')
+
+        possible_versions, previous_possible_versions = \
+            update_and_rollback_if_empty(possible_versions, previous_possible_versions)
+
+        if 'Web Data' in list(self.structure.keys()):
             log.debug("Analyzing 'Web Data' structure")
-            log.debug(" - Starting possible versions:  {}".format(possible_versions))
-            if 'autofill' in self.structure['Web Data'].keys():
+            log.debug(f' - Starting possible versions:  {possible_versions}')
+            if 'autofill' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions_if('name', self.structure['Web Data']['autofill'], 2)
                 trim_lesser_versions_if('date_created', self.structure['Web Data']['autofill'], 35)
-            if 'autofill_profiles' in self.structure['Web Data'].keys():
+            if 'autofill_profiles' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions_if('language_code', self.structure['Web Data']['autofill_profiles'], 36)
                 trim_lesser_versions_if('validity_bitfield', self.structure['Web Data']['autofill_profiles'], 63)
-                trim_lesser_versions_if('is_client_validity_states_updated', self.structure['Web Data']['autofill_profiles'], 71)
-
-            if 'autofill_sync_metadata' in self.structure['Web Data'].keys():
+                trim_lesser_versions_if(
+                    'is_client_validity_states_updated', self.structure['Web Data']['autofill_profiles'], 71)
+            if 'autofill_profile_addresses' in list(self.structure['Web Data'].keys()):
+                trim_lesser_versions(86)
+            if 'autofill_sync_metadata' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions(57)
                 trim_lesser_versions_if('model_type', self.structure['Web Data']['autofill_sync_metadata'], 69)
-            if 'web_apps' not in self.structure['Web Data'].keys():
+            if 'web_apps' not in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions(38)
-            if 'credit_cards' in self.structure['Web Data'].keys():
+            if 'credit_cards' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions_if('billing_address_id', self.structure['Web Data']['credit_cards'], 53)
-            log.debug(" - Finishing possible versions: {}".format(possible_versions))
+                trim_lesser_versions_if('nickname', self.structure['Web Data']['credit_cards'], 85)
+            log.debug(f' - Finishing possible versions: {possible_versions}')
 
-        if 'Login Data' in self.structure.keys():
+        possible_versions, previous_possible_versions = \
+            update_and_rollback_if_empty(possible_versions, previous_possible_versions)
+
+        if 'Login Data' in list(self.structure.keys()):
             log.debug("Analyzing 'Login Data' structure")
-            log.debug(" - Starting possible versions:  {}".format(possible_versions))
-            if 'logins' in self.structure['Login Data'].keys():
+            log.debug(f' - Starting possible versions:  {possible_versions}')
+            if 'logins' in list(self.structure['Login Data'].keys()):
                 trim_lesser_versions_if('display_name', self.structure['Login Data']['logins'], 39)
                 trim_lesser_versions_if('generation_upload_status', self.structure['Login Data']['logins'], 42)
                 trim_greater_versions_if('ssl_valid', self.structure['Login Data']['logins'], 53)
                 trim_lesser_versions_if('possible_username_pairs', self.structure['Login Data']['logins'], 59)
                 trim_lesser_versions_if('id', self.structure['Login Data']['logins'], 73)
-            log.debug(" - Finishing possible versions: {}".format(possible_versions))
+                trim_lesser_versions_if('moving_blocked_for', self.structure['Login Data']['logins'], 84)
+            if 'field_info' in list(self.structure['Login Data'].keys()):
+                trim_lesser_versions(80)
+            if 'compromised_credentials' in list(self.structure['Login Data'].keys()):
+                trim_lesser_versions(83)
+            log.debug(f' - Finishing possible versions: {possible_versions}')
 
-        if 'Network Action Predictor' in self.structure.keys():
+        possible_versions, previous_possible_versions = \
+            update_and_rollback_if_empty(possible_versions, previous_possible_versions)
+
+        if 'Network Action Predictor' in list(self.structure.keys()):
             log.debug("Analyzing 'Network Action Predictor' structure")
-            log.debug(" - Starting possible versions:  {}".format(possible_versions))
-            if 'resource_prefetch_predictor_url' in self.structure['Network Action Predictor'].keys():
+            log.debug(f' - Starting possible versions:  {possible_versions}')
+            if 'resource_prefetch_predictor_url' in list(self.structure['Network Action Predictor'].keys()):
                 trim_lesser_versions(22)
-                trim_lesser_versions_if('key', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 55)
-                trim_lesser_versions_if('proto', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 54)
-            log.debug(" - Finishing possible versions: {}".format(possible_versions))
+                trim_lesser_versions_if(
+                    'key', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 55)
+                trim_lesser_versions_if(
+                    'proto', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 54)
+            log.debug(f' - Finishing possible versions: {possible_versions}')
+
+        possible_versions, previous_possible_versions = \
+            update_and_rollback_if_empty(possible_versions, previous_possible_versions)
 
         self.version = possible_versions
 
     def get_history(self, path, history_file, version, row_type):
-        # Set up empty return array
         results = []
 
-        log.info("History items from {}:".format(history_file))
-
-        # TODO: visit_source table?  don't have good sample data
-        # TODO: visits where visit_count = 0; means it should be in Archived History but could be helpful to have if
-        # that file is missing.  Changing the first JOIN to a LEFT JOIN adds these in.
+        log.info(f'History items from {history_file}')
 
         # Queries for different versions
         query = {59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  29: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source, visits.is_indexed
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source, visits.is_indexed
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  20: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                             visits.transition, visit_source.source, visits.is_indexed
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
+                            visits.transition, visit_source.source, visits.is_indexed
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  7:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
-                             visit_source.source
-                          FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
+                            visit_source.source
+                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  1:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
-                          FROM urls, visits WHERE urls.id = visits.url'''}
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
+                        FROM urls, visits WHERE urls.id = visits.url'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
         if compatible_version is not 0:
-            log.info(" - Using SQL query for History items for Chrome v{}".format(compatible_version))
+            log.info(f' - Using SQL query for History items for Chrome {compatible_version}')
             try:
-                # Connect to 'History' sqlite db
-                history_path = os.path.join(path, history_file)
-                db_file = sqlite3.connect(history_path)
-                log.info(" - Reading from file '{}'".format(history_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                # Copy and connect to copy of 'History' SQLite DB
+                conn = utils.open_sqlite_db(self, path, history_file)
+                if not conn:
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 try:
                     cursor.execute(query[compatible_version])
                 except Exception as e:
-                    log.error(" - Error querying '{}': {}".format(history_path, e))
+                    log.error(f' - Error querying {history_file}: {e}')
                     self.artifacts_counts[history_file] = 'Failed'
                     return
 
@@ -260,12 +295,13 @@ class Chrome(WebBrowser):
                     if row.get('visit_duration'):
                         duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
-                    new_row = Chrome.URLItem(self.profile_path, row.get('id'), row.get('url'), row.get('title'),
-                                             to_datetime(row.get('visit_time'), self.timezone),
-                                             to_datetime(row.get('last_visit_time'), self.timezone), row.get('visit_count'),
-                                             row.get('typed_count'), row.get('from_visit'), row.get('transition'),
-                                             row.get('hidden'), row.get('favicon_id'), row.get('is_indexed'),
-                                             unicode(duration), row.get('source'))
+                    new_row = Chrome.URLItem(
+                        self.profile_path, row.get('id'), row.get('url'), row.get('title'),
+                        utils.to_datetime(row.get('visit_time'), self.timezone),
+                        utils.to_datetime(row.get('last_visit_time'), self.timezone),
+                        row.get('visit_count'), row.get('typed_count'), row.get('from_visit'),
+                        row.get('transition'), row.get('hidden'), row.get('favicon_id'),
+                        row.get('is_indexed'), str(duration), row.get('source'))
 
                     # Set the row type as determined earlier
                     new_row.row_type = row_type
@@ -279,14 +315,81 @@ class Chrome(WebBrowser):
                     # Add the new row to the results array
                     results.append(new_row)
 
-                db_file.close()
+                conn.close()
+
                 self.artifacts_counts[history_file] = len(results)
-                log.info(" - Parsed {} items".format(len(results)))
+                log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
 
-            except Exception, e:
+            except Exception as e:
                 self.artifacts_counts[history_file] = 'Failed'
-                log.error(" - Exeception parsing {}; {}".format(os.path.join(path, history_file), e))
+                log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
+
+    def get_media_history(self, path, history_file, version, row_type):
+        results = []
+
+        log.info(f'Media History items from {history_file}')
+
+        # Queries for different versions
+        query = {86: '''SELECT playbackSession.url, playbackSession.title, playbackSession.source_title, 
+                            playbackSession.duration_ms, playbackSession.position_ms, 
+                            playbackSession.last_updated_time_s, playback.watch_time_s 
+                        FROM playbackSession LEFT JOIN playback ON playbackSession.url = playback.url'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version is not 0:
+            log.info(f' - Using SQL query for Media History items for Chrome {compatible_version}')
+            try:
+                # Copy and connect to copy of 'Media History' SQLite DB
+                conn = utils.open_sqlite_db(self, path, history_file)
+                if not conn:
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
+                cursor = conn.cursor()
+
+                # Use highest compatible version SQL to select download data
+                try:
+                    cursor.execute(query[compatible_version])
+                except Exception as e:
+                    log.error(f" - Error querying '{history_file}': {e}")
+                    self.artifacts_counts[history_file] = 'Failed'
+                    return
+
+                for row in cursor:
+                    duration = ''
+                    if row.get('duration_ms'):
+                        duration = str(datetime.timedelta(milliseconds=row.get('duration_ms')))[:-3]
+                    position = ''
+                    if row.get('position_ms'):
+                        position = str(datetime.timedelta(milliseconds=row.get('position_ms')))[:-3]
+                    watch_time = ''
+                    if row.get('watch_time_s'):
+                        watch_time = ' ' + str(datetime.timedelta(seconds=row.get('watch_time_s')))
+
+                    new_row = Chrome.MediaItem(
+                        self.profile_path, row.get('url'), row.get('title'),
+                        utils.to_datetime(row.get('last_updated_time_s'), self.timezone),
+                        position, duration, row.get('source_title'), watch_time)
+
+                    # Set the row type as determined earlier
+                    new_row.row_type = row_type
+
+                    # Add the new row to the results array
+                    results.append(new_row)
+
+                conn.close()
+
+                self.artifacts_counts[history_file] = len(results)
+                log.info(f' - Parsed {len(results)} items')
+                self.parsed_artifacts.extend(results)
+
+            except Exception as e:
+                self.artifacts_counts[history_file] = 'Failed'
+                log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
 
     def get_downloads(self, path, database, version, row_type):
         # Set up empty return array
@@ -315,42 +418,35 @@ class Chrome(WebBrowser):
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
         if compatible_version is not 0:
-            log.info(" - Using SQL query for Download items for Chrome v{}".format(compatible_version))
+            log.info(f' - Using SQL query for Download items for Chrome v{compatible_version}')
             try:
-                # Connect to 'History' sqlite db
-                history_path = os.path.join(path, database)
-                db_file = sqlite3.connect(history_path)
-                log.info(" - Reading from file '{}'".format(history_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
-
-                # Use highest compatible version SQL to select download data
-                try:
-                    cursor.execute(query[compatible_version])
-                except Exception as e:
-                    log.error(" - Error querying '{}': {}".format(history_path, e))
+                # Copy and connect to copy of 'History' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
                     self.artifacts_counts[database + '_downloads'] = 'Failed'
                     return
+                cursor = conn.cursor()
+
+                # Use highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
 
                 for row in cursor:
                     try:
                         # TODO: collapse download chain into one entry per download
-                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        new_row = Chrome.DownloadItem(self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
-                                                      row.get('total_bytes'), row.get('state'), row.get('full_path'),
-                                                      to_datetime(row.get('start_time'), self.timezone),
-                                                      to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
-                                                      row.get('current_path'), row.get('opened'), row.get('danger_type'),
-                                                      row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
-                                                      row.get('chain_index'))
+                        new_row = Chrome.DownloadItem(
+                            self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
+                            row.get('total_bytes'), row.get('state'), row.get('full_path'),
+                            utils.to_datetime(row.get('start_time'), self.timezone),
+                            utils.to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
+                            row.get('current_path'), row.get('opened'), row.get('danger_type'),
+                            row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
+                            row.get('chain_index'))
                     except:
-                        log.exception(" - Exception processing record; skipped.")
+                        log.exception(' - Exception processing record; skipped.')
                         continue
 
                     new_row.decode_interrupt_reason()
@@ -367,13 +463,14 @@ class Chrome(WebBrowser):
                     elif new_row.target_path is not None:
                         new_row.value = new_row.target_path
                     else:
-                        new_row.value = u'Error retrieving download location'
+                        new_row.value = 'Error retrieving download location'
                         log.error(" - Error retrieving download location for download '{}'".format(new_row.url))
 
                     new_row.row_type = row_type
                     results.append(new_row)
 
-                db_file.close()
+                conn.close()
+
                 self.artifacts_counts[database + '_downloads'] = len(results)
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
@@ -435,7 +532,7 @@ class Chrome(WebBrowser):
                 if decrypted_value is "<encrypted>" and self.available_decrypts['linux'] is 1:
                     try:
                         if not self.cached_key:
-                            my_pass = 'peanuts'.encode('utf8')
+                            my_pass = 'peanuts'
                             iterations = 1
                             self.cached_key = PBKDF2(my_pass, salt, length, iterations)
                         decrypted_value = chrome_decrypt(encrypted_value, key=self.cached_key)
@@ -452,8 +549,9 @@ class Chrome(WebBrowser):
 
         # Queries for different versions
         query = {66: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
-                            cookies.last_access_utc, cookies.expires_utc, cookies.is_secure, cookies.is_httponly,
-                            cookies.is_persistent, cookies.has_expires, cookies.priority, cookies.encrypted_value
+                            cookies.last_access_utc, cookies.expires_utc, cookies.is_secure AS secure, 
+                            cookies.is_httponly AS httponly, cookies.is_persistent AS persistent, 
+                            cookies.has_expires, cookies.priority, cookies.encrypted_value
                         FROM cookies''',
                  33: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly,
@@ -473,20 +571,18 @@ class Chrome(WebBrowser):
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
         if compatible_version is not 0:
             log.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'Cookies' sqlite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                log.info(" - Reading from file '{}'".format(db_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                # Copy and connect to copy of 'Cookies' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts[database] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
@@ -494,122 +590,168 @@ class Chrome(WebBrowser):
                 for row in cursor:
                     if row.get('encrypted_value') is not None:
                         if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = self.decrypt_cookie(row.get('encrypted_value')).decode('utf-8')
+                            cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
                         else:
                             cookie_value = row.get('value')
                     else:
                         cookie_value = row.get('value')
-                        # print type(cookie_value), cookie_value
 
-                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                                to_datetime(row.get('creation_utc'), self.timezone),
-                                                to_datetime(row.get('last_access_utc'), self.timezone),
-                                                to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
-                                                row.get('httponly'), row.get('persistent'),
-                                                row.get('has_expires'), row.get('priority'))
+                    new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'),
+                                                cookie_value, utils.to_datetime(row.get('creation_utc'), self.timezone),
+                                                utils.to_datetime(row.get('last_access_utc'), self.timezone),
+                                                row.get('secure'), row.get('httponly'), row.get('persistent'),
+                                                row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
+                                                row.get('priority'))
 
-                    accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                                                     to_datetime(row.get('creation_utc'), self.timezone),
-                                                     to_datetime(row.get('last_access_utc'), self.timezone),
-                                                     to_datetime(row.get('expires_utc'), self.timezone), row.get('secure'),
-                                                     row.get('httponly'), row.get('persistent'),
-                                                     row.get('has_expires'), row.get('priority'))
+                    accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'),
+                                                     row.get('name'), cookie_value,
+                                                     utils.to_datetime(row.get('creation_utc'), self.timezone),
+                                                     utils.to_datetime(row.get('last_access_utc'), self.timezone),
+                                                     row.get('secure'), row.get('httponly'), row.get('persistent'),
+                                                     row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
+                                                     row.get('priority'))
 
                     new_row.url = (new_row.host_key + new_row.path)
                     accessed_row.url = (accessed_row.host_key + accessed_row.path)
 
                     # Create the row for when the cookie was created
-                    new_row.row_type = u'cookie (created)'
+                    new_row.row_type = 'cookie (created)'
                     new_row.timestamp = new_row.creation_utc
                     results.append(new_row)
 
                     # If the cookie was created and accessed at the same time (only used once), or if the last accessed
                     # time is 0 (happens on iOS), don't create an accessed row
-                    if new_row.creation_utc != new_row.last_access_utc and accessed_row.last_access_utc != to_datetime(0, self.timezone):
-                        accessed_row.row_type = u'cookie (accessed)'
+                    if new_row.creation_utc != new_row.last_access_utc and accessed_row.last_access_utc != utils.to_datetime(0, self.timezone):
+                        accessed_row.row_type = 'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
 
-                db_file.close()
+                conn.close()
                 self.artifacts_counts[database] = len(results)
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
 
-            except Exception, e:
-                self.artifacts_counts[database] = 'Failed - {}'.format(e)
+            except Exception as e:
+                self.artifacts_counts[database] = 'Failed'
                 log.error(" - Couldn't open {}".format(os.path.join(path, database)))
 
     def get_login_data(self, path, database, version):
         # Set up empty return array
         results = []
 
-        log.info("Password items from {}:".format(database))
+        log.info(f'Login items from {database}:')
 
-        # Queries for different versions
-        query = {29:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+        # Queries for "logins" table for different versions
+        query = {78:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
+                            password_value, date_created, date_last_used, blacklisted_by_user, 
+                            times_used FROM logins''',
+                 29:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
                             password_value, date_created, blacklisted_by_user, times_used FROM logins''',
                  6:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
                             password_value, date_created, blacklisted_by_user FROM logins'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
         if compatible_version is not 0:
-            log.info(" - Using SQL query for Password items for Chrome v{}".format(compatible_version))
-            try:
-                # Connect to 'Login Data' sqlite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                log.info(" - Reading from file '{}'".format(db_path))
+            log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
 
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+            # Copy and connect to copy of 'Login Data' SQLite DB
+            conn = utils.open_sqlite_db(self, path, database)
+            if not conn:
+                self.artifacts_counts[database] = 'Failed'
+                return
+            cursor = conn.cursor()
+
+            # Use highest compatible version SQL to select download data
+            cursor.execute(query[compatible_version])
+
+            for row in cursor:
+                if row.get('blacklisted_by_user') == 1:
+                    never_save_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('origin_url'), name=row.get('username_element'),
+                        value='', count=row.get('times_used'),
+                        interpretation='User chose to "Never save password" for this site')
+                    never_save_row.row_type = 'login (never save)'
+                    results.append(never_save_row)
+
+                elif row.get('username_value'):
+                    username_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('action_url'), name=row.get('username_element'),
+                        value=row.get('username_value'), count=row.get('times_used'),
+                        interpretation=f'User chose to save the credentials entered '
+                                       f'(times used: {row.get("times_used")})')
+                    username_row.row_type = 'login (saved credentials)'
+                    results.append(username_row)
+
+                    # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
+                    if row.get('date_last_used') and int(row.get('date_last_used')) > 13100000000000000:
+                        username_row = Chrome.LoginItem(
+                            self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
+                            url=row.get('action_url'), name=row.get('username_element'),
+                            value=row.get('username_value'), count=row.get('times_used'),
+                            interpretation=f'User tried to log in with this username (may or may not '
+                                           f'have succeeded; times used: {row.get("times_used")})')
+                        username_row.row_type = 'login (username)'
+                        results.append(username_row)
+
+                if row.get('password_value') is not None and self.available_decrypts['windows'] is 1:
+                    try:
+                        # Windows is all I've had time to test; Ubuntu uses built-in password manager
+                        password = win32crypt.CryptUnprotectData(
+                            row.get('password_value').decode(), None, None, None, 0)[1]
+                    except:
+                        password = self.decrypt_cookie(row.get('password_value'))
+
+                    password_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('action_url'), name=row.get('password_element'),
+                        value=password, count=row.get('times_used'),
+                        interpretation='User chose to save the credentials entered')
+                    password_row.row_type = 'login (password)'
+                    results.append(password_row)
+
+            conn.close()
+
+            # Queries for "stats" table for different versions
+            query = {48: '''SELECT origin_domain, username_value, dismissal_count, update_time FROM stats'''}
+
+            # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+            compatible_version = version[0]
+            while compatible_version not in list(query.keys()) and compatible_version > 0:
+                compatible_version -= 1
+
+            if compatible_version is not 0:
+                log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
+
+                # Copy and connect to copy of 'Login Data' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts[database] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
-                    if row.get('blacklisted_by_user') == 1:
-                        blacklist_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
-                                                         url=row.get('action_url'), name=row.get('username_element').decode(),
-                                                         value=u'<User chose to "Never save password" for this site>',
-                                                         count=row.get('times_used'))
-                        blacklist_row.row_type = u'login (blacklist)'
-                        results.append(blacklist_row)
+                    stats_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('update_time'), self.timezone),
+                        url=row.get('origin_domain'), name='',
+                        value=row.get('username_value'), count=row.get('dismissal_count'),
+                        interpretation=f'User declined to save the password for this site '
+                                       f'(dismissal count: {row.get("dismissal_count")})')
+                    stats_row.row_type = 'login (declined save)'
+                    results.append(stats_row)
+                conn.close()
 
-                    if row.get('username_value') is not None and row.get('blacklisted_by_user') == 0:
-                        username_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
-                                                        url=row.get('action_url'), name=row.get('username_element'),
-                                                        value=row.get('username_value'), count=row.get('times_used'))
-                        username_row.row_type = u'login (username)'
-                        results.append(username_row)
-
-                    if row.get('password_value') is not None and row.get('blacklisted_by_user') == 0:
-                        password = None
-                        try:
-                            # Windows is all I've had time to test; Ubuntu uses built-in password manager
-                            password = win32crypt.CryptUnprotectData(row.get('password_value').decode(), None, None, None, 0)[1]
-                        except:
-                            password = self.decrypt_cookie(row.get('password_value'))
-
-                        password_row = Chrome.LoginItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone),
-                                                        url=row.get('action_url'), name=row.get('password_element'),
-                                                        value=password, count=row.get('times_used'))
-                        password_row.row_type = u'login (password)'
-                        results.append(password_row)
-
-                db_file.close()
-                self.artifacts_counts['Login Data'] = len(results)
-                log.info(" - Parsed {} items".format(len(results)))
-                self.parsed_artifacts.extend(results)
-
-            except Exception as e:
-                self.artifacts_counts['Login Data'] = 'Failed'
-                log.error(" - Couldn't open {}: {}".format(os.path.join(path, database), e))
+        self.artifacts_counts['Login Data'] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_autofill(self, path, database, version):
         # Set up empty return array
@@ -625,34 +767,31 @@ class Chrome(WebBrowser):
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
-        while compatible_version not in query.keys() and compatible_version > 0:
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
         if compatible_version is not 0:
             log.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
             try:
-                # Connect to 'Web Data' SQLite db
-                db_path = os.path.join(path, database)
-                db_file = sqlite3.connect(db_path)
-                log.info(" - Reading from file '{}'".format(db_path))
-
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
+                # Copy and connect to copy of 'Web Data' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts['Autofill'] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
                 # Use highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
-                    # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                    results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_created'), self.timezone), row.get('name'),
-                                                       row.get('value'), row.get('count')))
+                    results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                                                       row.get('name'), row.get('value'), row.get('count')))
 
                     if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(Chrome.AutofillItem(self.profile_path, to_datetime(row.get('date_last_used'), self.timezone),
-                                                           row.get('name'), row.get('value'), row.get('count')))
+                        results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_last_used'),
+                                                           self.timezone), row.get('name'), row.get('value'), row.get('count')))
 
-                db_file.close()
+                conn.close()
                 self.artifacts_counts['Autofill'] = len(results)
                 log.info(" - Parsed {} items".format(len(results)))
                 self.parsed_artifacts.extend(results)
@@ -671,29 +810,33 @@ class Chrome(WebBrowser):
         bookmarks_path = os.path.join(path, file)
 
         try:
-            bookmarks_file = codecs.open(bookmarks_path, 'rb', encoding='utf-8')
-            decoded_json = json.loads(bookmarks_file.read())
+            with open(bookmarks_path, encoding='utf-8', errors='replace') as f:
+                decoded_json = json.loads(f.read())
+
             log.info(" - Reading from file '{}'".format(bookmarks_path))
 
             # TODO: sync_id
             def process_bookmark_children(parent, children):
                 for child in children:
                     if child["type"] == "url":
-                        results.append(Chrome.BookmarkItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
                                                            child["name"], child["url"], parent))
                     elif child["type"] == "folder":
                         new_parent = parent + " > " + child["name"]
-                        results.append(Chrome.BookmarkFolderItem(self.profile_path, to_datetime(child["date_added"], self.timezone),
+                        results.append(Chrome.BookmarkFolderItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
                                                                  child["date_modified"], child["name"], parent))
                         process_bookmark_children(new_parent, child["children"])
 
-            for top_level_folder in decoded_json["roots"].keys():
-                if top_level_folder != "sync_transaction_version" and top_level_folder != "synced" and top_level_folder != "meta_info":
-                    if decoded_json["roots"][top_level_folder]["children"] is not None:
-                        process_bookmark_children(decoded_json["roots"][top_level_folder]["name"],
-                                                  decoded_json["roots"][top_level_folder]["children"])
+            for top_level_folder in list(decoded_json['roots'].keys()):
+                if top_level_folder == 'synced':
+                    if decoded_json['roots'][top_level_folder]['children'] is not None:
+                        process_bookmark_children(f"Synced > {decoded_json['roots'][top_level_folder]['name']}",
+                                                  decoded_json['roots'][top_level_folder]['children'])
+                elif top_level_folder != 'sync_transaction_version' and top_level_folder != 'meta_info':
+                    if decoded_json['roots'][top_level_folder]['children'] is not None:
+                        process_bookmark_children(decoded_json['roots'][top_level_folder]['name'],
+                                                  decoded_json['roots'][top_level_folder]['children'])
 
-            bookmarks_file.close()
             self.artifacts_counts['Bookmarks'] = len(results)
             log.info(" - Parsed {} items".format(len(results)))
             self.parsed_artifacts.extend(results)
@@ -705,183 +848,176 @@ class Chrome(WebBrowser):
 
     def get_local_storage(self, path, dir_name):
         results = []
-        illegal_xml_re = re.compile(ur'[\x00-\x08\x0b-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufdd0-\ufddf\ufffe-\uffff]',
+        illegal_xml_re = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufdd0-\ufddf\ufffe-\uffff]',
                                     re.UNICODE)
 
         # Grab file list of 'Local Storage' directory
         ls_path = os.path.join(path, dir_name)
-        log.info("Local Storage:")
-        log.info(" - Reading from {}".format(ls_path))
+        log.info('Local Storage:')
+        log.info(f' - Reading from {ls_path}')
 
         local_storage_listing = os.listdir(ls_path)
-        log.debug(" - {} files in Local Storage directory".format(len(local_storage_listing)))
+        log.debug(f' - {len(local_storage_listing)} files in Local Storage directory')
         filtered_listing = []
 
+        # Chrome v61+ used leveldb for LocalStorage, but kept old SQLite .localstorage files if upgraded.
         if 'leveldb' in local_storage_listing:
-            ls_lvl_db_path = os.path.join(ls_path, 'leveldb')
-            all_ls_lvl_db_pairs = self.get_prefixed_leveldb_pairs(ls_lvl_db_path)
-            for entry in all_ls_lvl_db_pairs:
-                ldb_entry = self.parse_ls_ldb_dict(entry)
-                if ldb_entry:
-                    results.append(Chrome.LocalStorageItem(self.profile_path, ldb_entry['origin'],
-                                                           to_datetime(0, self.timezone),
-                                                           ldb_entry['key'], ldb_entry['value']))
+            ls_ldb_path = os.path.join(ls_path, 'leveldb')
+            ls_ldb_records = utils.get_ldb_pairs(ls_ldb_path)
+            for record in ls_ldb_records:
+                ls_item = self.parse_ls_ldb_record(record)
+                if ls_item and ls_item.get('record_type') == 'entry':
+                    results.append(Chrome.LocalStorageItem(
+                        self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value']))
 
+        # Chrome v60 and earlier used a SQLite file (with a .localstorage file ext) for each origin
         for ls_file in local_storage_listing:
-            if (ls_file[:3] == 'ftp' or ls_file[:4] == 'http' or ls_file[:4] == 'file' or
-                    ls_file[:16] == 'chrome-extension') and ls_file[-8:] != '-journal':
+            if ls_file.startswith(('ftp', 'http', 'file', 'chrome-extension')) and ls_file.endswith('.localstorage'):
                 filtered_listing.append(ls_file)
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
 
-                def to_unicode(raw_data):
-                    if type(raw_data) in (int, long, float):
-                        return unicode(raw_data, 'utf-16', errors='replace')
-                    elif type(raw_data) is unicode:
-                        return raw_data
-                    elif type(raw_data) is buffer:
-                        try:
-                            # When Javascript uses localStorage, it saves everything in UTF-16
-                            uni = unicode(raw_data, 'utf-16', errors='replace')
-                            # However, some websites use custom compression to squeeze more data in, and just pretend
-                            # it's UTF-16, which can result in "characters" that are illegal in XML. We need to remove
-                            # these so Excel will be able to display the output.
-                            # TODO: complete work on decoding the compressed data
-                            return illegal_xml_re.sub(u'\ufffd', uni)
-
-                        except UnicodeDecodeError:
-                            return u'<buffer decode error>'
-                    else:
-                        return u'<unknown type decode error>'
-
-                # Connect to Local Storage file sqlite db
                 try:
-                    db_file = sqlite3.connect(ls_file_path)
-                except Exception as e:
-                    log.warning(" - Error opening {}: {}".format(ls_file_path, e))
-                    break
+                    # Copy and connect to copy of the Local Storage SQLite DB
+                    conn = utils.open_sqlite_db(self, ls_path, ls_file)
+                    cursor = conn.cursor()
 
-                # Use a dictionary cursor
-                db_file.row_factory = WebBrowser.dict_factory
-                cursor = db_file.cursor()
-
-                try:
                     cursor.execute('SELECT key,value FROM ItemTable')
                     for row in cursor:
-                        # Using row.get(key) returns 'None' if the key doesn't exist instead of an error
-                        results.append(Chrome.LocalStorageItem(self.profile_path, ls_file.decode(), to_datetime(ls_created, self.timezone),
-                                                               row.get('key'), to_unicode(row.get('value'))))
+                        try:
+                            printable_value = row.get('value', b'').decode('utf-16')
+                        except:
+                            printable_value = repr(row.get('value'))
+
+                        results.append(Chrome.LocalStorageItem(
+                            profile=self.profile_path, origin=ls_file[:-13], key=row.get('key', ''),
+                            value=printable_value,
+                            last_modified=utils.to_datetime(ls_created, self.timezone)))
+
+                    conn.close()
+
                 except Exception as e:
-                    log.warning(" - Error reading key/values from {}: {}".format(ls_file_path, e))
+                    log.warning(f' - Error reading key/values from {ls_file_path}: {e}')
                     pass
 
         self.artifacts_counts['Local Storage'] = len(results)
-        log.info(" - Parsed {} items from {} files".format(len(results), len(filtered_listing)))
-        self.parsed_artifacts.extend(results)
+        log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
+        self.parsed_storage.extend(results)
 
     def get_extensions(self, path, dir_name):
         results = []
-        log.info("Extensions:")
+        log.info('Extensions:')
 
         # Profile folder
         try:
             profile = os.path.split(path)[1]
         except:
-            profile = "error"
+            profile = 'error'
 
         # Grab listing of 'Extensions' directory
         ext_path = os.path.join(path, dir_name)
-        log.info(" - Reading from {}".format(ext_path))
+        log.info(f' - Reading from {ext_path}')
         ext_listing = os.listdir(ext_path)
-        log.debug(" - {count} files in Extensions directory: {list}".format(list=str(ext_listing),
-                                                                            count=len(ext_listing)))
+        log.debug(f' - {len(ext_listing)} files in Extensions directory: {str(ext_listing)}')
 
         # Only process directories with the expected naming convention
         app_id_re = re.compile(r'^([a-z]{32})$')
         ext_listing = [x for x in ext_listing if app_id_re.match(x)]
-        log.debug(" - {count} files in Extensions directory will be processed: {list}".format(
-            list=str(ext_listing), count=len(ext_listing)))
+        log.debug(f' - {len(ext_listing)} files in Extensions directory will be processed: {str(ext_listing)}')
 
         # Process each directory with an app_id name
         for app_id in ext_listing:
             # Get listing of the contents of app_id directory; should contain subdirs for each version of the extension.
             ext_vers_listing = os.path.join(ext_path, app_id)
             ext_vers = os.listdir(ext_vers_listing)
+            manifest_file = None
+            selected_version = None
 
             # Connect to manifest.json in latest version directory
-            manifest_path = os.path.join(ext_vers_listing, ext_vers[-1], 'manifest.json')
-            try:
-                manifest_file = codecs.open(manifest_path, 'rb', encoding='utf-8', errors='replace')
-            except IOError:
-                log.error(" - Error opening {} for extension {}".format(manifest_path, app_id))
-                break
+            for version in sorted(ext_vers, reverse=True, key=lambda x: int(x.split('.', maxsplit=1)[0])):
+                manifest_path = os.path.join(ext_vers_listing, version, 'manifest.json')
+                try:
+                    with open(manifest_path, encoding='utf-8', errors='replace') as f:
+                        decoded_manifest = json.loads(f.read())
+                    selected_version = version
+                    break
+                except (IOError, json.JSONDecodeError) as e:
+                    log.error(f' - Error opening {manifest_path} for extension {app_id}; {e}')
+                    continue
+
+            if not decoded_manifest:
+                log.error(f' - Error opening manifest info for extension {app_id}')
+                continue
 
             name = None
             description = None
 
-            if manifest_file:
-                try:
-                    decoded_manifest = json.loads(manifest_file.read())
-                    if decoded_manifest["name"][:2] == '__':
-                        if decoded_manifest["default_locale"]:
-                            locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
-                                                                decoded_manifest["default_locale"], 'messages.json')
-                            locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
-                                                               errors='replace')
-                            decoded_locale_messages = json.loads(locale_messages_file.read())
+            try:
+                if decoded_manifest['name'].startswith('__'):
+                    if decoded_manifest['default_locale']:
+                        locale_messages_path = os.path.join(
+                            ext_vers_listing, selected_version, '_locales', decoded_manifest['default_locale'],
+                            'messages.json')
+                        with open(locale_messages_path, encoding='utf-8', errors='replace') as f:
+                            decoded_locale_messages = json.loads(f.read())
+
+                        try:
+                            name = decoded_locale_messages[decoded_manifest['name'][6:-2]]['message']
+                        except KeyError:
                             try:
-                                name = decoded_locale_messages[decoded_manifest["name"][6:-2]]["message"]
+                                name = decoded_locale_messages[decoded_manifest['name'][6:-2]].lower['message']
                             except KeyError:
                                 try:
-                                    name = decoded_locale_messages[decoded_manifest["name"][6:-2]].lower["message"]
+                                    # Google Wallet / Chrome Payments is weird/hidden - name is saved different
+                                    # than other extensions
+                                    name = decoded_locale_messages['app_name']['message']
+                                except:
+                                    log.warning(f' - Error reading \'name\' for {app_id}')
+                                    name = '<error>'
+                else:
+                    try:
+                        name = decoded_manifest['name']
+                    except KeyError:
+                        name = None
+                        log.error(f' - Error reading \'name\' for {app_id}')
+
+                if 'description' in list(decoded_manifest.keys()):
+                    if decoded_manifest['description'].startswith('__'):
+                        if decoded_manifest['default_locale']:
+                            locale_messages_path = os.path.join(
+                                ext_vers_listing, selected_version, '_locales', decoded_manifest['default_locale'],
+                                'messages.json')
+                            with open(locale_messages_path, encoding='utf-8', errors='replace') as f:
+                                decoded_locale_messages = json.loads(f.read())
+
+                            try:
+                                description = decoded_locale_messages[decoded_manifest['description'][6:-2]]['message']
+                            except KeyError:
+                                try:
+                                    description = decoded_locale_messages[
+                                        decoded_manifest['description'][6:-2]].lower['message']
                                 except KeyError:
                                     try:
-                                        # Google Wallet / Chrome Payments is weird/hidden - name is saved different than other extensions
-                                        name = decoded_locale_messages["app_name"]["message"]
+                                        # Google Wallet / Chrome Payments is weird/hidden - name is saved different
+                                        # than other extensions
+                                        description = decoded_locale_messages['app_description']['message']
                                     except:
-                                        log.warning(" - Error reading 'name' for {}".format(app_id))
-                                        name = "<error>"
+                                        description = '<error>'
+                                        log.error(f' - Error reading \'message\' for {app_id}')
                     else:
                         try:
-                            name = decoded_manifest["name"]
+                            description = decoded_manifest['description']
                         except KeyError:
-                            name = None
-                            log.error(" - Error reading 'name' for {}".format(app_id))
+                            description = None
+                            log.warning(f' - Error reading \'description\' for {app_id}')
 
-                    if "description" in decoded_manifest.keys():
-                        if decoded_manifest["description"][:2] == '__':
-                            if decoded_manifest["default_locale"]:
-                                locale_messages_path = os.path.join(ext_vers_listing, ext_vers[-1], '_locales',
-                                                                    decoded_manifest["default_locale"], 'messages.json')
-                                locale_messages_file = codecs.open(locale_messages_path, 'rb', encoding='utf-8',
-                                                                   errors='replace')
-                                decoded_locale_messages = json.loads(locale_messages_file.read())
-                                try:
-                                    description = decoded_locale_messages[decoded_manifest["description"][6:-2]]["message"]
-                                except KeyError:
-                                    try:
-                                        description = decoded_locale_messages[decoded_manifest["description"][6:-2]].lower["message"]
-                                    except KeyError:
-                                        try:
-                                            # Google Wallet / Chrome Payments is weird/hidden - name is saved different than other extensions
-                                            description = decoded_locale_messages["app_description"]["message"]
-                                        except:
-                                            description = "<error>"
-                                            log.error(" - Error reading 'message' for {}".format(app_id))
-                        else:
-                            try:
-                                description = decoded_manifest["description"]
-                            except KeyError:
-                                description = None
-                                log.warning(" - Error reading 'description' for {}".format(app_id))
-
-                    results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest["version"]))
-                except:
-                    log.error(" - Error decoding manifest file for {}".format(app_id))
-                    pass
+                results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest['version']))
+            except:
+                log.error(f' - Error decoding manifest file for {app_id}')
+                pass
 
         self.artifacts_counts['Extensions'] = len(results)
-        log.info(" - Parsed {} items".format(len(results)))
+        log.info(' - Parsed {} items'.format(len(results)))
         presentation = {'title': 'Installed Extensions',
                         'columns': [
                             {'display_name': 'Extension Name',
@@ -915,16 +1051,19 @@ class Chrome(WebBrowser):
                         'group': None,
                         'name': pref,
                         'value': value,
-                        'description': description})
+                        'description': description
+                    })
+                    
                 else:
                     results.append({
                         'group': None,
                         'name': pref,
                         'value': '<not present>',
-                        'description': description})
+                        'description': description
+                    })
 
-            except Exception, e:
-                log.exception(" - Exception parsing Preference item: {})".format(e))
+            except Exception as e:
+                log.exception(f' - Exception parsing Preference item: {e}')
 
         def check_and_append_pref_and_children(parent, pref, value=None, description=None):
             # If the preference exists, continue
@@ -937,13 +1076,16 @@ class Chrome(WebBrowser):
                     'group': None,
                     'name': pref,
                     'value': value,
-                    'description': description})
+                    'description': description
+                })
+                
             else:
                 results.append({
                     'group': None,
                     'name': pref,
                     'value': '<not present>',
-                    'description': description})
+                    'description': description
+                })
 
         def append_group(group, description=None):
             # Append the preference group to our results array
@@ -951,154 +1093,150 @@ class Chrome(WebBrowser):
                 'group': group,
                 'name': None,
                 'value': None,
-                'description': description})
+                'description': description
+            })
 
         def append_pref(pref, value=None, description=None):
             results.append({
                 'group': None,
                 'name': pref,
                 'value': value,
-                'description': description})
+                'description': description
+            })
 
         def expand_language_code(code):
             # From https://cs.chromium.org/chromium/src/components/translate/core/browser/translate_language_list.cc
             codes = {
-                  "af": "Afrikaans",
-                  "am": "Amharic",
-                  "ar": "Arabic",
-                  "az": "Azerbaijani",
-                  "be": "Belarusian",
-                  "bg": "Bulgarian",
-                  "bn": "Bengali",
-                  "bs": "Bosnian",
-                  "ca": "Catalan",
-                  "ceb": "Cebuano",
-                  "co": "Corsican",
-                  "cs": "Czech",
-                  "cy": "Welsh",
-                  "da": "Danish",
-                  "de": "German",
-                  "el": "Greek",
-                  "en": "English",
-                  "eo": "Esperanto",
-                  "es": "Spanish",
-                  "et": "Estonian",
-                  "eu": "Basque",
-                  "fa": "Persian",
-                  "fi": "Finnish",
-                  "fy": "Frisian",
-                  "fr": "French",
-                  "ga": "Irish",
-                  "gd": "Scots Gaelic",
-                  "gl": "Galician",
-                  "gu": "Gujarati",
-                  "ha": "Hausa",
-                  "haw": "Hawaiian",
-                  "hi": "Hindi",
-                  "hr": "Croatian",
-                  "ht": "Haitian Creole",
-                  "hu": "Hungarian",
-                  "hy": "Armenian",
-                  "id": "Indonesian",
-                  "ig": "Igbo",
-                  "is": "Icelandic",
-                  "it": "Italian",
-                  "iw": "Hebrew",
-                  "ja": "Japanese",
-                  "ka": "Georgian",
-                  "kk": "Kazakh",
-                  "km": "Khmer",
-                  "kn": "Kannada",
-                  "ko": "Korean",
-                  "ku": "Kurdish",
-                  "ky": "Kyrgyz",
-                  "la": "Latin",
-                  "lb": "Luxembourgish",
-                  "lo": "Lao",
-                  "lt": "Lithuanian",
-                  "lv": "Latvian",
-                  "mg": "Malagasy",
-                  "mi": "Maori",
-                  "mk": "Macedonian",
-                  "ml": "Malayalam",
-                  "mn": "Mongolian",
-                  "mr": "Marathi",
-                  "ms": "Malay",
-                  "mt": "Maltese",
-                  "my": "Burmese",
-                  "ne": "Nepali",
-                  "nl": "Dutch",
-                  "no": "Norwegian",
-                  "ny": "Nyanja",
-                  "pa": "Punjabi",
-                  "pl": "Polish",
-                  "ps": "Pashto",
-                  "pt": "Portuguese",
-                  "ro": "Romanian",
-                  "ru": "Russian",
-                  "sd": "Sindhi",
-                  "si": "Sinhala",
-                  "sk": "Slovak",
-                  "sl": "Slovenian",
-                  "sm": "Samoan",
-                  "sn": "Shona",
-                  "so": "Somali",
-                  "sq": "Albanian",
-                  "sr": "Serbian",
-                  "st": "Southern Sotho",
-                  "su": "Sundanese",
-                  "sv": "Swedish",
-                  "sw": "Swahili",
-                  "ta": "Tamil",
-                  "te": "Telugu",
-                  "tg": "Tajik",
-                  "th": "Thai",
-                  "tl": "Tagalog",
-                  "tr": "Turkish",
-                  "uk": "Ukrainian",
-                  "ur": "Urdu",
-                  "uz": "Uzbek",
-                  "vi": "Vietnamese",
-                  "yi": "Yiddish",
-                  "xh": "Xhosa",
-                  "yo": "Yoruba",
-                  "zh-CN": "Chinese (Simplified)",
-                  "zh-TW": "Chinese (Traditional)",
-                  "zu": "Zulu"
+                  'af': 'Afrikaans',
+                  'am': 'Amharic',
+                  'ar': 'Arabic',
+                  'az': 'Azerbaijani',
+                  'be': 'Belarusian',
+                  'bg': 'Bulgarian',
+                  'bn': 'Bengali',
+                  'bs': 'Bosnian',
+                  'ca': 'Catalan',
+                  'ceb': 'Cebuano',
+                  'co': 'Corsican',
+                  'cs': 'Czech',
+                  'cy': 'Welsh',
+                  'da': 'Danish',
+                  'de': 'German',
+                  'el': 'Greek',
+                  'en': 'English',
+                  'eo': 'Esperanto',
+                  'es': 'Spanish',
+                  'et': 'Estonian',
+                  'eu': 'Basque',
+                  'fa': 'Persian',
+                  'fi': 'Finnish',
+                  'fy': 'Frisian',
+                  'fr': 'French',
+                  'ga': 'Irish',
+                  'gd': 'Scots Gaelic',
+                  'gl': 'Galician',
+                  'gu': 'Gujarati',
+                  'ha': 'Hausa',
+                  'haw': 'Hawaiian',
+                  'hi': 'Hindi',
+                  'hr': 'Croatian',
+                  'ht': 'Haitian Creole',
+                  'hu': 'Hungarian',
+                  'hy': 'Armenian',
+                  'id': 'Indonesian',
+                  'ig': 'Igbo',
+                  'is': 'Icelandic',
+                  'it': 'Italian',
+                  'iw': 'Hebrew',
+                  'ja': 'Japanese',
+                  'ka': 'Georgian',
+                  'kk': 'Kazakh',
+                  'km': 'Khmer',
+                  'kn': 'Kannada',
+                  'ko': 'Korean',
+                  'ku': 'Kurdish',
+                  'ky': 'Kyrgyz',
+                  'la': 'Latin',
+                  'lb': 'Luxembourgish',
+                  'lo': 'Lao',
+                  'lt': 'Lithuanian',
+                  'lv': 'Latvian',
+                  'mg': 'Malagasy',
+                  'mi': 'Maori',
+                  'mk': 'Macedonian',
+                  'ml': 'Malayalam',
+                  'mn': 'Mongolian',
+                  'mr': 'Marathi',
+                  'ms': 'Malay',
+                  'mt': 'Maltese',
+                  'my': 'Burmese',
+                  'ne': 'Nepali',
+                  'nl': 'Dutch',
+                  'no': 'Norwegian',
+                  'ny': 'Nyanja',
+                  'pa': 'Punjabi',
+                  'pl': 'Polish',
+                  'ps': 'Pashto',
+                  'pt': 'Portuguese',
+                  'ro': 'Romanian',
+                  'ru': 'Russian',
+                  'sd': 'Sindhi',
+                  'si': 'Sinhala',
+                  'sk': 'Slovak',
+                  'sl': 'Slovenian',
+                  'sm': 'Samoan',
+                  'sn': 'Shona',
+                  'so': 'Somali',
+                  'sq': 'Albanian',
+                  'sr': 'Serbian',
+                  'st': 'Southern Sotho',
+                  'su': 'Sundanese',
+                  'sv': 'Swedish',
+                  'sw': 'Swahili',
+                  'ta': 'Tamil',
+                  'te': 'Telugu',
+                  'tg': 'Tajik',
+                  'th': 'Thai',
+                  'tl': 'Tagalog',
+                  'tr': 'Turkish',
+                  'uk': 'Ukrainian',
+                  'ur': 'Urdu',
+                  'uz': 'Uzbek',
+                  'vi': 'Vietnamese',
+                  'yi': 'Yiddish',
+                  'xh': 'Xhosa',
+                  'yo': 'Yoruba',
+                  'zh-CN': 'Chinese (Simplified)',
+                  'zh-TW': 'Chinese (Traditional)',
+                  'zu': 'Zulu'
                 }
             return codes.get(code, code)
 
         results = []
         timestamped_preference_items = []
-        log.info("Preferences:")
-        prefs = None
+        log.info('Preferences:')
 
         # Open 'Preferences' file
         pref_path = os.path.join(path, preferences_file)
         try:
-            log.info(" - Reading from {}".format(pref_path))
-            pref_file = codecs.open(pref_path, 'rb', encoding='utf-8', errors='replace')
-            prefs = json.loads(pref_file.read())
+            log.info(f' - Reading from {pref_path}')
+            with open(pref_path, encoding='utf-8', errors='replace') as f:
+                prefs = json.loads(f.read())
 
-        except Exception, e:
-            log.exception(" - Error decoding Preferences file {}".format(pref_path))
-            self.artifacts_counts[preferences_file] = 'Failed'
-            return
-
-        if not prefs:
-            log.error(" - Error loading Preferences file {}".format(pref_path))
+        except Exception as e:
+            log.exception(f' - Error decoding Preferences file {pref_path}: {e}')
             self.artifacts_counts[preferences_file] = 'Failed'
             return
 
         # Account Information
         if prefs.get('account_info'):
-            append_group("Account Information")
+            append_group('Account Information')
             for account in prefs['account_info']:
-                for account_item in account.keys():
+                for account_item in list(account.keys()):
                     append_pref(account_item, account[account_item])
 
         # Local file paths
-        append_group("Local file paths")
+        append_group('Local file paths')
         if prefs.get('download'):
             check_and_append_pref(prefs['download'], 'default_directory')
         if prefs.get('printing'):
@@ -1111,22 +1249,24 @@ class Chrome(WebBrowser):
 
         # Autofill
         if prefs.get('autofill'):
-            append_group("Autofill")
+            append_group('Autofill')
             check_and_append_pref(prefs['autofill'], 'enabled')
 
         # Clearing Chrome Data
         if prefs.get('browser'):
-            append_group("Clearing Chrome Data")
+            append_group('Clearing Chrome Data')
             if prefs['browser'].get('last_clear_browsing_data_time'):
-                check_and_append_pref(prefs['browser'], 'last_clear_browsing_data_time',
-                                      friendly_date(prefs['browser']['last_clear_browsing_data_time']),
-                                      "Last time the history was cleared")
+                check_and_append_pref(
+                    prefs['browser'], 'last_clear_browsing_data_time',
+                    utils.friendly_date(prefs['browser']['last_clear_browsing_data_time']),
+                    'Last time the history was cleared')
             check_and_append_pref(prefs['browser'], 'clear_lso_data_enabled')
             if prefs['browser'].get('clear_data'):
                 try:
-                    check_and_append_pref(prefs['browser']['clear_data'], 'time_period',
-                                          description="0: past hour; 1: past day; 2: past week; 3: last 4 weeks; "
-                                                      "4: the beginning of time")
+                    check_and_append_pref(
+                        prefs['browser']['clear_data'], 'time_period',
+                        description='0: past hour; 1: past day; 2: past week; 3: last 4 weeks; '
+                                    '4: the beginning of time')
                     check_and_append_pref(prefs['browser']['clear_data'], 'content_licenses')
                     check_and_append_pref(prefs['browser']['clear_data'], 'hosted_apps_data')
                     check_and_append_pref(prefs['browser']['clear_data'], 'cookies')
@@ -1134,41 +1274,42 @@ class Chrome(WebBrowser):
                     check_and_append_pref(prefs['browser']['clear_data'], 'browsing_history')
                     check_and_append_pref(prefs['browser']['clear_data'], 'passwords')
                     check_and_append_pref(prefs['browser']['clear_data'], 'form_data')
-                except Exception, e:
-                    log.exception(" - Exception parsing Preference item: {})".format(e))
+                except Exception as e:
+                    log.exception(f' - Exception parsing Preference item: {e})')
 
-        append_group("Per Host Zoom Levels", "These settings persist even when the history is cleared, and may be "
-                                             "useful in some cases.")
+        append_group('Per Host Zoom Levels', 'These settings persist even when the history is cleared, and may be '
+                                             'useful in some cases.')
+
         # There are per_host_zoom_levels keys in at least two locations: profile.per_host_zoom_levels and
         # partition.per_host_zoom_levels.[integer].
         if prefs.get('profile'):
             if prefs['profile'].get('per_host_zoom_levels'):
                 try:
-                    for zoom in prefs['profile']['per_host_zoom_levels'].keys():
+                    for zoom in list(prefs['profile']['per_host_zoom_levels'].keys()):
                         check_and_append_pref(prefs['profile']['per_host_zoom_levels'], zoom)
-                except Exception, e:
-                    log.exception(" - Exception parsing Preference item: {})".format(e))
+                except Exception as e:
+                    log.exception(f' - Exception parsing Preference item: {e})')
 
         if prefs.get('partition'):
             if prefs['partition'].get('per_host_zoom_levels'):
                 try:
-                    for number in prefs['partition']['per_host_zoom_levels'].keys():
-                        for zoom in prefs['partition']['per_host_zoom_levels'][number].keys():
+                    for number in list(prefs['partition']['per_host_zoom_levels'].keys()):
+                        for zoom in list(prefs['partition']['per_host_zoom_levels'][number].keys()):
                             check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
-                except Exception, e:
-                    log.exception(" - Exception parsing Preference item: {})".format(e))
+                except Exception as e:
+                    log.exception(f' - Exception parsing Preference item: {e})')
 
         if prefs.get('profile'):
             if prefs['profile'].get('content_settings'):
                 if prefs['profile']['content_settings'].get('pattern_pairs'):
                     try:
-                        append_group("Profile Content Settings", "These settings persist even when the history is "
-                                                                 "cleared, and may be useful in some cases.")
-                        for pair in prefs['profile']['content_settings']['pattern_pairs'].keys():
+                        append_group('Profile Content Settings', 'These settings persist even when the history is '
+                                                                 'cleared, and may be useful in some cases.')
+                        for pair in list(prefs['profile']['content_settings']['pattern_pairs'].keys()):
                             # Adding the space before the domain prevents Excel from freaking out...  idk.
                             append_pref(' '+str(pair), str(prefs['profile']['content_settings']['pattern_pairs'][pair]))
-                    except Exception, e:
-                        log.exception(" - Exception parsing Preference item: {})".format(e))
+                    except Exception as e:
+                        log.exception(f' - Exception parsing Preference item: {e})')
 
                 if prefs['profile']['content_settings'].get('exceptions'):
                     if prefs['profile']['content_settings']['exceptions'].get('media_engagement'):
@@ -1182,14 +1323,17 @@ class Chrome(WebBrowser):
                         #         "visits": 1
                         #     }
                         try:
-                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['media_engagement'].iteritems():
-                                if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                      key="media_engagement [in {}.profile.content_settings.exceptions]"
-                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                            for origin, pref_data in \
+                                    prefs['profile']['content_settings']['exceptions']['media_engagement'].items():
+                                if pref_data.get('last_modified'):
+                                    pref_item = Chrome.PreferenceItem(
+                                        self.profile_path, url=origin, 
+                                        timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
+                                        key=f'media_engagement [in {preferences_file}.profile.content_settings.exceptions]', 
+                                        value=str(pref_data), interpretation='')
                                     timestamped_preference_items.append(pref_item)
-                        except Exception, e:
-                            log.exception(" - Exception parsing Preference item: {})".format(e))
+                        except Exception as e:
+                            log.exception(f' - Exception parsing Preference item: {e})')
 
                     if prefs['profile']['content_settings']['exceptions'].get('notifications'):
                         # Example (from in Preferences file):
@@ -1198,14 +1342,17 @@ class Chrome(WebBrowser):
                         #     "setting": 1
                         # }
                         try:
-                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['notifications'].iteritems():
-                                if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                      key="notifications [in {}.profile.content_settings.exceptions]"
-                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                            for origin, pref_data in \
+                                    prefs['profile']['content_settings']['exceptions']['notifications'].items():
+                                if pref_data.get('last_modified'):
+                                    pref_item = Chrome.PreferenceItem(
+                                        self.profile_path, url=origin, 
+                                        timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
+                                        key=f'notifications [in {preferences_file}.profile.content_settings.exceptions]', 
+                                        value=str(pref_data), interpretation='')
                                     timestamped_preference_items.append(pref_item)
-                        except Exception, e:
-                            log.exception(" - Exception parsing Preference item: {})".format(e))
+                        except Exception as e:
+                            log.exception(f' - Exception parsing Preference item: {e})')
 
                     if prefs['profile']['content_settings']['exceptions'].get('permission_autoblocking_data'):
                         # Example (from in Preferences file):
@@ -1216,14 +1363,17 @@ class Chrome(WebBrowser):
                         #               "ignore_count": 1
                         #  }}},
                         try:
-                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['permission_autoblocking_data'].iteritems():
-                                if pref_data.get("last_modified") and pref_data.get("last_modified") != "0":
-                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                      key="permission_autoblocking_data [in {}.profile.content_settings.exceptions]"
-                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                            for origin, pref_data in \
+                                    prefs['profile']['content_settings']['exceptions']['permission_autoblocking_data'].items():
+                                if pref_data.get('last_modified') and pref_data.get('last_modified') != '0':
+                                    pref_item = Chrome.PreferenceItem(
+                                        self.profile_path, url=origin, 
+                                        timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
+                                        key=f'permission_autoblocking_data [in {preferences_file}.profile.content_settings.exceptions]', 
+                                        value=str(pref_data), interpretation='')
                                     timestamped_preference_items.append(pref_item)
-                        except Exception, e:
-                            log.exception(" - Exception parsing Preference item: {})".format(e))
+                        except Exception as e:
+                            log.exception(f' - Exception parsing Preference item: {e})')
 
                     if prefs['profile']['content_settings']['exceptions'].get('site_engagement'):
                         # Example (from in Preferences file):
@@ -1236,14 +1386,17 @@ class Chrome(WebBrowser):
                         #         "rawScore": 4.5
                         #     }
                         try:
-                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['site_engagement'].iteritems():
-                                if pref_data.get("last_modified"):
-                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                      key="site_engagement [in {}.profile.content_settings.exceptions]"
-                                                                      .format(preferences_file), value=str(pref_data), interpretation="")
+                            for origin, pref_data in \
+                                    prefs['profile']['content_settings']['exceptions']['site_engagement'].items():
+                                if pref_data.get('last_modified'):
+                                    pref_item = Chrome.PreferenceItem(
+                                        self.profile_path, url=origin, 
+                                        timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
+                                        key=f'site_engagement [in {preferences_file}.profile.content_settings.exceptions]', 
+                                        value=str(pref_data), interpretation='')
                                     timestamped_preference_items.append(pref_item)
-                        except Exception, e:
-                            log.exception(" - Exception parsing Preference item: {})".format(e))
+                        except Exception as e:
+                            log.exception(f' - Exception parsing Preference item: {e})')
 
                     if prefs['profile']['content_settings']['exceptions'].get('sound'):
                         # Example (from in Preferences file):
@@ -1252,18 +1405,20 @@ class Chrome(WebBrowser):
                         #     "setting": 2
                         # }
                         try:
-                            for origin, pref_data in prefs['profile']['content_settings']['exceptions']['sound'].iteritems():
-                                if pref_data.get("last_modified"):
-                                    interpretation = ""
-                                    if pref_data.get("setting") is 2:
-                                        interpretation = "Muted site"
-                                    pref_item = Chrome.PreferenceItem(self.profile_path, url=origin, timestamp=to_datetime(pref_data["last_modified"], self.timezone),
-                                                                      key="sound [in {}.profile.content_settings.exceptions]"
-                                                                      .format(preferences_file), value=str(pref_data),
-                                                                      interpretation=interpretation)
+                            for origin, pref_data in \
+                                    prefs['profile']['content_settings']['exceptions']['sound'].items():
+                                if pref_data.get('last_modified'):
+                                    interpretation = ''
+                                    if pref_data.get('setting') is 2:
+                                        interpretation = 'Muted site'
+                                    pref_item = Chrome.PreferenceItem(
+                                        self.profile_path, url=origin, 
+                                        timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
+                                        key=f'sound [in {preferences_file}.profile.content_settings.exceptions]', 
+                                        value=str(pref_data), interpretation=interpretation)
                                     timestamped_preference_items.append(pref_item)
-                        except Exception, e:
-                            log.exception(" - Exception parsing Preference item: {})".format(e))
+                        except Exception as e:
+                            log.exception(f' - Exception parsing Preference item: {e})')
 
         if prefs.get('extensions'):
             if prefs['extensions'].get('autoupdate'):
@@ -1276,12 +1431,14 @@ class Chrome(WebBrowser):
                 #     },
                 try:
                     if prefs['extensions']['autoupdate'].get('last_check'):
-                        pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
-                                                          key="autoupdate.last_check [in {}.extensions]".format(preferences_file),
-                                                          value=prefs['extensions']['autoupdate']['last_check'], interpretation="")
+                        pref_item = Chrome.PreferenceItem(
+                            self.profile_path, url='', 
+                            timestamp=utils.to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
+                            key=f'autoupdate.last_check [in {preferences_file}.extensions]',
+                            value=prefs['extensions']['autoupdate']['last_check'], interpretation='')
                         timestamped_preference_items.append(pref_item)
-                except Exception, e:
-                    log.exception(" - Exception parsing Preference item: {})".format(e))
+                except Exception as e:
+                    log.exception(f' - Exception parsing Preference item: {e})')
 
         if prefs.get('signin'):
             if prefs['signin'].get('signedin_time'):
@@ -1290,16 +1447,18 @@ class Chrome(WebBrowser):
                 #     "signedin_time": "13196354823425155"
                 #  },
                 try:
-                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(prefs['signin']['signedin_time'], self.timezone),
-                                                      key="signedin_time [in {}.signin]".format(preferences_file),
-                                                      value=prefs['signin']['signedin_time'], interpretation="")
+                    pref_item = Chrome.PreferenceItem(
+                        self.profile_path, url='', 
+                        timestamp=utils.to_datetime(prefs['signin']['signedin_time'], self.timezone),
+                        key=f'signedin_time [in {preferences_file}.signin]',
+                        value=prefs['signin']['signedin_time'], interpretation='')
                     timestamped_preference_items.append(pref_item)
-                except Exception, e:
-                    log.exception(" - Exception parsing Preference item: {})".format(e))
+                except Exception as e:
+                    log.exception(f' - Exception parsing Preference item: {e})')
 
         if prefs.get('translate_last_denied_time_for_language'):
             try:
-                for lang_code, timestamp in prefs['translate_last_denied_time_for_language'].iteritems():
+                for lang_code, timestamp in prefs['translate_last_denied_time_for_language'].items():
                     # Example (from in Preferences file):
                     # "translate_last_denied_time_for_language": {
                     #   u'ar': 1438733440742.06,
@@ -1309,25 +1468,26 @@ class Chrome(WebBrowser):
                     if isinstance(timestamp, list):
                         timestamp = timestamp[0]
                     assert isinstance(timestamp, float)
-                    pref_item = Chrome.PreferenceItem(self.profile_path, url='', timestamp=to_datetime(timestamp, self.timezone),
-                                                      key="translate_last_denied_time_for_language [in {}]".format(preferences_file),
-                                                      value="{}: {}".format(lang_code, timestamp),
-                                                      interpretation="Declined to translate page from {}".format(expand_language_code(lang_code)))
+                    pref_item = Chrome.PreferenceItem(
+                        self.profile_path, url='', timestamp=utils.to_datetime(timestamp, self.timezone),
+                        key=f'translate_last_denied_time_for_language [in {preferences_file}]',
+                        value=f'{lang_code}: {timestamp}',
+                        interpretation=f'Declined to translate page from {expand_language_code(lang_code)}')
                     timestamped_preference_items.append(pref_item)
-            except Exception, e:
-                log.exception(" - Exception parsing Preference item: {})".format(e))
+            except Exception as e:
+                log.exception(f' - Exception parsing Preference item: {e})')
 
         self.parsed_artifacts.extend(timestamped_preference_items)
 
         self.artifacts_counts[preferences_file] = len(results)
-        log.info(" - Parsed {} items".format(len(results)))
+        log.info(f' - Parsed {len(results)} items')
 
         try:
             profile_folder = os.path.split(path)[1]
         except:
-            profile_folder = "error"
+            profile_folder = 'error'
 
-        presentation = {'title': 'Preferences ({})'.format(profile_folder),
+        presentation = {'title': f'Preferences ({profile_folder})',
                         'columns': [
                             {'display_name': 'Group',
                              'data_name': 'group',
@@ -1359,7 +1519,7 @@ class Chrome(WebBrowser):
 
         path = os.path.join(path, dir_name)
         index_path = os.path.join(path, 'index')
-        log.info("Cache items from {}:".format(path))
+        log.info(f'Cache items from {path}:')
 
         try:
             cacheBlock = CacheBlock(index_path)
@@ -1367,10 +1527,10 @@ class Chrome(WebBrowser):
 
             # Checking type
             if cacheBlock.type != CacheBlock.INDEX:
-                log.error(" - 'index' block file is invalid (has wrong magic type)")
+                log.error(' - \'index\' block file is invalid (has wrong magic type)')
                 self.artifacts_counts[dir_name] = 'Failed'
                 return
-            log.debug(" - Parsed index block file (version {})".format(cacheBlock.version))
+            log.debug(f' - Parsed index block file (version {cacheBlock.version})')
         except IOError as io_error:
             if io_error.errno == errno.ENOENT:
                 log.error(" - No file called 'index' exists in the cache directory, {}".format(path))
@@ -1378,13 +1538,18 @@ class Chrome(WebBrowser):
                 log.error(" - Failed to read index block file, {}".format(index_path))
             return
         except:
-            log.error(" - Failed to parse index block file")
+            log.error(' - Failed to parse index block file')
+            return
+
+        if cacheBlock.version != 2:
+            log.error(' - Parsing CacheBlocks other than v2 is not supported')
             return
 
         try:
             index = open(os.path.join(path, 'index'), 'rb')
         except:
-            log.error(" - Error reading cache index file {}".format(os.path.join(path, 'index')))
+            log.error(f' - Error reading cache index file {os.path.join(path, "index")}')
+            index.close()
             self.artifacts_counts[dir_name] = 'Failed'
             return
 
@@ -1398,21 +1563,24 @@ class Chrome(WebBrowser):
                     entry = CacheEntry(self.profile_path, CacheAddress(raw, path=path), row_type, self.timezone)
                     # Add the new row to the results array
                     results.append(entry)
-                except Exception, e:
-                    log.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
+                except Exception as e:
+                    log.error(f' - Error parsing cache entry {raw}: {str(e)}')
 
                 try:
                     # Checking if there is a next item in the bucket because
                     # such entries are not stored in the Index File so they will
                     # be ignored during iterative lookup in the hash table
                     while entry.next != 0:
-                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=path), row_type, self.timezone)
+                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=path),
+                                           row_type, self.timezone)
                         results.append(entry)
-                except Exception, e:
-                    log.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
+                except Exception as e:
+                    log.error(f' - Error parsing cache entry {raw}: {str(e)}')
+
+        index.close()
 
         self.artifacts_counts[dir_name] = len(results)
-        log.info(" - Parsed {} items".format(len(results)))
+        log.info(f' - Parsed {len(results)} items')
         self.parsed_artifacts.extend(results)
 
     def get_application_cache(self, path, dir_name, row_type=None):
@@ -1429,31 +1597,24 @@ class Chrome(WebBrowser):
 
         base_path = os.path.join(path, dir_name)
         cache_path = os.path.join(base_path, 'Cache')
-        log.info("Application Cache items from {}:".format(path))
+        log.info(f'Application Cache items from {path}:')
 
-        # Connect to 'Index' sqlite db
-        db_path = os.path.join(base_path, 'Index')
-        try:
-            index_db = sqlite3.connect(db_path)
-            log.info(" - Reading from file '{}'".format(db_path))
-
-            # Use a dictionary cursor
-            index_db.row_factory = WebBrowser.dict_factory
-            cursor = index_db.cursor()
-        except:
-            log.error(" - Error opening Application Cache Index SQLite DB {}".format(db_path))
+        # Copy and connect to copy of 'Index' SQLite DB
+        conn = utils.open_sqlite_db(self, base_path, 'Index')
+        if not conn:
             self.artifacts_counts[dir_name] = 'Failed'
             return
+        cursor = conn.cursor()
 
         try:
             cache_block = CacheBlock(os.path.join(cache_path, 'index'))
             # Checking type
             if cache_block.type != CacheBlock.INDEX:
-                raise Exception("Invalid Index File")
+                raise Exception('Invalid Index File')
 
             index = open(os.path.join(cache_path, 'index'), 'rb')
         except:
-            log.error(" - Error reading cache index file {}".format(os.path.join(path, 'index')))
+            log.error(f' - Error reading cache index file {os.path.join(path, "index")}')
             self.artifacts_counts[dir_name] = 'Failed'
             return
 
@@ -1477,282 +1638,250 @@ class Chrome(WebBrowser):
                     # such entries are not stored in the Index File so they will
                     # be ignored during iterative lookup in the hash table
                     while entry.next != 0:
-                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=cache_path), row_type, self.timezone)
+                        entry = CacheEntry(self.profile_path, CacheAddress(entry.next, path=cache_path), 
+                                           row_type, self.timezone)
                         cursor.execute('''SELECT url FROM Entries WHERE response_id=?''', [entry.key])
                         index_url = cursor.fetchone()
                         if index_url:
                             entry.url = index_url['url']
                         results.append(entry)
-                except Exception, e:
-                    log.error(" - Error parsing cache entry {}: {}".format(raw, str(e)))
+                except Exception as e:
+                    log.error(f' - Error parsing cache entry {raw}: {str(e)}')
 
-        index_db.close()
+        index.close()
+        conn.close()
 
         self.artifacts_counts[dir_name] = len(results)
-        log.info(" - Parsed {} items".format(len(results)))
+        log.info(f' - Parsed {len(results)} items')
         self.parsed_artifacts.extend(results)
 
-    def get_fs_path_leveldb(self, lvl_db_path):
-        import leveldb
-        db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
-        nodes = {}
-        pairs = list(db.RangeIter())
-        for pair in pairs:
-            # Each origin value should be a tuple of length 2; if not, log it and skip it.
-            if not isinstance(pair, tuple) or len(pair) is not 2:
-                log.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
-                continue
-            fs_path_re = re.compile(b"\x00(?P<dir>\d\d)(\\\\|/)(?P<id>\d{8})\x00")
-            m = fs_path_re.search(pair[1])
-            if m:
-                nodes[pair[0]] = {"dir": m.group("dir"), "id": m.group("id")}
-        return nodes
-
-    def get_prefixed_leveldb_pairs(self, lvl_db_path, prefix=""):
-        """Given a path to a LevelDB and a prefix string, return all pairs starting"""
-        try:
-            import leveldb
-        except ImportError:
-            log.warning("Failed to import leveldb; unable to process {}".format(lvl_db_path))
-            return []
-
-        db = leveldb.LevelDB(lvl_db_path, create_if_missing=False)
-        cleaned_pairs = []
-        pairs = list(db.RangeIter())
-        for pair in pairs:
-            # Each origin value should be a tuple of length 2; if not, log it and skip it.
-            if not isinstance(pair, tuple) or len(pair) is not 2:
-                log.warning(" - Found LevelDB key/value pair that is not formed as expected ({}); skipping.".format(str(pair)))
-                continue
-            if pair[0].startswith(prefix):
-                # Split the tuple in the origin domain and origin ID, and remove the prefix from the domain
-                (key, value) = pair
-                key = key[len(prefix):]
-                cleaned_pairs.append({"key": key, "value": value})
-
-        return cleaned_pairs
-
     @staticmethod
-    def parse_ls_ldb_dict(ls_dict):
-        origin, ls_key, ls_value = (None, None, None)
+    def parse_ls_ldb_record(record):
+        """
+        From https://cs.chromium.org/chromium/src/components/services/storage/dom_storage/local_storage_impl.cc:
 
-        log.debug("Raw: {}".format(str(ls_dict)[:240]))
-        origin_and_key = ls_dict['key']
-        log.debug("  Origin_and_key: {}".format(origin_and_key))
+        // LevelDB database schema
+        // =======================
+        //
+        // Version 1 (in sorted order):
+        //   key: "VERSION"
+        //   value: "1"
+        //
+        //   key: "META:" + <url::Origin 'origin'>
+        //   value: <LocalStorageOriginMetaData serialized as a string>
+        //
+        //   key: "_" + <url::Origin> 'origin'> + '\x00' + <script controlled key>
+        //   value: <script controlled value>
+        """
+        parsed = {}
 
-        if ls_dict['key'].startswith('META:'):
-            origin = ls_dict['key'].split(':', 1)[1]
-            ls_key = 'META'
-            return False
+        if record['key'].startswith('META:'.encode('utf-8')):
+            parsed['record_type'] = 'META'
+            parsed['origin'] = record['key'][5:].decode()
+            parsed['key'] = record['key'][5:].decode()
 
-        elif ls_dict['key'] == 'VERSION':
-            return False
+            # From https://cs.chromium.org/chromium/src/components/services/storage/dom_storage/
+            #   local_storage_database.proto:
+            # message LocalStorageOriginMetaData
+            #   required int64 last_modified = 1;
+            #   required uint64 size_bytes = 2;
+            # TODO: consider redoing this using protobufs
+            if record['value'].startswith(b'\x08'):
+                ptr = 1
+                last_modified, bytes_read = utils.read_varint(record['value'][ptr:])
+                size_bytes, _ = utils.read_varint(record['value'][ptr + bytes_read:])
+                parsed['value'] = f'Last modified: {last_modified}; size: {size_bytes}'
+            return parsed
 
-        else:
+        elif record['key'] == 'VERSION':
+            return
+
+        elif record['key'].startswith(b'_'):
+            parsed['record_type'] = 'entry'
             try:
-                origin, ls_key = ls_dict['key'].split('\x00', 1)
-                log.debug("    Origin: {}".format(origin))
-                log.debug("    RawKey: {}".format(ls_key))
+                parsed['origin'], parsed['key'] = record['key'][1:].split(b'\x00', 1)
+                parsed['origin'] = parsed['origin'].decode()
 
-                if ls_key.startswith('\x01'):
-                    ls_key = ls_key.lstrip('\x01')
-                    log.info("    1__Key: {}".format(ls_key))
+                if parsed['key'].startswith(b'\x01'):
+                    parsed['key'] = parsed['key'].lstrip(b'\x01').decode()
 
-                elif ls_key.startswith('\x00'):
-                    ls_key = ls_key.lstrip('\x00').decode('utf-16')
-                    log.info("    0__Key: {}".format(ls_key))
+                elif parsed['key'].startswith('\x00'):
+                    parsed['key'] = parsed['key'].lstrip('\x00').decode('utf-16')
+
             except Exception as e:
                 log.error("Origin/key parsing error: {}".format(e))
+                return
 
-        try:
-            ls_value = ls_dict['value']
-            log.debug("  Value: {}".format(ls_value[:160]))
+            try:
+                if record['value'].startswith(b'\x01'):
+                    parsed['value'] = record['value'].lstrip(b'\x01').decode('utf-8', errors='replace')
 
-            if ls_value.startswith('\x01'):
-                ls_value = ls_value.lstrip('\x01')
-                log.info("    1__Val: {}".format(ls_value[:160]))
+                elif record['value'].startswith(b'\x00'):
+                    parsed['value'] = record['value'].lstrip(b'\x00').decode('utf-16', errors='replace')
 
-            elif ls_value.startswith('\x00'):
-                ls_value = ls_value.lstrip('\x00').decode('utf-16', errors='replace')
-                log.info("    0__Val: {}".format(ls_value))
+                elif record['value'].startswith(b'\x08'):
+                    parsed['value'] = record['value'].lstrip(b'\x08').decode()
 
-            elif ls_value.startswith('\x08'):
-                ls_value = ls_value.lstrip('\x08')
-                log.info("    8__Val: {}".format(ls_value))
-        except Exception as e:
-            log.error("Value parsing error: {}".format(e))
+            except Exception as e:
+                log.error(f'Value parsing error: {e}')
+                return
 
-        log.info({'origin': origin, 'key': ls_key, 'value': ls_value})
-        return {'origin': origin, 'key': ls_key, 'value': ls_value}
-
-        # if ls_dict['key'] is 'VERSION':
-        #     return "VERSION"
-        # try:
-        #     origin, ls_key = ls_dict['key'].split('\x00\x01')
-        #     print(origin, ls_key)
-        #
-        # except ValueError:
-        #     try:
-        #         origin, ls_key = ls_dict['key'].split(':', 1)
-        #     except:
-        #         print("ERREREREERIR: {}".format(ls_dict))
-        #         return False
-        #
-        #     print(origin, ls_key)
+        return parsed
 
     def build_logical_fs_path(self, node, parent_path=None):
         if not parent_path:
             parent_path = []
 
-        parent_path.append(node["name"])
-        node["path"] = parent_path
-        for child_node in node["children"].itervalues():
-            self.build_logical_fs_path(child_node, parent_path=list(node["path"]))
+        parent_path.append(node['name'])
+        node['path'] = parent_path
+        for child_node in node['children'].values():
+            self.build_logical_fs_path(child_node, parent_path=list(node['path']))
 
-    def flatten_nodes_to_list(self, profile_folder, output_list, node):
-    # def flatten_nodes_to_list(self, output_list, node):
+    def flatten_nodes_to_list(self, output_list, node):
         output_row = {
-            "type": node["type"],
-            "display_type": node["display_type"],
-            "origin": node["path"][0],
-            "logical_path": "\\".join(node["path"][1:]),
-            "local_path": "{}\\File System\\{}\\{}".format(profile_folder, node["origin_id"], node["type"])
-            # "local_path": os.path.join(path, node["origin_id"], node["type"])
+            'type': node['type'],
+            'display_type': node['display_type'],
+            'origin': node['path'][0],
+            'logical_path': '\\'.join(node['path'][1:]),
+            'local_path': os.path.join('File System', node['origin_id'], node['type'])
         }
-        if node.get("fs_path"):
-            output_row["local_path"] += "\\{}\\{}".format(node["fs_path"]["dir"], node["fs_path"]["id"])
+        if node.get('fs_path'):
+            fs_path = os.path.split(node['fs_path'])
+            output_row['local_path'] = os.path.join(output_row['local_path'], fs_path[0], fs_path[1])
+
+        if node.get('modification_time'):
+            output_row['modification_time'] = utils.to_datetime(node['modification_time'])
 
         output_list.append(output_row)
-        for child_node in node["children"].itervalues():
-            self.flatten_nodes_to_list(profile_folder, output_list, child_node)
+        for child_node in node['children'].values():
+            self.flatten_nodes_to_list(output_list, child_node)
 
     def get_file_system(self, path, dir_name):
         try:
-            # TODO: add conditionally to imports/requirements?
-            import leveldb
+            import plyvel
         except ImportError:
-            self.artifacts_counts['File System'] = 0
-            log.info("File System: Failed to parse; couldn't import leveldb.")
+            self.artifacts_counts['File System'] = 'Failed'
+            log.info('File System: Failed to parse; couldn\'t import plyvel.')
             return
 
         result_list = []
         result_count = 0
-        try:
-            profile_folder = os.path.split(path)[1]
-        except:
-            profile_folder = "error"
-        log.info("File System ({}):".format(profile_folder))
 
         # Grab listing of 'File System' directory
+        log.info('File System:')
         fs_root_path = os.path.join(path, dir_name)
-        log.info(" - Reading from {}".format(fs_root_path))
+        log.info(f' - Reading from {fs_root_path}')
         fs_root_listing = os.listdir(fs_root_path)
-        log.debug(" - {count} files in File System directory: {list}".format(list=str(fs_root_listing),
-                                                                             count=len(fs_root_listing)))
-        # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to web origin (https_www.google.com_0)
+        log.debug(f' - {len(fs_root_listing)} files in File System directory: {str(fs_root_listing)}')
+
+        # 'Origins' is a LevelDB that holds the mapping for each of the [000, 001, 002, ... ] dirs to
+        # web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
-            lvl_db_path = os.path.join(fs_root_path, 'Origins')
-            origins = self.get_prefixed_leveldb_pairs(lvl_db_path, "ORIGIN:")
+            ldb_path = os.path.join(fs_root_path, 'Origins')
+            origins = utils.get_ldb_pairs(ldb_path, 'ORIGIN:')
             for origin in origins:
-                origin_domain = origin["key"]
-                origin_id = origin["value"]
+                origin_domain = origin['key'].decode()
+                origin_id = origin['value'].decode()
                 origin_root_path = os.path.join(fs_root_path, origin_id)
-                t_tree = {}
-                p_tree = {}
+                if not os.path.isdir(origin_root_path):
+                    continue
 
-                if os.path.isdir(origin_root_path):
-                    origin_t_path = os.path.join(origin_root_path, 't')
-                    if os.path.isdir(origin_t_path):
-                        log.debug(" - Found 'temporary' data directory for origin {}".format(origin_domain))
-                        origin_t_paths_path = os.path.join(origin_t_path, 'Paths')
-                        if os.path.isdir(origin_t_paths_path):
-                            try:
-                                t_items = self.get_prefixed_leveldb_pairs(origin_t_paths_path, "CHILD_OF:")
-                                t_fs_paths = self.get_fs_path_leveldb(origin_t_paths_path)
-                                t_nodes = {"0": {"name": origin_domain, "type": "t", "display_type": "file system (temporary)",
-                                                 "origin_id": origin_id, "fs_path": t_fs_paths.get('0'), "children": {}}}
-                                for item in t_items:
-                                    (parent, name) = item["key"].split(":")
-                                    t_nodes[item["value"]] = {"name": name, "type": "t", "display_type": "file system (temporary)",
-                                                              "origin_id": origin_id, "parent": parent, "fs_path": t_fs_paths.get(item["value"]),
-                                                              "children": {}}
-                                    result_count += 1
+                # Each Origin can have a temporary (t) and persistent (p) storage section.
+                for fs_type in ['t', 'p']:
+                    node_tree = {}
+                    fs_type_path = os.path.join(origin_root_path, fs_type)
+                    if not os.path.isdir(fs_type_path):
+                        continue
 
-                                for id in t_nodes:
-                                    if t_nodes[id].get("parent"):
-                                        t_nodes[t_nodes[id].get("parent")]["children"][id] = t_nodes[id]
-                                    else:
-                                        t_tree[id] = t_nodes[id]
+                    log.debug(f' - Found \'{fs_type}\' data directory for origin {origin_domain}')
 
-                                self.build_logical_fs_path(t_tree["0"])
-                                self.flatten_nodes_to_list(profile_folder, result_list, t_tree["0"])
-                            except Exception as e:
-                                log.error(" - Error accessing LevelDB {}: {}".format(origin_t_paths_path, str(e)))
+                    # Within each storage section is a 'Paths' leveldb, which holds the logical structure
+                    # relationship between the files stored in this section.
+                    fs_paths_path = os.path.join(fs_type_path, 'Paths')
+                    if not os.path.isdir(fs_paths_path):
+                        continue
 
-                    origin_p_path = os.path.join(origin_root_path, 'p')
-                    if os.path.isdir(origin_p_path):
-                        log.debug(" - Found 'persistent' data directory for origin {}".format(origin_domain))
-                        origin_p_paths_path = os.path.join(origin_p_path, 'Paths')
-                        if os.path.isdir(origin_p_paths_path):
-                            try:
-                                p_items = self.get_prefixed_leveldb_pairs(origin_p_paths_path, "CHILD_OF:")
-                                p_fs_paths = self.get_fs_path_leveldb(origin_p_paths_path)
-                                p_nodes = {"0": {"name": origin_domain, "type": "p", "display_type": "file system (persistent)",
-                                                 "origin_id": origin_id, "fs_path": p_fs_paths.get('0'), "children": {}}}
-                                for item in p_items:
-                                    (parent, name) = item["key"].split(":")
-                                    p_nodes[item["value"]] = {"name": name, "type": "p", "display_type": "file system (persistent)",
-                                                              "origin_id": origin_id, "parent": parent, "fs_path": p_fs_paths.get(item["value"]),
-                                                              "children": {}}
-                                    result_count += 1
+                    # The 'Paths' ldbs can have entries of four different types:
+                    # // - ("CHILD_OF:|parent_id|:<name>", "|file_id|"),
+                    # // - ("LAST_FILE_ID", "|last_file_id|"),
+                    # // - ("LAST_INTEGER", "|last_integer|"),
+                    # // - ("|file_id|", "pickled FileInfo")
+                    # // where FileInfo has |parent_id|, |data_path|, |name| and |modification_time|
+                    # from cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
 
-                                for id in p_nodes:
-                                    if p_nodes[id].get("parent"):
-                                        p_nodes[p_nodes[id].get("parent")]["children"][id] = p_nodes[id]
-                                    else:
-                                        p_tree[id] = p_nodes[id]
+                    backing_files = {}
+                    path_nodes = {
+                        '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
+                              'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'children': {}}}
 
-                                self.build_logical_fs_path(p_tree["0"])
-                                self.flatten_nodes_to_list(profile_folder, result_list, p_tree["0"])
-                            except Exception as e:
-                                log.error(" - Error accessing LevelDB {}: {}".format(origin_p_paths_path, str(e)))
+                    path_items = utils.get_ldb_pairs(fs_paths_path)
 
-        log.info(" - Parsed {} items".format(len(result_list)))
+                    for item in path_items:
+                        # This will find keys that start with a number, rather than letter (ASCII code),
+                        # which only matches "file id" items (from above list of four types).
+                        if item['key'][0] < 58:
+                            overall_length, ptr = utils.read_int32(item['value'], 0)
+                            parent_id, ptr = utils.read_int64(item['value'], ptr)
+                            backing_file_path, ptr = utils.read_string(item['value'], ptr)
+                            name, ptr = utils.read_string(item['value'], ptr)
+                            mod_time, ptr = utils.read_int64(item['value'], ptr)
+
+                            path_parts = re.split(r'[/\\]', backing_file_path)
+                            if path_parts != ['']:
+                                normalized_backing_file_path = os.path.join(path_parts[0], path_parts[1])
+                            else:
+                                normalized_backing_file_path = backing_file_path
+
+                            backing_files[item['key'].decode()] = {
+                                'backing_file_path': normalized_backing_file_path,
+                                'modification_time': mod_time}
+
+                        elif item['key'].startswith(b'CHILD_OF:'):
+                            parent, name = item['key'][9:].split(b':')
+                            path_nodes[item['value'].decode()] = {
+                                'name': name.decode(),
+                                'type': fs_type,
+                                'display_type': f'file system ({fs_type})',
+                                'origin_id': origin_id,
+                                'parent': parent.decode(),
+                                'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
+                                'modification_time': backing_files[item['value'].decode()]['modification_time'],
+                                'children': {}}
+                            result_count += 1
+
+                    for entry_id in path_nodes:
+                        if path_nodes[entry_id].get('parent'):
+                            path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
+                        else:
+                            node_tree[entry_id] = path_nodes[entry_id]
+
+                    self.build_logical_fs_path(node_tree['0'])
+                    flattened_list = []
+                    self.flatten_nodes_to_list(flattened_list, node_tree['0'])
+
+                    for item in flattened_list:
+                        result_list.append(Chrome.FileSystemItem(
+                            self.profile_path, item.get('origin'), item.get('logical_path'), item.get('local_path'),
+                            item.get('modification_time')))
+
+        log.info(f' - Parsed {len(result_list)} items')
         self.artifacts_counts['File System'] = len(result_list)
-
-        presentation = {'title': 'Storage',
-                        'columns': [
-                            {'display_name': 'Storage Type',
-                             'data_name': 'display_type',
-                             'display_width': 26},
-                            {'display_name': 'Origin',
-                             'data_name': 'origin',
-                             'display_width': 50},
-                            {'display_name': 'Logical Path / Key',
-                             'data_name': 'logical_path',
-                             'display_width': 50},
-                            {'display_name': 'Local Path',
-                             'data_name': 'local_path',
-                             'display_width': 36}
-                        ]}
-
-        self.storage.setdefault('data', [])
-        self.storage.setdefault('presentation', presentation)
-        self.storage['data'].extend(result_list)
-        # self.storage = {'data': result_list, 'presentation': presentation}
+        self.parsed_storage.extend(result_list)
 
     def process(self):
-        supported_databases = ['History', 'Archived History', 'Web Data', 'Cookies', 'Login Data', 'Extension Cookies']
-        supported_subdirs = ['Local Storage', 'Extensions', 'File System']
+        supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies', 'Login Data',
+                               'Extension Cookies']
+        supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications']
         supported_jsons = ['Bookmarks']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
-        log.debug("Supported items: " + str(supported_items))
+        log.debug(f'Supported items: {supported_items}')
 
         input_listing = os.listdir(self.profile_path)
         for input_file in input_listing:
             # If input_file is in our supported db list, or if the input_file name starts with a
             # value in supported_databases followed by '__' (used to add in dbs from additional sources)
-            if input_file in supported_databases or input_file.startswith(tuple([db + '__' for db in supported_databases])):
+            if input_file in supported_databases or \
+                    input_file.startswith(tuple([db + '__' for db in supported_databases])):
                 # Process structure from Chrome database files
                 self.build_structure(self.profile_path, input_file)
 
@@ -1760,138 +1889,167 @@ class Chrome(WebBrowser):
         self.determine_version()
 
         if len(self.version) > 1:
-            self.display_version = "%s-%s" % (self.version[0], self.version[-1])
-        else:
+            self.display_version = f'{self.version[0]}-{self.version[-1]}'
+        elif len(self.version) == 1:
             self.display_version = self.version[0]
+        else:
+            print('Unable to determine browser version')
 
         print(self.format_profile_path(self.profile_path))
 
-        print(self.format_processing_output("Detected {} version".format(self.browser_name), self.display_version))
-        log.info("Detected {} version {}".format(self.browser_name, self.display_version))
+        print(self.format_processing_output(f'Detected {self.browser_name} version', self.display_version))
+        log.info(f'Detected {self.browser_name} version {self.display_version}')
 
-        log.info("Found the following supported files or directories:")
+        log.info('Found the following supported files or directories:')
         for input_file in input_listing:
             if input_file in supported_items:
-                log.info(" - %s" % input_file)
+                log.info(f' - {input_file}')
 
         # Process History files
         custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
         for input_file in input_listing:
             if re.search(r'^History__|^History$', input_file):
-                row_type = u'url'
+                row_type = 'url'
                 custom_type_m = re.search(custom_type_re, input_file)
                 if custom_type_m:
-                    row_type = u'url ({})'.format(custom_type_m.group(1))
+                    row_type = f'url ({custom_type_m.group(1)})'
                 self.get_history(self.profile_path, input_file, self.version, row_type)
-                display_type = 'URL' if not custom_type_m else 'URL ({})'.format(custom_type_m.group(1))
-                self.artifacts_display[input_file] = "{} records".format(display_type)
-                print self.format_processing_output(self.artifacts_display[input_file],
-                                                    self.artifacts_counts.get(input_file, '0'))
+                display_type = 'URL' if not custom_type_m else f'URL ({custom_type_m.group(1)})'
+                self.artifacts_display[input_file] = f'{display_type} records'
+                print(self.format_processing_output(
+                    self.artifacts_display[input_file], 
+                    self.artifacts_counts.get(input_file, '0')))
 
-                row_type = u'download'
+                row_type = 'download'
                 if custom_type_m:
-                    row_type = u'download ({})'.format(custom_type_m.group(1))
+                    row_type = f'download ({custom_type_m.group(1)})'
                 self.get_downloads(self.profile_path, input_file, self.version, row_type)
-                display_type = 'Download' if not custom_type_m else 'Download ({})'.format(custom_type_m.group(1))
-                self.artifacts_display[input_file + '_downloads'] = "{} records".format(display_type)
-                print self.format_processing_output(self.artifacts_display[input_file + '_downloads'],
-                                                    self.artifacts_counts.get(input_file + '_downloads', '0'))
+                display_type = 'Download' if not custom_type_m else f'Download ({custom_type_m.group(1)})'
+                self.artifacts_display[input_file + '_downloads'] = f'{display_type} records'
+                print(self.format_processing_output(
+                    self.artifacts_display[input_file + '_downloads'], 
+                    self.artifacts_counts.get(input_file + '_downloads', '0')))
 
         if 'Archived History' in input_listing:
-            self.get_history(self.profile_path, 'Archived History', self.version, u'url (archived)')
+            self.get_history(self.profile_path, 'Archived History', self.version, 'url (archived)')
             self.artifacts_display['Archived History'] = "Archived URL records"
-            print self.format_processing_output(self.artifacts_display['Archived History'],
-                                                self.artifacts_counts.get('Archived History', '0'))
+            print(self.format_processing_output(
+                self.artifacts_display['Archived History'],
+                self.artifacts_counts.get('Archived History', '0')))
+
+        if 'Media History' in input_listing:
+            self.get_media_history(self.profile_path, 'Media History', self.version, 'media (playback end)')
+            self.artifacts_display['Media History'] = "Media History records"
+            print(self.format_processing_output(
+                self.artifacts_display['Media History'],
+                self.artifacts_counts.get('Media History', '0')))
 
         if self.cache_path is not None and self.cache_path != '':
             c_path, c_dir = os.path.split(self.cache_path)
-            self.get_cache(c_path, c_dir, row_type=u'cache')
-            self.artifacts_display['Cache'] = "Cache records"
-            print self.format_processing_output(self.artifacts_display['Cache'],
-                                                self.artifacts_counts.get('Cache', '0'))
+            self.get_cache(c_path, c_dir, row_type='cache')
+            self.artifacts_display['Cache'] = 'Cache records'
+            print(self.format_processing_output(
+                self.artifacts_display['Cache'],
+                self.artifacts_counts.get('Cache', '0')))
 
         elif 'Cache' in input_listing:
-            self.get_cache(self.profile_path, 'Cache', row_type=u'cache')
-            self.artifacts_display['Cache'] = "Cache records"
-            print self.format_processing_output(self.artifacts_display['Cache'],
-                                                self.artifacts_counts.get('Cache', '0'))
+            self.get_cache(self.profile_path, 'Cache', row_type='cache')
+            self.artifacts_display['Cache'] = 'Cache records'
+            print(self.format_processing_output(
+                self.artifacts_display['Cache'],
+                self.artifacts_counts.get('Cache', '0')))
+            
         if 'GPUCache' in input_listing:
-            self.get_cache(self.profile_path, 'GPUCache', row_type=u'cache (gpu)')
-            self.artifacts_display['GPUCache'] = "GPU Cache records"
-            print self.format_processing_output(self.artifacts_display['GPUCache'],
-                                                self.artifacts_counts.get('GPUCache', '0'))
+            self.get_cache(self.profile_path, 'GPUCache', row_type='cache (gpu)')
+            self.artifacts_display['GPUCache'] = 'GPU Cache records'
+            print(self.format_processing_output(
+                self.artifacts_display['GPUCache'],
+                self.artifacts_counts.get('GPUCache', '0')))
 
         if 'Media Cache' in input_listing:
-            self.get_cache(self.profile_path, 'Media Cache', row_type=u'cache (media)')
-            self.artifacts_display['Media Cache'] = "Media Cache records"
-            print self.format_processing_output(self.artifacts_display['Media Cache'],
-                                                self.artifacts_counts.get('Media Cache', '0'))
+            self.get_cache(self.profile_path, 'Media Cache', row_type='cache (media)')
+            self.artifacts_display['Media Cache'] = 'Media Cache records'
+            print(self.format_processing_output(
+                self.artifacts_display['Media Cache'],
+                self.artifacts_counts.get('Media Cache', '0')))
 
         if 'Application Cache' in input_listing:
-            self.get_application_cache(self.profile_path, 'Application Cache', row_type=u'cache (application)')
-            self.artifacts_display['Application Cache'] = "Application Cache records"
-            print self.format_processing_output(self.artifacts_display['Application Cache'],
-                                                self.artifacts_counts.get('Application Cache', '0'))
+            self.get_application_cache(self.profile_path, 'Application Cache', row_type='cache (application)')
+            self.artifacts_display['Application Cache'] = 'Application Cache records'
+            print(self.format_processing_output(
+                self.artifacts_display['Application Cache'],
+                self.artifacts_counts.get('Application Cache', '0')))
 
         if 'Cookies' in input_listing:
             self.get_cookies(self.profile_path, 'Cookies', self.version)
-            self.artifacts_display['Cookies'] = "Cookie records"
-            print self.format_processing_output(self.artifacts_display['Cookies'],
-                                                self.artifacts_counts.get('Cookies', '0'))
+            self.artifacts_display['Cookies'] = 'Cookie records'
+            print(self.format_processing_output(
+                self.artifacts_display['Cookies'],
+                self.artifacts_counts.get('Cookies', '0')))
 
         if 'Web Data' in input_listing:
             self.get_autofill(self.profile_path, 'Web Data', self.version)
-            self.artifacts_display['Autofill'] = "Autofill records"
-            print self.format_processing_output(self.artifacts_display['Autofill'],
-                                                self.artifacts_counts.get('Autofill', '0'))
+            self.artifacts_display['Autofill'] = 'Autofill records'
+            print(self.format_processing_output(
+                self.artifacts_display['Autofill'],
+                self.artifacts_counts.get('Autofill', '0')))
 
         if 'Bookmarks' in input_listing:
             self.get_bookmarks(self.profile_path, 'Bookmarks', self.version)
-            self.artifacts_display['Bookmarks'] = "Bookmark records"
-            print self.format_processing_output(self.artifacts_display['Bookmarks'],
-                                                self.artifacts_counts.get('Bookmarks', '0'))
+            self.artifacts_display['Bookmarks'] = 'Bookmark records'
+            print(self.format_processing_output(
+                self.artifacts_display['Bookmarks'],
+                self.artifacts_counts.get('Bookmarks', '0')))
 
         if 'Local Storage' in input_listing:
             self.get_local_storage(self.profile_path, 'Local Storage')
-            self.artifacts_display['Local Storage'] = "Local Storage records"
-            print self.format_processing_output(self.artifacts_display['Local Storage'],
-                                                self.artifacts_counts.get('Local Storage', '0'))
+            self.artifacts_display['Local Storage'] = 'Local Storage records'
+            print(self.format_processing_output(
+                self.artifacts_display['Local Storage'],
+                self.artifacts_counts.get('Local Storage', '0')))
 
         if 'Extensions' in input_listing:
             self.get_extensions(self.profile_path, 'Extensions')
-            self.artifacts_display['Extensions'] = "Extensions"
-            print self.format_processing_output(self.artifacts_display['Extensions'],
-                                                self.artifacts_counts.get('Extensions', '0'))
+            self.artifacts_display['Extensions'] = 'Extensions'
+            print(self.format_processing_output(
+                self.artifacts_display['Extensions'],
+                self.artifacts_counts.get('Extensions', '0')))
 
         if 'Extension Cookies' in input_listing:
             # Workaround to cap the version at 65 for Extension Cookies, as until that
             # point it has the same database format as Cookies
+            # TODO: Need to revisit this, as in v69 the structures are the same again, but
+            # I don't have test data for v67 or v68 to tell when it changed back.
             ext_cookies_version = self.version
             # if min(self.version) > 65:
             #     ext_cookies_version.insert(0, 65)
 
             self.get_cookies(self.profile_path, 'Extension Cookies', ext_cookies_version)
-            self.artifacts_display['Extension Cookies'] = "Extension Cookie records"
-            print self.format_processing_output(self.artifacts_display['Extension Cookies'],
-                                                self.artifacts_counts.get('Extension Cookies', '0'))
+            self.artifacts_display['Extension Cookies'] = 'Extension Cookie records'
+            print(self.format_processing_output(
+                self.artifacts_display['Extension Cookies'],
+                self.artifacts_counts.get('Extension Cookies', '0')))
 
         if 'Login Data' in input_listing:
             self.get_login_data(self.profile_path, 'Login Data', self.version)
-            self.artifacts_display['Login Data'] = "Login Data records"
-            print self.format_processing_output(self.artifacts_display['Login Data'],
-                                                self.artifacts_counts.get('Login Data', '0'))
+            self.artifacts_display['Login Data'] = 'Login Data records'
+            print(self.format_processing_output(
+                self.artifacts_display['Login Data'],
+                self.artifacts_counts.get('Login Data', '0')))
 
         if 'Preferences' in input_listing:
             self.get_preferences(self.profile_path, 'Preferences')
-            self.artifacts_display['Preferences'] = "Preference Items"
-            print self.format_processing_output(self.artifacts_display['Preferences'],
-                                                self.artifacts_counts.get('Preferences', '0'))
+            self.artifacts_display['Preferences'] = 'Preference Items'
+            print(self.format_processing_output(
+                self.artifacts_display['Preferences'],
+                self.artifacts_counts.get('Preferences', '0')))
 
         if 'File System' in input_listing:
             self.get_file_system(self.profile_path, 'File System')
-            self.artifacts_display['File System'] = "File System Items"
-            print self.format_processing_output(self.artifacts_display['File System'],
-                                                self.artifacts_counts.get('File System', '0'))
+            self.artifacts_display['File System'] = 'File System Items'
+            print(self.format_processing_output(
+                self.artifacts_display['File System'],
+                self.artifacts_counts.get('File System', '0')))
 
         # Destroy the cached key so that json serialization doesn't
         # have a cardiac arrest on the non-unicode binary data.
@@ -1899,116 +2057,122 @@ class Chrome(WebBrowser):
 
         self.parsed_artifacts.sort()
 
+        # Clean temp directory after processing profile
+        if not self.no_copy:
+            log.info(f'Deleting temporary directory {self.temp_dir}')
+            shutil.rmtree(self.temp_dir)
+
     class URLItem(WebBrowser.URLItem):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                      transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                      transition_friendly=None):
-            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time, last_visit_time=last_visit_time,
-                                        visit_count=visit_count, typed_count=typed_count, from_visit=from_visit, transition=transition,
-                                        hidden=hidden, favicon_id=favicon_id, indexed=indexed, visit_duration=visit_duration,
-                                        visit_source=visit_source, transition_friendly=transition_friendly)
+            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time,
+                                        last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
+                                        from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
+                                        indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
+                                        transition_friendly=transition_friendly)
 
         def decode_transition(self):
             # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
             transition_friendly = {
-                0: u'link',                 # User got to this page by clicking a link on another page.
-                1: u'typed',                # User got this page by typing the URL in the URL bar.  This should not be
-                                            # used for cases where the user selected a choice that didn't look at all
-                                            # like a URL; see GENERATED below.
-                                            # We also use this for other 'explicit' navigation actions.
-                2: u'auto bookmark',        # User got to this page through a suggestion in the UI, for example)
-                                            # through the destinations page.
-                3: u'auto subframe',        # This is a subframe navigation. This is any content that is automatically
-                                            # loaded in a non-toplevel frame. For example, if a page consists of
-                                            # several frames containing ads, those ad URLs will have this transition
-                                            # type. The user may not even realize the content in these pages is a
-                                            # separate frame, so may not care about the URL (see MANUAL below).
-                4: u'manual subframe',      # For subframe navigations that are explicitly requested by the user and
-                                            # generate new navigation entries in the back/forward list. These are
-                                            # probably more important than frames that were automatically loaded in
-                                            # the background because the user probably cares about the fact that this
-                                            # link was loaded.
-                5: u'generated',            # User got to this page by typing in the URL bar and selecting an entry
-                                            # that did not look like a URL.  For example, a match might have the URL
-                                            # of a Google search result page, but appear like 'Search Google for ...'.
-                                            # These are not quite the same as TYPED navigations because the user
-                                            # didn't type or see the destination URL.
-                                            # See also KEYWORD.
-                6: u'start page',           # This is a toplevel navigation. This is any content that is automatically
-                                            # loaded in a toplevel frame.  For example, opening a tab to show the ASH
-                                            # screen saver, opening the devtools window, opening the NTP after the safe
-                                            # browsing warning, opening web-based dialog boxes are examples of
-                                            # AUTO_TOPLEVEL navigations.
-                7: u'form submit',          # The user filled out values in a form and submitted it. NOTE that in
-                                            # some situations submitting a form does not result in this transition
-                                            # type. This can happen if the form uses script to submit the contents.
-                8: u'reload',               # The user 'reloaded' the page, either by hitting the reload button or by
-                                            # hitting enter in the address bar.  NOTE: This is distinct from the
-                                            # concept of whether a particular load uses 'reload semantics' (i.e.
-                                            # bypasses cached data).  For this reason, lots of code needs to pass
-                                            # around the concept of whether a load should be treated as a 'reload'
-                                            # separately from their tracking of this transition type, which is mainly
-                                            # used for proper scoring for consumers who care about how frequently a
-                                            # user typed/visited a particular URL.
-                                            # SessionRestore and undo tab close use this transition type too.
-                9: u'keyword',              # The url was generated from a replaceable keyword other than the default
-                                            # search provider. If the user types a keyword (which also applies to
-                                            # tab-to-search) in the omnibox this qualifier is applied to the transition
-                                            # type of the generated url. TemplateURLModel then may generate an
-                                            # additional visit with a transition type of KEYWORD_GENERATED against the
-                                            # url 'http://' + keyword. For example, if you do a tab-to-search against
-                                            # wikipedia the generated url has a transition qualifer of KEYWORD, and
-                                            # TemplateURLModel generates a visit for 'wikipedia.org' with a transition
-                                            # type of KEYWORD_GENERATED.
-                10: u'keyword generated'}   # Corresponds to a visit generated for a keyword. See description of
-                                            # KEYWORD for more details.
+                0: 'link',                 # User got to this page by clicking a link on another page.
+                1: 'typed',                # User got this page by typing the URL in the URL bar.  This should not be
+                                           #  used for cases where the user selected a choice that didn't look at all
+                                           #  like a URL; see GENERATED below.
+                                           # We also use this for other 'explicit' navigation actions.
+                2: 'auto bookmark',        # User got to this page through a suggestion in the UI, for example)
+                                           #  through the destinations page.
+                3: 'auto subframe',        # This is a subframe navigation. This is any content that is automatically
+                                           #  loaded in a non-toplevel frame. For example, if a page consists of
+                                           #  several frames containing ads, those ad URLs will have this transition
+                                           #  type. The user may not even realize the content in these pages is a
+                                           #  separate frame, so may not care about the URL (see MANUAL below).
+                4: 'manual subframe',      # For subframe navigations that are explicitly requested by the user and
+                                           #  generate new navigation entries in the back/forward list. These are
+                                           #  probably more important than frames that were automatically loaded in
+                                           #  the background because the user probably cares about the fact that this
+                                           #  link was loaded.
+                5: 'generated',            # User got to this page by typing in the URL bar and selecting an entry
+                                           #  that did not look like a URL.  For example, a match might have the URL
+                                           #  of a Google search result page, but appear like 'Search Google for ...'.
+                                           #  These are not quite the same as TYPED navigations because the user
+                                           #  didn't type or see the destination URL.
+                                           #  See also KEYWORD.
+                6: 'start page',           # This is a toplevel navigation. This is any content that is automatically
+                                           #  loaded in a toplevel frame.  For example, opening a tab to show the ASH
+                                           #  screen saver, opening the devtools window, opening the NTP after the safe
+                                           #  browsing warning, opening web-based dialog boxes are examples of
+                                           #  AUTO_TOPLEVEL navigations.
+                7: 'form submit',          # The user filled out values in a form and submitted it. NOTE that in
+                                           #  some situations submitting a form does not result in this transition
+                                           #  type. This can happen if the form uses script to submit the contents.
+                8: 'reload',               # The user 'reloaded' the page, either by hitting the reload button or by
+                                           #  hitting enter in the address bar.  NOTE: This is distinct from the
+                                           #  concept of whether a particular load uses 'reload semantics' (i.e.
+                                           #  bypasses cached data).  For this reason, lots of code needs to pass
+                                           #  around the concept of whether a load should be treated as a 'reload'
+                                           #  separately from their tracking of this transition type, which is mainly
+                                           #  used for proper scoring for consumers who care about how frequently a
+                                           #  user typed/visited a particular URL.
+                                           #  SessionRestore and undo tab close use this transition type too.
+                9: 'keyword',              # The url was generated from a replaceable keyword other than the default
+                                           #  search provider. If the user types a keyword (which also applies to
+                                           #  tab-to-search) in the omnibox this qualifier is applied to the transition
+                                           #  type of the generated url. TemplateURLModel then may generate an
+                                           #  additional visit with a transition type of KEYWORD_GENERATED against the
+                                           #  url 'http://' + keyword. For example, if you do a tab-to-search against
+                                           #  wikipedia the generated url has a transition qualifer of KEYWORD, and
+                                           #  TemplateURLModel generates a visit for 'wikipedia.org' with a transition
+                                           #  type of KEYWORD_GENERATED.
+                10: 'keyword generated'}   # Corresponds to a visit generated for a keyword. See description of
+                                           #  KEYWORD for more details.
 
             qualifiers_friendly = {
-                0x00800000: u'Blocked',                # A managed user attempted to visit a URL but was blocked.
-                0x01000000: u'Forward or Back',        # User used the Forward or Back button to navigate among browsing
-                                                       # history.
-                0x02000000: u'From Address Bar',       # User used the address bar to trigger this navigation.
-                0x04000000: u'Home Page',              # User is navigating to the home page.
-                0x08000000: u'From API',               # The transition originated from an external application; the exact
-                                                       # definition of this is embedder dependent.
-                0x10000000: u'Navigation Chain Start', # The beginning of a navigation chain.
-                0x20000000: u'Navigation Chain End',   # The last transition in a redirect chain.
-                0x40000000: u'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page.
-                0x80000000: u'Server Redirect'}        # Redirects sent from the server by HTTP headers. It might be nice to
-                                                       # break this out into 2 types in the future, permanent or temporary,
-                                                       # if we can get that information from WebKit.
+                0x00800000: 'Blocked',                # A managed user attempted to visit a URL but was blocked.
+                0x01000000: 'Forward or Back',        # User used the Forward or Back button to navigate among browsing
+                                                      #  history.
+                0x02000000: 'From Address Bar',       # User used the address bar to trigger this navigation.
+                0x04000000: 'Home Page',              # User is navigating to the home page.
+                0x08000000: 'From API',               # The transition originated from an external application; the exact
+                                                      #  definition of this is embedder dependent.
+                0x10000000: 'Navigation Chain Start', # The beginning of a navigation chain.
+                0x20000000: 'Navigation Chain End',   # The last transition in a redirect chain.
+                0x40000000: 'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page.
+                0x80000000: 'Server Redirect'}        # Redirects sent from the server by HTTP headers. It might be nice to
+                                                      #  break this out into 2 types in the future, permanent or temporary,
+                                                      #  if we can get that information from WebKit.
             raw = self.transition
             # If the transition has already been translated to a string, just use that
-            if isinstance(raw, (str, unicode)):
+            if isinstance(raw, str):
                 self.transition_friendly = raw
                 return
 
             core_mask = 0xff
             code = raw & core_mask
 
-            if code in transition_friendly.keys():
+            if code in list(transition_friendly.keys()):
                 self.transition_friendly = transition_friendly[code] + '; '
 
             for qualifier in qualifiers_friendly:
                 if raw & qualifier == qualifier:
                     if not self.transition_friendly:
-                        self.transition_friendly = u""
+                        self.transition_friendly = ""
                     self.transition_friendly += qualifiers_friendly[qualifier] + '; '
 
         def decode_source(self):
             # https://code.google.com/p/chromium/codesearch#chromium/src/components/history/core/browser/history_types.h
             source_friendly = {
-                0:    u'Synced',               # Synchronized from somewhere else.
-                1:    u'Local',                # User browsed. In my experience, this value isn't written; it will be null.
-                None: u'Local',                # See https://cs.chromium.org/chromium/src/components/history/core/browser/visit_database.cc
-                2:    u'Added by Extension',   # Added by an extension.
-                3:    u'Firefox (Imported)',
-                4:    u'IE (Imported)',
-                5:    u'Safari (Imported)'}
+                0:    'Synced',               # Synchronized from somewhere else.
+                1:    'Local',                # User browsed. In my experience, this value isn't written; it will be null.
+                None: 'Local',                # See https://cs.chromium.org/chromium/src/components/history/core/browser/visit_database.cc
+                2:    'Added by Extension',   # Added by an extension.
+                3:    'Firefox (Imported)',
+                4:    'IE (Imported)',
+                5:    'Safari (Imported)'}
 
             raw = self.visit_source
 
-            if raw in source_friendly.keys():
+            if raw in list(source_friendly.keys()):
                 self.visit_source = source_friendly[raw]
 
     class DownloadItem(WebBrowser.DownloadItem):
@@ -2026,118 +2190,118 @@ class Chrome(WebBrowser):
 
         def decode_interrupt_reason(self):
             interrupts = {
-                0:  u'No Interrupt',                # Success
+                0:  'No Interrupt',                # Success
 
                 # from download_interrupt_reason_values.h on Chromium site
                 # File errors
-                1:  u'File Error',                  # Generic file operation failure.
-                2:  u'Access Denied',               # The file cannot be accessed due to security restrictions.
-                3:  u'Disk Full',                   # There is not enough room on the drive.
-                5:  u'Path Too Long',               # The directory or file name is too long.
-                6:  u'File Too Large',              # The file is too large for the file system to handle.
-                7:  u'Virus',                       # The file contains a virus.
-                10: u'Temporary Problem',           # The file was in use. Too many files are opened at once. We have run
-                                                    # out of memory.
-                11: u'Blocked',                     # The file was blocked due to local policy.
-                12: u'Security Check Failed',       # An attempt to check the safety of the download failed due to
-                                                    # unexpected reasons. See http://crbug.com/153212.
-                13: u'Resume Error',                # An attempt was made to seek past the end of a file in opening a file
-                                                    # (as part of resuming a previously interrupted download).
+                1:  'File Error',                  # Generic file operation failure.
+                2:  'Access Denied',               # The file cannot be accessed due to security restrictions.
+                3:  'Disk Full',                   # There is not enough room on the drive.
+                5:  'Path Too Long',               # The directory or file name is too long.
+                6:  'File Too Large',              # The file is too large for the file system to handle.
+                7:  'Virus',                       # The file contains a virus.
+                10: 'Temporary Problem',           # The file was in use. Too many files are opened at once. We have run
+                                                   #  out of memory.
+                11: 'Blocked',                     # The file was blocked due to local policy.
+                12: 'Security Check Failed',       # An attempt to check the safety of the download failed due to
+                                                   #  unexpected reasons. See http://crbug.com/153212.
+                13: 'Resume Error',                # An attempt was made to seek past the end of a file in opening a file
+                                                   #  (as part of resuming a previously interrupted download).
 
                 # Network errors
-                20: u'Network Error',               # Generic network failure.
-                21: u'Operation Timed Out',         # The network operation timed out.
-                22: u'Connection Lost',             # The network connection has been lost.
-                23: u'Server Down',                 # The server has gone down.
+                20: 'Network Error',               # Generic network failure.
+                21: 'Operation Timed Out',         # The network operation timed out.
+                22: 'Connection Lost',             # The network connection has been lost.
+                23: 'Server Down',                 # The server has gone down.
 
                 # Server responses
-                30: u'Server Error',                # The server indicates that the operation has failed (generic).
-                31: u'Range Request Error',         # The server does not support range requests.
-                32: u'Server Precondition Error',   # The download request does not meet the specified precondition.
-                                                    # Internal use only:  the file has changed on the server.
-                33: u'Unable to get file',          # The server does not have the requested data.
-                34: u'Server Unauthorized',         # Server didn't authorize access to resource.
-                35: u'Server Certificate Problem',  # Server certificate problem.
-                36: u'Server Access Forbidden',     # Server access forbidden.
-                37: u'Server Unreachable',          # Unexpected server response. This might indicate that the responding
-                                                    # server may not be the intended server.
-                38: u'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may indicate
-                                                    # that the connection was closed prematurely, or the Content-Length header was
-                                                    # invalid. The download is only interrupted if strong validators are present.
-                                                    # Otherwise, it is treated as finished.
-                39: u'Cross Origin Redirect',       # An unexpected cross-origin redirect happened.
+                30: 'Server Error',                # The server indicates that the operation has failed (generic).
+                31: 'Range Request Error',         # The server does not support range requests.
+                32: 'Server Precondition Error',   # The download request does not meet the specified precondition.
+                                                   #  Internal use only:  the file has changed on the server.
+                33: 'Unable to get file',          # The server does not have the requested data.
+                34: 'Server Unauthorized',         # Server didn't authorize access to resource.
+                35: 'Server Certificate Problem',  # Server certificate problem.
+                36: 'Server Access Forbidden',     # Server access forbidden.
+                37: 'Server Unreachable',          # Unexpected server response. This might indicate that the responding
+                                                   #  server may not be the intended server.
+                38: 'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may indicate
+                                                   #  that the connection was closed prematurely, or the Content-Length header was
+                                                   #  invalid. The download is only interrupted if strong validators are present.
+                                                   #  Otherwise, it is treated as finished.
+                39: 'Cross Origin Redirect',       # An unexpected cross-origin redirect happened.
 
 
                 # User input
-                40: u'Cancelled',                   # The user cancelled the download.
-                41: u'Browser Shutdown',            # The user shut down the browser.
+                40: 'Cancelled',                   # The user cancelled the download.
+                41: 'Browser Shutdown',            # The user shut down the browser.
 
                 # Crash
-                50: u'Browser Crashed'}             # The browser crashed.
+                50: 'Browser Crashed'}             # The browser crashed.
 
-            if self.interrupt_reason in interrupts.keys():
+            if self.interrupt_reason in list(interrupts.keys()):
                 self.interrupt_reason_friendly = interrupts[self.interrupt_reason]
             elif self.interrupt_reason is None:
                 self.interrupt_reason_friendly = None
             else:
-                self.interrupt_reason_friendly = u'[Error - Unknown Interrupt Code]'
+                self.interrupt_reason_friendly = '[Error - Unknown Interrupt Code]'
                 log.error(" - Error decoding interrupt code for download '{}'".format(self.url))
 
         def decode_danger_type(self):
             # from download_danger_type.h on Chromium site
             dangers = {
-                0: u'Not Dangerous',                 # The download is safe.
-                1: u'Dangerous',                     # A dangerous file to the system (e.g.: a pdf or extension from places
-                                                     # other than gallery).
-                2: u'Dangerous URL',                 # SafeBrowsing download service shows this URL leads to malicious file
-                                                     # download.
-                3: u'Dangerous Content',             # SafeBrowsing download service shows this file content as being
-                                                     # malicious.
-                4: u'Content May Be Malicious',      # The content of this download may be malicious (e.g., extension is exe
-                                                     # but SafeBrowsing has not finished checking the content).
-                5: u'Uncommon Content',              # SafeBrowsing download service checked the contents of the download,
-                                                     # but didn't have enough data to determine whether it was malicious.
-                6: u'Dangerous But User Validated',  # The download was evaluated to be one of the other types of danger,
-                                                     # but the user told us to go ahead anyway.
-                7: u'Dangerous Host',                # SafeBrowsing download service checked the contents of the download
-                                                     # and didn't have data on this specific file, but the file was served
-                                                     # from a host known to serve mostly malicious content.
-                8: u'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
-                                                     # settings
-                9: u'Whitelisted by Policy'}         # Download URL whitelisted by enterprise policy.
+                0: 'Not Dangerous',                 # The download is safe.
+                1: 'Dangerous',                     # A dangerous file to the system (e.g.: a pdf or extension from places
+                                                    #  other than gallery).
+                2: 'Dangerous URL',                 # SafeBrowsing download service shows this URL leads to malicious file
+                                                    #  download.
+                3: 'Dangerous Content',             # SafeBrowsing download service shows this file content as being
+                                                    #  malicious.
+                4: 'Content May Be Malicious',      # The content of this download may be malicious (e.g., extension is exe
+                                                    #  but SafeBrowsing has not finished checking the content).
+                5: 'Uncommon Content',              # SafeBrowsing download service checked the contents of the download,
+                                                    #  but didn't have enough data to determine whether it was malicious.
+                6: 'Dangerous But User Validated',  # The download was evaluated to be one of the other types of danger,
+                                                    #  but the user told us to go ahead anyway.
+                7: 'Dangerous Host',                # SafeBrowsing download service checked the contents of the download
+                                                    #  and didn't have data on this specific file, but the file was served
+                                                    #  from a host known to serve mostly malicious content.
+                8: 'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
+                                                    #  settings
+                9: 'Whitelisted by Policy'}         # Download URL whitelisted by enterprise policy.
 
-            if self.danger_type in dangers.keys():
+            if self.danger_type in list(dangers.keys()):
                 self.danger_type_friendly = dangers[self.danger_type]
             elif self.danger_type is None:
                 self.danger_type_friendly = None
             else:
-                self.danger_type_friendly = u'[Error - Unknown Danger Code]'
+                self.danger_type_friendly = '[Error - Unknown Danger Code]'
                 log.error(" - Error decoding danger code for download '{}'".format(self.url))
 
         def decode_download_state(self):
             # from download_item.h on Chromium site
             states = {
-                0: u"In Progress",   # Download is actively progressing.
-                1: u"Complete",      # Download is completely finished.
-                2: u"Cancelled",     # Download has been cancelled.
-                3: u"Interrupted",   # '3' was the old "Interrupted" code until a bugfix in Chrome v22. 22+ it's '4'
-                4: u"Interrupted"}   # This state indicates that the download has been interrupted.
+                0: "In Progress",   # Download is actively progressing.
+                1: "Complete",      # Download is completely finished.
+                2: "Cancelled",     # Download has been cancelled.
+                3: "Interrupted",   # '3' was the old "Interrupted" code until a bugfix in Chrome v22. 22+ it's '4'
+                4: "Interrupted"}   # This state indicates that the download has been interrupted.
 
-            if self.state in states.keys():
+            if self.state in list(states.keys()):
                 self.state_friendly = states[self.state]
             else:
-                self.state_friendly = u"[Error - Unknown State]"
+                self.state_friendly = "[Error - Unknown State]"
                 log.error(" - Error decoding download state for download '{}'".format(self.url))
 
         def create_friendly_status(self):
             try:
-                status = u"%s -  %i%% [%i/%i]" % \
+                status = "%s -  %i%% [%i/%i]" % \
                          (self.state_friendly, (float(self.received_bytes) / float(self.total_bytes)) * 100,
                           self.received_bytes, self.total_bytes)
             except ZeroDivisionError:
-                status = u"%s -  %i bytes" % (self.state_friendly, self.received_bytes)
+                status = "%s -  %i bytes" % (self.state_friendly, self.received_bytes)
             except:
-                status = u"[parsing error]"
+                status = "[parsing error]"
                 log.error(" - Error creating friendly status message for download '{}'".format(self.url))
             self.status_friendly = status
 
@@ -2257,36 +2421,36 @@ class CacheData:
 
         if isHTTPHeader and self.address.blockType != CacheAddress.SEPARATE_FILE:
             # Getting raw data
-            string = ""
+            block_bytes = b''
             block = open(os.path.join(self.address.path, self.address.fileSelector), 'rb')
 
             # Offset in file
             self.offset = 8192 + self.address.blockNumber*self.address.entrySize
             block.seek(self.offset)
             for _ in range(self.size):
-                string += struct.unpack('c', block.read(1))[0]
+                block_bytes += struct.unpack('c', block.read(1))[0]
             block.close()
 
             # Finding the beginning of the request
-            start = re.search("HTTP", string)
+            start = re.search(b'HTTP', block_bytes)
             if start is None:
                 return
             else:
-                string = string[start.start():]
+                block_bytes = block_bytes[start.start():]
 
             # Finding the end (some null characters : verified by experience)
-            end = re.search("\x00\x00", string)
+            end = re.search(b'\x00\x00', block_bytes)
             if end is None:
                 return
             else:
-                string = string[:end.end()-2]
+                block_bytes = block_bytes[:end.end()-2]
 
             # Creating the dictionary of headers
             self.headers = {}
-            for line in string.split('\0'):
-                stripped = line.split(':')
+            for line in block_bytes.split(b'\0'):
+                stripped = line.split(b':')
                 self.headers[stripped[0].lower()] = \
-                    ':'.join(stripped[1:]).strip()
+                    b':'.join(stripped[1:]).strip()
             self.type = CacheData.HTTP_HEADER
 
     def save(self, filename=None):
@@ -2319,7 +2483,7 @@ class CacheData:
         Display the type of cacheData
         """
         if self.type == CacheData.HTTP_HEADER:
-            if self.headers.has_key('content-type'):
+            if 'content-type' in self.headers:
                 return "HTTP Header %s" % self.headers['content-type']
             else:
                 return "HTTP Header"
@@ -2379,7 +2543,7 @@ class CacheBlock:
 
 class CacheItem(Chrome.HistoryItem):
     def __init__(self, profile, url, date_created, key, value, http_headers):
-        super(CacheItem, self).__init__(u'cache', timestamp=date_created, profile=profile, name=key, value=value)
+        super(CacheItem, self).__init__('cache', timestamp=date_created, profile=profile, name=key, value=value)
         self.profile = profile
         self.url = url
         self.date_created = date_created
@@ -2420,7 +2584,7 @@ class CacheEntry(Chrome.HistoryItem):
         self.usageCounter = struct.unpack('I', block.read(4))[0]
         self.reuseCounter = struct.unpack('I', block.read(4))[0]
         self.state = struct.unpack('I', block.read(4))[0]
-        self.creationTime = to_datetime(struct.unpack('Q', block.read(8))[0], self.timezone)
+        self.creationTime = utils.to_datetime(struct.unpack('Q', block.read(8))[0], self.timezone)
         self.keyLength = struct.unpack('I', block.read(4))[0]
         self.keyAddress = struct.unpack('I', block.read(4))[0]
 
@@ -2495,11 +2659,11 @@ class CacheEntry(Chrome.HistoryItem):
             self.etag = self.http_headers_dict.get('etag')
             self.last_modified = self.http_headers_dict.get('last-modified')
 
-            for key, value in self.http_headers_dict.iteritems():
+            for key, value in self.http_headers_dict.items():
                 if key and value:
-                    self.http_headers_str += u"{}: {}\n".format(key, value)
+                    self.http_headers_str += "{}: {}\n".format(key, value)
                 elif key:
-                    self.http_headers_str += u"{}\n".format(key)
+                    self.http_headers_str += "{}\n".format(key)
             self.http_headers_str = self.http_headers_str.rstrip()
 
     def keyToStr(self):
@@ -2515,7 +2679,7 @@ class CacheEntry(Chrome.HistoryItem):
     def __str__(self):
 
         string = "Hash: 0x%08x" % self.hash + '\n'
-        if self.next != 0:
+        if self.__next__ != 0:
             string += "Next: 0x%08x" % self.next + '\n'
         string += "Usage Counter: %d" % self.usageCounter + '\n'\
                   "Reuse Counter: %d" % self.reuseCounter + '\n'\

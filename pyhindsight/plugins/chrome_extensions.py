@@ -8,13 +8,13 @@
 ###################################################################################################
 
 # Config
-friendlyName = u"Chrome Extension Names"
-description = u"Adds the name and description of each Chrome extension found in a URLItem to the Interpretation field"
-artifactTypes = (u"url", u"local storage")
+friendlyName = "Chrome Extension Names"
+description = "Adds the name and description of each Chrome extension found in a URLItem to the Interpretation field"
+artifactTypes = ("url", "local storage")
 remoteLookups = 0
-browser = u"Chrome"
+browser = "Chrome"
 browserVersion = 1
-version = u"20150125"
+version = "20150125"
 parsedItems = 0
 
 
@@ -35,10 +35,10 @@ def plugin(analysis_session=None):
                     try:
                         for ext in analysis_session.installed_extensions['data']:
                             if ext.app_id == m.group(1):
-                                item.interpretation = u'{} ({}) [Chrome Extension]'.format(ext.name, ext.description)
+                                item.interpretation = '{} ({}) [Chrome Extension]'.format(ext.name, ext.description)
                                 parsedItems += 1
                     except:
                         pass
 
     # Description of what the plugin did
-    return u'{} extension URLs parsed'.format(parsedItems)
+    return '{} extension URLs parsed'.format(parsedItems)

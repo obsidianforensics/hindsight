@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import json
 import os
 import sys
@@ -35,12 +37,12 @@ def get_plugins_info():
             description['version'] = module.version
             try:
                 module.plugin()
-            except ImportError, e:
+            except ImportError as e:
                 description['error'] = 'import'
                 description['error_msg'] = e
                 continue
 
-        except Exception, e:
+        except Exception as e:
             description['error'] = 'other'
             description['error_msg'] = e
             continue
@@ -83,12 +85,12 @@ def get_plugins_info():
                             description['version'] = module.version
                             try:
                                 module.plugin()
-                            except ImportError, e:
+                            except ImportError as e:
                                 description['error'] = 'import'
                                 description['error_msg'] = e
                                 continue
 
-                        except Exception, e:
+                        except Exception as e:
                             description['error'] = 'other'
                             description['error_msg'] = e
                             continue
@@ -99,7 +101,7 @@ def get_plugins_info():
 
             except Exception as e:
                 # log.debug(' - Error loading plugins ({})'.format(e))
-                print '  - Error loading plugins'
+                print('  - Error loading plugins')
             finally:
                 # Remove the current plugin location from the system path, so we don't loop over it again
                 sys.path.remove(potential_plugin_path)
@@ -133,6 +135,12 @@ def do_run():
     analysis_session.browser_type = bottle.request.forms.get('browser_type')
     analysis_session.timezone = bottle.request.forms.get('timezone')
     analysis_session.log_path = bottle.request.forms.get('log_path')
+    copy_before_opening = bottle.request.forms.get('copy')
+    if copy_before_opening == 'copy':
+        analysis_session.no_copy = False
+    else:
+        analysis_session.no_copy = True
+    analysis_session.temp_dir = bottle.request.forms.get('temp_dir', 'hindsight-temp')
 
     # Set up logging
     logging.basicConfig(filename=analysis_session.log_path, level=logging.DEBUG,
@@ -160,9 +168,18 @@ def do_run():
     else:
         analysis_session.available_decrypts['linux'] = 0
 
-    analysis_session.run()
-    analysis_session.run_plugins()
+    run_status = analysis_session.run()
+    if run_status:
+        analysis_session.run_plugins()
+    else:
+        print("error :(")
+        return bottle.redirect('/error')
     return bottle.redirect('/results')
+
+
+@bottle.route('/error')
+def display_error():
+    return bottle.template('templates/error.tpl', analysis_session.__dict__)
 
 
 @bottle.route('/results')
@@ -179,9 +196,10 @@ def generate_sqlite():
         # temp file deletion failed
         pass
 
+    import io
+    str_io = io.BytesIO()
     analysis_session.generate_sqlite(temp_output)
-    import StringIO
-    str_io = StringIO.StringIO()
+
     with open(temp_output, 'rb') as f:
         str_io.write(f.read())
 
@@ -199,25 +217,44 @@ def generate_sqlite():
 
 @bottle.route('/xlsx')
 def generate_xlsx():
-    import StringIO
-    strIO = StringIO.StringIO()
-    analysis_session.generate_excel(strIO)
-    # strIO.write()
-    strIO.seek(0)
-    bottle.response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
-    bottle.response.headers['Content-Disposition'] = 'attachment; filename="{}.xlsx"'.format(analysis_session.output_name)
-    return strIO.read()
+    import io
+    string_buffer = io.BytesIO()
+    analysis_session.generate_excel(string_buffer)
+    string_buffer.seek(0)
+
+    bottle.response.headers['Content-Type'] = \
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
+    bottle.response.headers['Content-Disposition'] = f'attachment; filename="{analysis_session.output_name}.xlsx"'
+    return string_buffer
 
 
-@bottle.route('/json')
-def generate_json():
-    import StringIO
-    strIO = StringIO.StringIO()
-    strIO.write(json.dumps(analysis_session, cls=MyEncoder, indent=4))
-    strIO.seek(0)
-    bottle.response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; charset=UTF-8'
-    bottle.response.headers['Content-Disposition'] = 'attachment; filename={}.json'.format(analysis_session.output_name)
-    return strIO.read()
+@bottle.route('/jsonl')
+def generate_jsonl():
+    # TODO: there has to be a way to do this without making a temp file...
+    temp_output = '.tempjsonl'
+    try:
+        os.remove(temp_output)
+    except:
+        # temp file deletion failed
+        pass
+
+    analysis_session.generate_jsonl(temp_output)
+    import io
+    string_buffer = io.BytesIO()
+
+    with open(temp_output, 'rb') as f:
+        string_buffer.write(f.read())
+
+    try:
+        os.remove(temp_output)
+    except:
+        # temp file deletion failed
+        pass
+
+    bottle.response.headers['Content-Type'] = 'application/json; charset=UTF-8'
+    bottle.response.headers['Content-Disposition'] = f'attachment; filename={analysis_session.output_name}.jsonl'
+    string_buffer.seek(0)
+    return string_buffer
 
 
 def main():

@@ -23,7 +23,7 @@ Command Line Options:
 | -------------- | ------------------------------------------------------- |
 | -i or --input  | Path to the Chrome(ium) "Default" directory |
 | -o or --output | Name of the output file (without extension) |
-| -f or --format | Output format (default is XLSX, other option is SQLite) |
+| -f or --format | Output format (default is XLSX, other options are SQLite and JSONL) |
 | -c or --cache  | Path to the cache directory; only needed if the directory is outside the given "input" directory. Mac systems are setup this way by default. |
 | -b or --browser_type | The type of browser the input files belong to. Supported options are Chrome (default) and Brave.
 | -l or --log	 | Location Hindsight should log to (will append if exists) |

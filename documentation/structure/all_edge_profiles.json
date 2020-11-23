@@ -1,0 +1,2671 @@
+{
+  "74": {
+    "type": "version 74-dev",
+    "name": "Edge Profile Directory",
+    "children": [
+      {
+        "type": "LevelDB Log File", 
+        "name": "000003.log"
+      }, 
+      {
+        "type": "directory", 
+        "name": "AutofillStrikeDatabase", 
+        "children": [
+          {
+            "type": "LevelDB Log File", 
+            "name": "000003.log"
+          }, 
+          {
+            "type": "LevelDB Current Manifest", 
+            "name": "CURRENT"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "LevelDB Info Log", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "LevelDB Manifest", 
+            "name": "MANIFEST-000001"
+          }
+        ]
+      }, 
+      {
+        "type": "JSON", 
+        "name": "Bookmarks"
+      }, 
+      {
+        "type": "LevelDB Current Manifest", 
+        "name": "CURRENT"
+      }, 
+      {
+        "type": "directory", 
+        "name": "Cache", 
+        "children": [
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_0"
+          }, 
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_1"
+          }, 
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_2"
+          }, 
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_3"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000001"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000002"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000003"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000005"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000006"
+          }, 
+          {
+            "type": "249 cache files removed", 
+            "name": "..."
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000101"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000102"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000103"
+          }, 
+          {
+            "type": "unknown", 
+            "name": "f_000104"
+          }, 
+          {
+            "type": "Chrome Index v2.1", 
+            "name": "index"
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "Code Cache", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "js", 
+            "children": [
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "00cced52835f165a_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "02409a79bfd5bad1_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "03a6fcedb712b5aa_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "03bd883cac08f48d_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "03d5424d241ef8a2_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "04f114918bc05fc2_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "04f257bf1f393d57_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "062350e072977505_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "064df65b2912c6e5_0"
+              }, 
+              {
+                "type": "290 items removed", 
+                "name": "..."
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "f89552906817f76e_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "f8c415e1d58158f1_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "f919f28c986ec8b1_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "f955e126a1cdee58_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "f9c86cb15b62f8ed_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "fb62749cc42f89e1_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "feb5efac6eeeb1ba_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "ffaf5a3165d23f70_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v9", 
+                "name": "index"
+              }, 
+              {
+                "type": "directory", 
+                "name": "index-dir", 
+                "children": [
+                  {
+                    "type": "unknown", 
+                    "name": "the-real-index"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "Cookies", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "meta", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "cookies", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "creation_utc"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "host_key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "path"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "expires_utc"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "is_secure"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "is_httponly"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_access_utc"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "has_expires"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "is_persistent"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "priority"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "encrypted_value"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "firstpartyonly"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "is_edgelegacycookie"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "SNSS", 
+        "name": "Current Session"
+      }, 
+      {
+        "type": "SNSS", 
+        "name": "Current Tabs"
+      }, 
+      {
+        "type": "Icon Image file", 
+        "name": "Edge Profile.ico"
+      }, 
+      {
+        "type": "directory", 
+        "name": "Extension State", 
+        "children": [
+          {
+            "type": "LevelDB Log File", 
+            "name": "000003.log"
+          }, 
+          {
+            "type": "LevelDB Current Manifest", 
+            "name": "CURRENT"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "LevelDB Info Log", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "LevelDB Manifest", 
+            "name": "MANIFEST-000001"
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "Favicons", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "meta", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "icon_mapping", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "page_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "icon_id"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "favicons", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "icon_type"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "favicon_bitmaps", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "icon_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_updated"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "image_data"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "width"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "height"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_requested"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "Feature Engagement Tracker", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "AvailabilityDB", 
+            "children": [
+              {
+                "type": "LevelDB Log File", 
+                "name": "000003.log"
+              }, 
+              {
+                "type": "LevelDB Current Manifest", 
+                "name": "CURRENT"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "LOCK"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG"
+              }, 
+              {
+                "type": "LevelDB Manifest", 
+                "name": "MANIFEST-000001"
+              }
+            ]
+          }, 
+          {
+            "type": "directory", 
+            "name": "EventDB", 
+            "children": [
+              {
+                "type": "empty file", 
+                "name": "000003.log"
+              }, 
+              {
+                "type": "LevelDB Current Manifest", 
+                "name": "CURRENT"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "LOCK"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG"
+              }, 
+              {
+                "type": "LevelDB Manifest", 
+                "name": "MANIFEST-000001"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "GPUCache", 
+        "children": [
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_0"
+          }, 
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_1"
+          }, 
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_2"
+          }, 
+          {
+            "type": "Chrome Data Block v2.0", 
+            "name": "data_3"
+          }, 
+          {
+            "type": "Chrome Index v2.0", 
+            "name": "index"
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "History", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "meta", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "downloads", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "current_path"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "target_path"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "start_time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "received_bytes"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "total_bytes"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "state"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "danger_type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "interrupt_reason"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "hash"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "end_time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "opened"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_access_time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "transient"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "referrer"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "site_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "tab_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "tab_referrer_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "http_method"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "by_ext_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "by_ext_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "etag"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_modified"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "mime_type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "original_mime_type"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "downloads_url_chains", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "chain_index"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "downloads_slices", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "download_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "offset"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "received_bytes"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "finished"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "typed_url_sync_metadata", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "storage_key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "urls", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "title"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "visit_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "typed_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_visit_time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "hidden"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "sqlite_sequence", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "seq"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "visits", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "visit_time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "from_visit"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "transition"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "segment_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "visit_duration"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "incremented_omnibox_typed_score"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "visit_source", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "source"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "keyword_search_terms", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "keyword_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "lower_term"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "term"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "segments", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url_id"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "segment_usage", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "segment_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "time_slot"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "visit_count"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "unknown", 
+        "name": "History Provider Cache"
+      }, 
+      {
+        "type": "directory", 
+        "name": "IndexedDB", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "https_ntp.msn.com_0.indexeddb.leveldb", 
+            "children": [
+              {
+                "type": "LevelDB Log File", 
+                "name": "000003.log"
+              }, 
+              {
+                "type": "LevelDB Current Manifest", 
+                "name": "CURRENT"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "LOCK"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG.old"
+              }, 
+              {
+                "type": "LevelDB Manifest", 
+                "name": "MANIFEST-000001"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "empty file", 
+        "name": "LOCK"
+      }, 
+      {
+        "type": "LevelDB Info Log", 
+        "name": "LOG"
+      }, 
+      {
+        "type": "directory", 
+        "name": "Local Storage", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "leveldb", 
+            "children": [
+              {
+                "type": "LevelDB Sorted Table File", 
+                "name": "000005.ldb"
+              }, 
+              {
+                "type": "LevelDB Sorted Table File", 
+                "name": "000007.ldb"
+              }, 
+              {
+                "type": "unknown", 
+                "name": "000009.sst"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "000010.log"
+              }, 
+              {
+                "type": "LevelDB Current Manifest", 
+                "name": "CURRENT"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "LOCK"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG.old"
+              }, 
+              {
+                "type": "LevelDB Manifest", 
+                "name": "MANIFEST-000008"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "Login Data", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "meta", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "logins", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "origin_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "action_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "username_element"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "username_value"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "password_element"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "password_value"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "submit_element"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "signon_realm"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "preferred"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "date_created"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "blacklisted_by_user"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "scheme"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "password_type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "times_used"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "form_data"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "date_synced"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "display_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "icon_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "federation_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "skip_zero_click"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "generation_upload_status"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "possible_username_pairs"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "sync_entities_metadata", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "storage_key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "metadata"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "sync_model_metadata", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "model_metadata"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "stats", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "origin_domain"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "username_value"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "dismissal_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "update_time"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "LevelDB Manifest", 
+        "name": "MANIFEST-000002"
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "Network Action Predictor", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "network_action_predictor", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "user_text"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "number_of_hits"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "number_of_misses"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "resource_prefetch_predictor_metadata", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "resource_prefetch_predictor_host_redirect", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "proto"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "resource_prefetch_predictor_origin", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "proto"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "JSON", 
+        "name": "Network Persistent State"
+      }, 
+      {
+        "type": "directory", 
+        "name": "Platform Notifications", 
+        "children": [
+          {
+            "type": "empty file", 
+            "name": "000003.log"
+          }, 
+          {
+            "type": "LevelDB Current Manifest", 
+            "name": "CURRENT"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "LevelDB Info Log", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "LevelDB Manifest", 
+            "name": "MANIFEST-000001"
+          }
+        ]
+      }, 
+      {
+        "type": "JSON", 
+        "name": "Preferences"
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "QuotaManager", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "meta", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "HostQuotaTable", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "host"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "quota"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "OriginInfoTable", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "origin"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "used_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_access_time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_modified_time"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "EvictionInfoTable", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "origin"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_eviction_time"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "unknown", 
+        "name": "README"
+      }, 
+      {
+        "type": "JSON", 
+        "name": "Secure Preferences"
+      }, 
+      {
+        "type": "directory", 
+        "name": "Service Worker", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "CacheStorage", 
+            "children": [
+              {
+                "type": "directory", 
+                "name": "3cedfb74d44f2e84198d23075aef16c34a668ceb", 
+                "children": [
+                  {
+                    "type": "directory", 
+                    "name": "a20c8c49-bf9a-4f8a-b4eb-f58d51b4857a", 
+                    "children": [
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "026bc0a752af4708_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "026bc0a752af4708_1"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "1c6e1cc8d1f2ce75_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "1c6e1cc8d1f2ce75_1"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "300ea242779d5cb1_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "31297cdd5a81ba44_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "3c5be6920b706dee_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "46a7c9d57a04a0ba_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "4700df71907496b4_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "4a55b16858b02a39_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "4b731e561a93f571_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "5096818b23bb234c_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "54f980c88cfe79c9_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "6e29a411a4b61e2c_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "6fa062957b1ebd6e_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "76b705c04485d5f8_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "ba6c5ea31a5acd96_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "d2533f5e5737f012_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "d7be50355a896f12_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "ee2f5652533d9473_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "f618e09cc2508ade_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "f618e09cc2508ade_1"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v5", 
+                        "name": "f92528632505cb20_0"
+                      }, 
+                      {
+                        "type": "Simple Cache Entry v9", 
+                        "name": "index"
+                      }, 
+                      {
+                        "type": "directory", 
+                        "name": "index-dir", 
+                        "children": [
+                          {
+                            "type": "unknown", 
+                            "name": "the-real-index"
+                          }
+                        ]
+                      }
+                    ]
+                  }, 
+                  {
+                    "type": "unknown", 
+                    "name": "index.txt"
+                  }
+                ]
+              }
+            ]
+          }, 
+          {
+            "type": "directory", 
+            "name": "Database", 
+            "children": [
+              {
+                "type": "LevelDB Log File", 
+                "name": "000003.log"
+              }, 
+              {
+                "type": "LevelDB Current Manifest", 
+                "name": "CURRENT"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "LOCK"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG"
+              }, 
+              {
+                "type": "LevelDB Manifest", 
+                "name": "MANIFEST-000001"
+              }
+            ]
+          }, 
+          {
+            "type": "directory", 
+            "name": "ScriptCache", 
+            "children": [
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "4cb013792b196a35_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "4cb013792b196a35_1"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "fa813c9ad67834ac_0"
+              }, 
+              {
+                "type": "Simple Cache Entry v5", 
+                "name": "fa813c9ad67834ac_1"
+              }, 
+              {
+                "type": "Simple Cache Entry v9", 
+                "name": "index"
+              }, 
+              {
+                "type": "directory", 
+                "name": "index-dir", 
+                "children": [
+                  {
+                    "type": "unknown", 
+                    "name": "the-real-index"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "Session Storage", 
+        "children": [
+          {
+            "type": "LevelDB Log File", 
+            "name": "000004.log"
+          }, 
+          {
+            "type": "LevelDB Sorted Table File", 
+            "name": "000005.ldb"
+          }, 
+          {
+            "type": "LevelDB Current Manifest", 
+            "name": "CURRENT"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "LevelDB Info Log", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "LevelDB Manifest", 
+            "name": "MANIFEST-000001"
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "Shortcuts", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "omni_box_shortcuts", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "text"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "fill_into_edit"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "contents"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "contents_class"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "description"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "description_class"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "transition"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "keyword"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_access_time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "number_of_hits"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "Site Characteristics Database", 
+        "children": [
+          {
+            "type": "LevelDB Log File", 
+            "name": "000003.log"
+          }, 
+          {
+            "type": "LevelDB Current Manifest", 
+            "name": "CURRENT"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "LevelDB Info Log", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "LevelDB Manifest", 
+            "name": "MANIFEST-000001"
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "Storage", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "ext", 
+            "children": [
+              {
+                "type": "directory", 
+                "name": "ihmafllikibpmigkcoadcmckbfhibefp", 
+                "children": [
+                  {
+                    "type": "directory", 
+                    "name": "def", 
+                    "children": [
+                      {
+                        "type": "directory", 
+                        "name": "Code Cache", 
+                        "children": [
+                          {
+                            "type": "directory", 
+                            "name": "js", 
+                            "children": [
+                              {
+                                "type": "Simple Cache Entry v9", 
+                                "name": "index"
+                              }, 
+                              {
+                                "type": "directory", 
+                                "name": "index-dir", 
+                                "children": [
+                                  {
+                                    "type": "unknown", 
+                                    "name": "the-real-index"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }, 
+                      {
+                        "type": "directory", 
+                        "name": "GPUCache", 
+                        "children": [
+                          {
+                            "type": "Chrome Data Block v2.0", 
+                            "name": "data_0"
+                          }, 
+                          {
+                            "type": "Chrome Data Block v2.0", 
+                            "name": "data_1"
+                          }, 
+                          {
+                            "type": "Chrome Data Block v2.0", 
+                            "name": "data_2"
+                          }, 
+                          {
+                            "type": "Chrome Data Block v2.0", 
+                            "name": "data_3"
+                          }, 
+                          {
+                            "type": "Chrome Index v2.0", 
+                            "name": "index"
+                          }
+                        ]
+                      }, 
+                      {
+                        "type": "JSON", 
+                        "name": "Network Persistent State"
+                      }, 
+                      {
+                        "type": "directory", 
+                        "name": "Platform Notifications", 
+                        "children": [
+                          {
+                            "type": "empty file", 
+                            "name": "000003.log"
+                          }, 
+                          {
+                            "type": "LevelDB Current Manifest", 
+                            "name": "CURRENT"
+                          }, 
+                          {
+                            "type": "empty file", 
+                            "name": "LOCK"
+                          }, 
+                          {
+                            "type": "LevelDB Info Log", 
+                            "name": "LOG"
+                          }, 
+                          {
+                            "type": "LevelDB Manifest", 
+                            "name": "MANIFEST-000001"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "Sync Data", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "LevelDB", 
+            "children": [
+              {
+                "type": "LevelDB Log File", 
+                "name": "000003.log"
+              }, 
+              {
+                "type": "LevelDB Current Manifest", 
+                "name": "CURRENT"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "LOCK"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG"
+              }, 
+              {
+                "type": "LevelDB Manifest", 
+                "name": "MANIFEST-000001"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "Top Sites", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "meta", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "top_sites", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url_rank"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "title"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "redirects"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "JSON", 
+        "name": "TransportSecurity"
+      }, 
+      {
+        "type": "directory", 
+        "name": "VideoDecodeStats", 
+        "children": [
+          {
+            "type": "LevelDB Log File", 
+            "name": "000003.log"
+          }, 
+          {
+            "type": "LevelDB Current Manifest", 
+            "name": "CURRENT"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "LevelDB Info Log", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "LevelDB Manifest", 
+            "name": "MANIFEST-000001"
+          }
+        ]
+      }, 
+      {
+        "type": "Chrome Visited Links", 
+        "name": "Visited Links"
+      }, 
+      {
+        "type": "SQLite3 database", 
+        "name": "Web Data", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "meta", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value_lower"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "date_created"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "date_last_used"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "count"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "credit_cards", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "name_on_card"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "expiration_month"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "expiration_year"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "card_number_encrypted"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "date_modified"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "origin"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_date"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "billing_address_id"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill_profiles", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "company_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "street_address"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "dependent_locality"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "city"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "state"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "zipcode"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "sorting_code"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "country_code"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "date_modified"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "origin"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "language_code"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_date"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "validity_bitfield"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "is_client_validity_states_updated"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill_profile_names", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "first_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "middle_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "full_name"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill_profile_emails", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "email"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill_profile_phones", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "number"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill_profiles_trash", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "guid"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "masked_credit_cards", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "status"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "name_on_card"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "network"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_four"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "exp_month"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "exp_year"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "bank_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "unmasked_credit_cards", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "card_number_encrypted"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_date"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "unmask_date"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "server_card_metadata", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_date"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "billing_address_id"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "server_addresses", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "company_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "street_address"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "address_1"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "address_2"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "address_3"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "address_4"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "postal_code"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "sorting_code"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "country_code"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "language_code"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "recipient_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "phone_number"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "server_address_metadata", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "use_date"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "has_converted"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill_sync_metadata", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "model_type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "storage_key"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "autofill_model_type_state", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "model_type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "value"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "payments_customer_data", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "customer_id"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "keywords", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "short_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "keyword"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "favicon_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "safe_for_autoreplace"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "originating_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "date_created"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "usage_count"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "input_encodings"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "suggest_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "prepopulate_id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "created_by_policy"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_modified"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "sync_guid"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "alternate_urls"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "image_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "search_url_post_params"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "suggest_url_post_params"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "image_url_post_params"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "new_tab_url"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "last_visited"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "payment_method_manifest", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "expire_date"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "method_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "web_app_id"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "web_app_manifest_section", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "expire_date"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "id"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "min_version"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "fingerprints"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "token_service", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "service"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "encrypted_token"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "blob_storage", 
+        "children": [
+          {
+            "type": "directory", 
+            "name": "3dde1771-bc37-44ae-9d2b-967ba6ef5e8a", 
+            "children": []
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "data_reduction_proxy_leveldb", 
+        "children": [
+          {
+            "type": "empty file", 
+            "name": "000003.log"
+          }, 
+          {
+            "type": "LevelDB Current Manifest", 
+            "name": "CURRENT"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "LevelDB Info Log", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "LevelDB Manifest", 
+            "name": "MANIFEST-000002"
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "databases", 
+        "children": [
+          {
+            "type": "SQLite database file", 
+            "name": "Databases.db", 
+            "children": [
+              {
+                "type": "SQLite3 Table", 
+                "name": "meta", 
+                "children": [
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "key"
+                  }, 
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "value"
+                  }
+                ]
+              }, 
+              {
+                "type": "SQLite3 Table", 
+                "name": "Databases", 
+                "children": [
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "id"
+                  }, 
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "origin"
+                  }, 
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "name"
+                  }, 
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "description"
+                  }, 
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "estimated_size"
+                  }
+                ]
+              }, 
+              {
+                "type": "SQLite3 Table", 
+                "name": "sqlite_sequence", 
+                "children": [
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "name"
+                  }, 
+                  {
+                    "type": "SQLite3 Column", 
+                    "name": "seq"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite database file", 
+        "name": "page_load_capping_opt_out.db", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "previews_v1", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "host_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "opt_out"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "enabled_previews_v1", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "version"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "SQLite database file", 
+        "name": "previews_opt_out.db", 
+        "children": [
+          {
+            "type": "SQLite3 Table", 
+            "name": "previews_v1", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "host_name"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "time"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "opt_out"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }
+            ]
+          }, 
+          {
+            "type": "SQLite3 Table", 
+            "name": "enabled_previews_v1", 
+            "children": [
+              {
+                "type": "SQLite3 Column", 
+                "name": "type"
+              }, 
+              {
+                "type": "SQLite3 Column", 
+                "name": "version"
+              }
+            ]
+          }
+        ]
+      }, 
+      {
+        "type": "directory", 
+        "name": "shared_proto_db", 
+        "children": [
+          {
+            "type": "empty file", 
+            "name": "LOCK"
+          }, 
+          {
+            "type": "empty file", 
+            "name": "LOG"
+          }, 
+          {
+            "type": "directory", 
+            "name": "metadata", 
+            "children": [
+              {
+                "type": "LevelDB Log File", 
+                "name": "000003.log"
+              }, 
+              {
+                "type": "LevelDB Current Manifest", 
+                "name": "CURRENT"
+              }, 
+              {
+                "type": "empty file", 
+                "name": "LOCK"
+              }, 
+              {
+                "type": "LevelDB Info Log", 
+                "name": "LOG"
+              }, 
+              {
+                "type": "LevelDB Manifest", 
+                "name": "MANIFEST-000001"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """Hindsight - Internet history forensics for Google Chrome/Chromium.
 
@@ -6,26 +6,26 @@ This script parses the files in the Chrome data folder, runs various plugins
 against the data, and then outputs the results in a spreadsheet.
 """
 
-import os
-import sys
-import time
-import datetime
 import argparse
-import logging
-import json
-import shutil
+import datetime
 import importlib
+import logging
+import os
 import pyhindsight
 import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
-from pyhindsight.utils import banner, MyEncoder, format_meta_output, format_plugin_output
+from pyhindsight.utils import banner, format_meta_output, format_plugin_output
+import re
+import shutil
+import sys
+import time
 
 # Try to import module for timezone support
 try:
     import pytz
 except ImportError:
-    print("Couldn't import module 'pytz'; all timestamps in XLSX output will be in examiner local time ({})."
-          .format(time.tzname[time.daylight]))
+    print(f'Couldn\'t import module \'pytz\'; all timestamps in XLSX output '
+          f'will be in examiner local time ({time.tzname[time.daylight]}).')
 
 
 def parse_arguments(analysis_session):
@@ -36,17 +36,17 @@ This script parses the files in the Chrome/Chromium/Brave data folder, runs vari
    against the data, and then outputs the results in a spreadsheet. '''.format(pyhindsight.__version__)
 
     epi = '''
-Example:  C:\>hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
+Example:  C:\\hindsight.py -i "C:\\Users\Ryan\AppData\Local\Google\Chrome\\User Data\Default" -o test_case
 
 The Chrome data folder default locations are:
         WinXP: <userdir>\Local Settings\Application Data\Google\Chrome
-                \User Data\Default\\
- Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\User Data\Default\\
+                \\User Data\Default\\
+ Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\\User Data\Default\\
         Linux: <userdir>/.config/google-chrome/Default/
          OS X: <userdir>/Library/Application Support/Google/Chrome/Default/
           iOS: \Applications\com.google.chrome.ios\Library\Application Support
                 \Google\Chrome\Default\\
-  Chromium OS: \home\user\<GUID>\\
+  Chromium OS: \home\\user\<GUID>\\
     '''
 
     class MyParser(argparse.ArgumentParser):
@@ -67,7 +67,7 @@ The Chrome data folder default locations are:
     parser.add_argument('-f', '--format', choices=analysis_session.available_output_formats,
                         default=analysis_session.available_output_formats[-1], help='Output format')
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
-                        default='hindsight.log')
+                        default=os.path.join(os.getcwd(), 'hindsight.log'))
     parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
     parser.add_argument('-d', '--decrypt', choices=['mac', 'linux'], default=None,
                         help='Try to decrypt Chrome data from a Linux or Mac system; support for both is currently '
@@ -78,6 +78,10 @@ The Chrome data folder default locations are:
                                               'the given "input" directory. Mac systems are set up this way by default. '
                                               'On a Mac, the default cache directory location for Chrome is '
                                               '<userdir>/Library/Caches/Google/Chrome/Default/Cache/')
+    parser.add_argument('--nocopy', '--no_copy', help='Don\'t copy files before opening them; this might run faster, '
+                                                      'but some locked files may be inaccessible', action='store_true')
+    parser.add_argument('--temp_dir', default='hindsight-temp',
+                        help='If files are copied before being opened, use this directory as the copy destination')
 
     args = parser.parse_args()
 
@@ -111,10 +115,10 @@ The Chrome data folder default locations are:
 def main():
 
     def write_excel(analysis_session):
-        import StringIO
+        import io
 
         # Set up a StringIO object to save the XLSX content to before saving to disk
-        string_buffer = StringIO.StringIO()
+        string_buffer = io.BytesIO()
 
         # Generate the XLSX content using the function in the AnalysisSession and save it to the StringIO object
         analysis_session.generate_excel(string_buffer)
@@ -123,37 +127,37 @@ def main():
         string_buffer.seek(0)
 
         # Write the StringIO object to a file on disk named what the user specified
-        with open("{}.{}".format(os.path.join(real_path, analysis_session.output_name), analysis_session.selected_output_format), 'wb') as file_output:
+        with open(f'{analysis_session.output_name}.{analysis_session.selected_output_format}', 'wb') as file_output:
             shutil.copyfileobj(string_buffer, file_output)
 
     def write_sqlite(analysis_session):
         output_file = analysis_session.output_name + '.sqlite'
 
-        if not os.path.exists(output_file):
-            analysis_session.generate_sqlite(output_file)
-        else:
-            print("\n Database file \"{}\" already exists. Please choose a different output location.\n".format(output_file))
+        if os.path.exists(output_file):
+            if os.path.getsize(output_file) > 0:
+                print(('\nDatabase file "{}" already exists.\n'.format(output_file)))
+                user_input = input('Would you like to (O)verwrite it, (R)ename output file, or (E)xit? ')
+                over_re = re.compile(r'(^o$|overwrite)', re.IGNORECASE)
+                rename_re = re.compile(r'(^r$|rename)', re.IGNORECASE)
+                exit_re = re.compile(r'(^e$|exit)', re.IGNORECASE)
+                if re.search(exit_re, user_input):
+                    print("Exiting... ")
+                    sys.exit()
+                elif re.search(over_re, user_input):
+                    os.remove(output_file)
+                    print(("Deleted old \"%s\"" % output_file))
+                elif re.search(rename_re, user_input):
+                    output_file = "{}_1.sqlite".format(output_file[:-7])
+                    print(("Renaming new output to {}".format(output_file)))
+                else:
+                    print("Did not understand response.  Exiting... ")
+                    sys.exit()
 
-    def find_browser_profiles(base_path):
-        """Search a path for browser profiles (only Chromium-based at the moment)."""
-        found_profile_paths = []
-        base_dir_listing = os.listdir(base_path)
+        analysis_session.generate_sqlite(output_file)
 
-        # The 'History' and 'Cookies' SQLite files are kind of the minimum required for most
-        # Chrome analysis. This approach (checking the file names) is naive but should work.
-        if {'History', 'Cookies'}.issubset(base_dir_listing):
-            found_profile_paths.append(base_path)
-
-        # Only search sub dirs if the current dir is not a Profile (Profiles are not nested).
-        else:
-            for item in base_dir_listing:
-                item_path = os.path.join(base_path, item)
-                if os.path.isdir(item_path):
-                    profile_found_in_subdir = find_browser_profiles(item_path)
-                    if profile_found_in_subdir:
-                        found_profile_paths.extend(profile_found_in_subdir)
-
-        return found_profile_paths
+    def write_jsonl(analysis_session):
+        output_file = analysis_session.output_name + '.jsonl'
+        analysis_session.generate_jsonl(output_file)
 
     print(banner)
 
@@ -175,9 +179,8 @@ def main():
     analysis_session.selected_output_format = args.format
     analysis_session.browser_type = args.browser_type
     analysis_session.timezone = args.timezone
-
-    if args.log == 'hindsight.log':
-        args.log = os.path.join(real_path, args.log)
+    analysis_session.no_copy = args.nocopy
+    analysis_session.temp_dir = args.temp_dir
     analysis_session.log_path = args.log
 
     # Set up logging
@@ -192,25 +195,19 @@ def main():
         .format(pyhindsight.__version__) + '#' * 80)
 
     # Analysis start time
-    print(format_meta_output("Start time", str(datetime.datetime.now())[:-3]))
+    print((format_meta_output("Start time", str(datetime.datetime.now())[:-3])))
 
-    # Read the input directory
+    # Print input & output directories
     analysis_session.input_path = args.input
-    print(format_meta_output("Input directory", args.input))
-    log.info("Reading files from %s" % args.input)
-    input_listing = os.listdir(args.input)
-    log.debug("Input directory contents: " + str(input_listing))
-
-    # Search input directory for browser profiles to analyze
-    input_profiles = find_browser_profiles(args.input)
-    log.info(" - Found {} browser profile(s): {}".format(len(input_profiles), input_profiles))
-    analysis_session.profile_paths = input_profiles
-
-    print(format_meta_output("Output name", "{}.{}".format(analysis_session.output_name, analysis_session.selected_output_format)))
+    print((format_meta_output('Input directory', args.input)))
+    print((format_meta_output(
+        'Output name', f'{analysis_session.output_name}.{analysis_session.selected_output_format}')))
 
     # Run the AnalysisSession
     print("\n Processing:")
-    analysis_session.run()
+    run_status = analysis_session.run()
+    if not run_status:
+        return False
 
     print("\n Running plugins:")
     log.info("Plugins:")
@@ -226,18 +223,18 @@ def main():
         log.debug(" - Loading '{}'".format(plugin))
         try:
             module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
-        except ImportError, e:
+        except ImportError as e:
             log.error(" - Error: {}".format(e))
-            print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
+            print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
             continue
         try:
             log.info(" - Running '{}' plugin".format(module.friendlyName))
             parsed_items = module.plugin(analysis_session)
-            print(format_plugin_output(module.friendlyName, module.version, parsed_items))
+            print((format_plugin_output(module.friendlyName, module.version, parsed_items)))
             log.info(" - Completed; {}".format(parsed_items))
             completed_plugins.append(plugin)
-        except Exception, e:
-            print(format_plugin_output(module.friendlyName, module.version, 'failed'))
+        except Exception as e:
+            print((format_plugin_output(module.friendlyName, module.version, 'failed')))
             log.info(" - Failed; {}".format(e))
 
     # Then look for any custom user-provided plugins in a 'plugins' directory
@@ -249,7 +246,8 @@ def main():
     # Loop through all paths, to pick up all potential locations for custom plugins
     for potential_path in sys.path:
         # If a subdirectory exists called 'plugins' or 'pyhindsight/plugins' at the current path, continue on
-        for potential_plugin_path in [os.path.join(potential_path, 'plugins'), os.path.join(potential_path, 'pyhindsight', 'plugins')]:
+        for potential_plugin_path in [os.path.join(potential_path, 'plugins'),
+                                      os.path.join(potential_path, 'pyhindsight', 'plugins')]:
             if os.path.isdir(potential_plugin_path):
                 log.info(" Found custom plugin directory {}:".format(potential_plugin_path))
                 try:
@@ -272,18 +270,18 @@ def main():
                             log.debug(" - Loading '{}'".format(plugin))
                             try:
                                 module = __import__(plugin)
-                            except ImportError, e:
+                            except ImportError as e:
                                 log.error(" - Error: {}".format(e))
-                                print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
+                                print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
                                 continue
                             try:
                                 log.info(" - Running '{}' plugin".format(module.friendlyName))
                                 parsed_items = module.plugin(analysis_session)
-                                print(format_plugin_output(module.friendlyName, module.version, parsed_items))
+                                print((format_plugin_output(module.friendlyName, module.version, parsed_items)))
                                 log.info(" - Completed; {}".format(parsed_items))
                                 completed_plugins.append(plugin)
-                            except Exception, e:
-                                print(format_plugin_output(module.friendlyName, module.version, 'failed'))
+                            except Exception as e:
+                                print((format_plugin_output(module.friendlyName, module.version, 'failed')))
                                 log.info(" - Failed; {}".format(e))
                 except Exception as e:
                     log.debug(' - Error loading plugins ({})'.format(e))
@@ -293,33 +291,34 @@ def main():
                     sys.path.remove(potential_plugin_path)
 
     # Check if output directory exists; attempt to create if it doesn't
-    if os.path.dirname(analysis_session.output_name) != "" and not os.path.exists(os.path.dirname(analysis_session.output_name)):
+    if os.path.dirname(analysis_session.output_name) != "" \
+            and not os.path.exists(os.path.dirname(analysis_session.output_name)):
         os.makedirs(os.path.dirname(analysis_session.output_name))
 
     # Get desired output type form args.format and call the correct output creation function
     if analysis_session.selected_output_format == 'xlsx':
         log.info("Writing output; XLSX format selected")
         try:
-            print("\n Writing {}.xlsx".format(analysis_session.output_name))
+            print(("\n Writing {}.xlsx".format(analysis_session.output_name)))
             write_excel(analysis_session)
         except IOError:
             type, value, traceback = sys.exc_info()
-            print(value, "- is the file open?  If so, please close it and try again.")
+            print((value, "- is the file open?  If so, please close it and try again."))
             log.error("Error writing XLSX file; type: {}, value: {}, traceback: {}".format(type, value, traceback))
 
-    elif args.format == 'json':
-        log.info("Writing output; JSON format selected")
-        output = open("{}.json".format(analysis_session.output_name), 'wb')
-        output.write(json.dumps(analysis_session, cls=MyEncoder, indent=4))
+    elif args.format == 'jsonl':
+        log.info("Writing output; JSONL format selected")
+        print(("\n Writing {}.jsonl".format(analysis_session.output_name)))
+        write_jsonl(analysis_session)
 
     elif args.format == 'sqlite':
         log.info("Writing output; SQLite format selected")
-        print("\n Writing {}.sqlite".format(analysis_session.output_name))
+        print(("\n Writing {}.sqlite".format(analysis_session.output_name)))
         write_sqlite(analysis_session)
 
     # Display and log finish time
-    print("\n Finish time: {}".format(str(datetime.datetime.now())[:-3]))
-    log.info("Finish time: {}\n\n".format(str(datetime.datetime.now())[:-3]))
+    print(f'\n Finish time: {str(datetime.datetime.now())[:-3]}')
+    log.info(f'Finish time: {str(datetime.datetime.now())[:-3]}\n\n')
 
 
 if __name__ == "__main__":
