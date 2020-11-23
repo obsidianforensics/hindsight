@@ -35,6 +35,13 @@
                 </select>
             </td>
         </tr>
+        <tr>
+            <td colspan=2>Copy files before opening? <input name="copy" type="checkbox" value="copy" checked /></td>
+        </tr>
+        <tr>
+            <td>Temp Path:</td>
+            <td><input name="temp_dir" type="text" value="hindsight-temp"  size=30 /></td>
+        </tr>
     </table>
 
     </div>
