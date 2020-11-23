@@ -180,7 +180,6 @@ def main():
     analysis_session.timezone = args.timezone
     analysis_session.no_copy = args.nocopy
     analysis_session.temp_dir = args.temp_dir
-
     analysis_session.log_path = args.log
 
     # Set up logging
@@ -197,24 +196,17 @@ def main():
     # Analysis start time
     print((format_meta_output("Start time", str(datetime.datetime.now())[:-3])))
 
-    # Read the input directory
+    # Print input & output directories
     analysis_session.input_path = args.input
     print((format_meta_output('Input directory', args.input)))
-    log.info(f'Reading files from {args.input}')
-    input_listing = os.listdir(args.input)
-    log.debug("Input directory contents: " + str(input_listing))
-
-    # Search input directory for browser profiles to analyze
-    input_profiles = analysis_session.find_browser_profiles(args.input)
-    log.info(f' - Found {len(input_profiles)} browser profile(s): {input_profiles}')
-    analysis_session.profile_paths = input_profiles
-
     print((format_meta_output(
         'Output name', f'{analysis_session.output_name}.{analysis_session.selected_output_format}')))
 
     # Run the AnalysisSession
     print("\n Processing:")
-    analysis_session.run()
+    run_status = analysis_session.run()
+    if not run_status:
+        return False
 
     print("\n Running plugins:")
     log.info("Plugins:")
