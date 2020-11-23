@@ -442,9 +442,19 @@ class AnalysisSession(object):
         # Analysis start time
         log.info("Starting analysis")
 
+        log.info(f'Reading files from {self.input_path}')
+        try:
+            input_listing = os.listdir(self.input_path)
+        except (PermissionError, OSError) as e:
+            fail_message = f'Unable to read input directory; {e}'
+            log.error(fail_message)
+            self.fatal_error = fail_message
+            return False
+        log.debug("Input directory contents: " + str(input_listing))
+
         # Search input directory for browser profiles to analyze
         input_profiles = self.find_browser_profiles(self.input_path)
-        log.info(" - Found {} browser profile(s): {}".format(len(input_profiles), input_profiles))
+        log.info(f' - Found {len(input_profiles)} browser profile(s): {input_profiles}')
         self.profile_paths = input_profiles
 
         # Make sure the input is what we're expecting
