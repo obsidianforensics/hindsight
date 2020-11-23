@@ -376,8 +376,7 @@ class AnalysisSession(object):
         try:
             base_dir_listing = os.listdir(base_path)
         except Exception as e:
-            log.warning('Exception reading directory {0:s}; possible permissions issue? Exception: {1:s}'
-                        .format(base_path, e))
+            log.warning(f'Unable to read directory; Exception: {e}')
             return found_profile_paths
 
         if self.is_profile(base_path, base_dir_listing):
@@ -498,6 +497,7 @@ class AnalysisSession(object):
                             log.info(f'Exception occurred while analyzing {item} for analysis session promotion: {e}')
 
         self.generate_display_version()
+        return True
 
     def run_plugins(self):
         log.info("Selected plugins: " + str(self.selected_plugins))
