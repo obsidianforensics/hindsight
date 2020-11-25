@@ -258,7 +258,7 @@ class WebBrowser(object):
     class MediaItem(HistoryItem):
         def __init__(
                 self, profile, url, title, last_updated, position=None, media_duration=None,
-                source_title=None, watch_time=None):
+                source_title=None, watch_time=None, has_video=None, has_audio=None):
             super(WebBrowser.MediaItem, self).__init__(
                 'media', timestamp=last_updated, profile=profile, url=url, name=title)
             self.profile = profile
@@ -269,6 +269,8 @@ class WebBrowser(object):
             self.media_duration = media_duration
             self.source_title = source_title
             self.watch_time = watch_time
+            self.has_video = has_video
+            self.has_audio = has_audio
 
     class StorageItem(object):
         def __init__(self, item_type, profile, origin, key, value=None, last_modified=None, interpretation=None):
