@@ -74,8 +74,14 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'Media Playback End'
             item['data_type'] = 'chrome:history:media_playback'
 
-            item['message'] = f"Watched{item['watch_time']} on {item['source_title']} "\
-                              f"(ending at {item['position']}/{item['media_duration']})"
+            if item.get('source_title'):
+                item['message'] = f"Watched{item['watch_time']} on {item['source_title']} "\
+                                  f"(ending at {item['position']}/{item['media_duration']}) " \
+                                  f"[has_video: {item['has_video']}; has_audio: {item['has_audio']}]"
+            else:
+                item['message'] = f"Watched{item['watch_time']} on {item['url']} " \
+                                  f"[has_video: {item['has_video']}; has_audio: {item['has_audio']}]"
+
             return item
 
         if isinstance(obj, Chrome.DownloadItem):
@@ -709,14 +715,20 @@ class AnalysisSession(object):
                     w.write(row_number, 12, item.transition_friendly, black_trans_format)  # Transition
 
                 elif item.row_type.startswith("media"):
-                    w.write_string(row_number, 0, item.row_type, black_type_format)  # record_type
-                    w.write(row_number, 1, friendly_date(item.timestamp), black_date_format)  # date
-                    w.write_string(row_number, 2, item.url, black_url_format)  # URL
-                    w.write_string(row_number, 3, item.title, black_field_format)  # Title
-                    w.write(row_number, 4, f'Watched{item.watch_time} on {item.source_title} '
-                                           f'(ending at {item.position}/{item.media_duration})', black_value_format)
-                    w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
-                    w.write(row_number, 6, item.profile, black_type_format)  # Profile
+                    w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), blue_date_format)  # date
+                    w.write_string(row_number, 2, item.url, blue_url_format)  # URL
+                    w.write_string(row_number, 3, item.title, blue_field_format)  # Title
+                    if item.source_title:
+                        media_message = f'Watched{item.watch_time} on {item.source_title} '\
+                                        f'(ending at {item.position}/{item.media_duration}) '\
+                                        f'[has_video: {item.has_video}; has_audio: {item.has_audio}]'
+                    else:
+                        media_message = f'Watched{item.watch_time} ' \
+                                        f'[has_video: {item.has_video}; has_audio: {item.has_audio}]'
+                    w.write(row_number, 4, media_message, blue_value_format)
+                    w.write(row_number, 5, item.interpretation, blue_value_format)  # Interpretation
+                    w.write(row_number, 6, item.profile, blue_type_format)  # Profile
 
                 elif item.row_type.startswith("autofill"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -971,13 +983,18 @@ class AnalysisSession(object):
                          item.hidden, item.transition_friendly))
 
                 elif item.row_type.startswith('media'):
+                    if item.source_title:
+                        media_message = f'Watched{item.watch_time} on {item.source_title} '\
+                                        f'(ending at {item.position}/{item.media_duration}) '\
+                                        f'[has_video: {item.has_video}; has_audio: {item.has_audio}]'
+                    else:
+                        media_message = f'Watched{item.watch_time} '\
+                                        f'[has_video: {item.has_video}; has_audio: {item.has_audio}]'
                     c.execute(
                         'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
                         'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.title,
-                         f'Watched{item.watch_time} on {item.source_title} '
-                         f'(ending at {item.position}/{item.media_duration})',
-                         item.interpretation, item.profile))
+                         media_message, item.interpretation, item.profile))
 
                 elif item.row_type.startswith('autofill'):
                     c.execute(

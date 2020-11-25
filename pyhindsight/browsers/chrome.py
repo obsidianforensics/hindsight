@@ -331,10 +331,11 @@ class Chrome(WebBrowser):
         log.info(f'Media History items from {history_file}')
 
         # Queries for different versions
-        query = {86: '''SELECT playbackSession.url, playbackSession.title, playbackSession.source_title, 
-                            playbackSession.duration_ms, playbackSession.position_ms, 
-                            playbackSession.last_updated_time_s, playback.watch_time_s 
-                        FROM playbackSession LEFT JOIN playback ON playbackSession.url = playback.url'''}
+        query = {86: '''SELECT playback.url, playback.last_updated_time_s, playback.watch_time_s,
+                            playback.has_video, playback.has_audio, playbackSession.title, 
+                            playbackSession.source_title, playbackSession.duration_ms, playbackSession.position_ms
+                        FROM playback LEFT JOIN playbackSession 
+                            ON playback.last_updated_time_s = playbackSession.last_updated_time_s'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -360,20 +361,26 @@ class Chrome(WebBrowser):
                     return
 
                 for row in cursor:
-                    duration = ''
+                    duration = None
                     if row.get('duration_ms'):
                         duration = str(datetime.timedelta(milliseconds=row.get('duration_ms')))[:-3]
-                    position = ''
+
+                    position = None
                     if row.get('position_ms'):
                         position = str(datetime.timedelta(milliseconds=row.get('position_ms')))[:-3]
-                    watch_time = ''
+
+                    watch_time = ' 0:00:00'
                     if row.get('watch_time_s'):
                         watch_time = ' ' + str(datetime.timedelta(seconds=row.get('watch_time_s')))
 
+                    row_title = ''
+                    if row.get('title'):
+                        row_title = row.get('title')
+
                     new_row = Chrome.MediaItem(
-                        self.profile_path, row.get('url'), row.get('title'),
-                        utils.to_datetime(row.get('last_updated_time_s'), self.timezone),
-                        position, duration, row.get('source_title'), watch_time)
+                        self.profile_path, row.get('url'), row_title,
+                        utils.to_datetime(row.get('last_updated_time_s'), self.timezone), position,
+                        duration, row.get('source_title'), watch_time, row.get('has_video'), row.get('has_audio'))
 
                     # Set the row type as determined earlier
                     new_row.row_type = row_type
