@@ -100,7 +100,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 87))
+        possible_versions = list(range(1, 88))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -189,6 +189,7 @@ class Chrome(WebBrowser):
                     'is_client_validity_states_updated', self.structure['Web Data']['autofill_profiles'], 71)
             if 'autofill_profile_addresses' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions(86)
+                trim_lesser_versions_if('city', self.structure['Web Data']['autofill_profile_addresses'], 87)
             if 'autofill_sync_metadata' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions(57)
                 trim_lesser_versions_if('model_type', self.structure['Web Data']['autofill_sync_metadata'], 69)
