@@ -42,7 +42,7 @@ h1 {
     border-left: 0px;
     border-right: 0px;
     display: inline-block;
-    padding: 4px;
+    padding: 4px 0;
     margin: 0px;
 }
 
