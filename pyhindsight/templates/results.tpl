@@ -38,6 +38,11 @@
                       <td align="right" width=33%><input type="button" value="Save SQLite DB" class="button" onclick="location.href='/sqlite';" style="width:100%" /></td>
                     </tr>
                     <tr>
+                      <td colspan="3">
+                        <input type="button" value="View Sqlite DB in Browser" class="button" onclick="location.href='/sqlite-view';" style="width:100%" />
+                      </td>
+                    </tr>
+                    <tr>
                       <td colspan=3>
                         <input type="button" value="Start New Analysis Session" class="button" onclick="location.href='/';" style="width:100%" />
                       </td>

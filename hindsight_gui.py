@@ -257,6 +257,12 @@ def generate_jsonl():
     return string_buffer
 
 
+@bottle.route('/sqlite-view')
+def sqlite_view():
+    return bottle.template(
+        'templates/sqlite_view.tpl', analysis_session.__dict__)
+
+
 def main():
 
     print(banner)
