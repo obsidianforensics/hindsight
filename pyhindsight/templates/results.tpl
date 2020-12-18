@@ -39,7 +39,11 @@
                     </tr>
                     <tr>
                       <td colspan="3">
-                        <input type="button" value="View Sqlite DB in Browser" class="button" onclick="location.href='/sqlite-view';" style="width:100%" />
+                        <input type="button" value="View Sqlite DB in Browser" class="button" onclick="location.href='/sqlite-view';" style="width:100%"
+                          % if not js_installed:
+                            disabled title="Incomplete Installation: Install javascript dependencies to view sqlite in the browser."
+                          % end
+                         />
                       </td>
                     </tr>
                     <tr>

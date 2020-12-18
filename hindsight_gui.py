@@ -184,7 +184,11 @@ def display_error():
 
 @bottle.route('/results')
 def display_results():
-    return bottle.template('templates/results.tpl', analysis_session.__dict__)
+    return bottle.template('templates/results.tpl', {
+        'js_installed': os.path.exists(
+            os.path.join(STATIC_PATH, 'web_modules/sqlite-view.js')),
+        **analysis_session.__dict__
+        })
 
 
 @bottle.route('/sqlite')
