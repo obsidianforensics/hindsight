@@ -47,8 +47,11 @@ class HindsightEncoder(json.JSONEncoder):
 
             item[key] = value
 
-        item['datetime'] = item['timestamp']
-        del(item['timestamp'])
+        if item.get('timestamp'):
+            item['datetime'] = item['timestamp']
+            del(item['timestamp'])
+        else:
+            item['datetime'] = '1970-01-01T00:00:00.000000+00:00'
 
         return item
 
@@ -835,25 +838,31 @@ class AnalysisSession(object):
 
         s = workbook.add_worksheet('Storage')
         # Title bar
-        s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        s.merge_range('A1:J1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
 
         # Write column headers
         s.write(1, 0, 'Type', header_format)
         s.write(1, 1, 'Origin', header_format)
         s.write(1, 2, 'Key', header_format)
         s.write(1, 3, 'Value', header_format)
-        s.write(1, 4, 'Modification Time ({})'.format(self.timezone), header_format)
-        s.write(1, 5, 'Interpretation', header_format)
-        s.write(1, 6, 'Profile', header_format)
- 
+        s.write(1, 4, 'Sequence', header_format)
+        s.write(1, 5, 'State', header_format)
+        s.write(1, 6, 'Modification Time ({})'.format(self.timezone), header_format)
+        s.write(1, 7, 'Interpretation', header_format)
+        s.write(1, 8, 'Profile', header_format)
+        s.write(1, 9, 'Source Path', header_format)
+
         # Set column widths
         s.set_column('A:A', 16)  # Type
         s.set_column('B:B', 30)  # Origin
         s.set_column('C:C', 35)  # Key
         s.set_column('D:D', 60)  # Value
-        s.set_column('E:E', 16)  # Mod Time
-        s.set_column('F:F', 50)  # Interpretation
-        s.set_column('G:G', 50)  # Profile
+        s.set_column('E:E', 8)  # Seq
+        s.set_column('F:F', 8)  # State
+        s.set_column('G:G', 16)  # Mod Time
+        s.set_column('H:H', 50)  # Interpretation
+        s.set_column('I:I', 50)  # Profile
+        s.set_column('J:J', 50)  # Source Path
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -873,9 +882,12 @@ class AnalysisSession(object):
                     s.write_string(row_number, 1, item.origin, black_url_format)
                     s.write_string(row_number, 2, item.key, black_field_format)
                     s.write_string(row_number, 3, item.value, black_value_format)
-                    s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
-                    s.write(row_number, 5, item.interpretation, black_value_format)
-                    s.write(row_number, 6, item.profile, black_value_format)
+                    s.write_number(row_number, 4, item.seq, black_value_format)
+                    s.write_string(row_number, 5, item.state, black_value_format)
+                    s.write(row_number, 6, friendly_date(item.last_modified), black_date_format)
+                    s.write(row_number, 7, item.interpretation, black_value_format)
+                    s.write(row_number, 8, item.profile, black_value_format)
+                    s.write(row_number, 9, item.source_path, black_value_format)
 
             except Exception as e:
                 log.error(f'Failed to write row to XLSX: {e}')
@@ -884,7 +896,7 @@ class AnalysisSession(object):
 
         # Formatting
         s.freeze_panes(2, 0)  # Freeze top row
-        s.autofilter(1, 0, row_number, 6)  # Add autofilter
+        s.autofilter(1, 0, row_number, 9)  # Add autofilter
 
         for item in self.__dict__:
             try:
@@ -965,8 +977,8 @@ class AnalysisSession(object):
                 'opened INT, etag TEXT, last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)')
 
             c.execute(
-                'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, modification_time TEXT, '
-                'interpretation TEXT, profile TEXT)')
+                'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, seq INT, state TEXT, '
+                'modification_time TEXT, interpretation TEXT, profile TEXT, source_path TEXT)')
 
             c.execute(
                 'CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, '
@@ -1066,10 +1078,11 @@ class AnalysisSession(object):
             for item in self.parsed_storage:
                 if item.row_type.startswith('local'):
                     c.execute(
-                        'INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
-                        (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation,
-                         item.profile))
+                        'INSERT INTO storage (type, origin, key, value, seq, state, modification_time, '
+                        'interpretation, profile, source_path) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, item.origin, item.key, item.value, item.seq, item.state,
+                         item.last_modified, item.interpretation, item.profile, item.source_path))
 
                 if item.row_type.startswith('file system'):
                     c.execute(
@@ -1090,4 +1103,8 @@ class AnalysisSession(object):
             for parsed_artifact in self.parsed_artifacts:
                 parsed_artifact_json = json.dumps(parsed_artifact, cls=HindsightEncoder)
                 jsonl.write(parsed_artifact_json)
+                jsonl.write('\n')
+            for parsed_storage in self.parsed_storage:
+                parsed_storage_json = json.dumps(parsed_storage, cls=HindsightEncoder)
+                jsonl.write(parsed_storage_json)
                 jsonl.write('\n')

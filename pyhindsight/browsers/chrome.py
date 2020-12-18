@@ -856,8 +856,6 @@ class Chrome(WebBrowser):
 
     def get_local_storage(self, path, dir_name):
         results = []
-        illegal_xml_re = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufdd0-\ufddf\ufffe-\uffff]',
-                                    re.UNICODE)
 
         # Grab file list of 'Local Storage' directory
         ls_path = os.path.join(path, dir_name)
@@ -871,12 +869,13 @@ class Chrome(WebBrowser):
         # Chrome v61+ used leveldb for LocalStorage, but kept old SQLite .localstorage files if upgraded.
         if 'leveldb' in local_storage_listing:
             ls_ldb_path = os.path.join(ls_path, 'leveldb')
-            ls_ldb_records = utils.get_ldb_pairs(ls_ldb_path)
+            ls_ldb_records = utils.get_ldb_records(ls_ldb_path)
             for record in ls_ldb_records:
                 ls_item = self.parse_ls_ldb_record(record)
                 if ls_item and ls_item.get('record_type') == 'entry':
                     results.append(Chrome.LocalStorageItem(
-                        self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value']))
+                        self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value'],
+                        ls_item['seq'], ls_item['state'], str(ls_item['origin_file'])))
 
         # Chrome v60 and earlier used a SQLite file (with a .localstorage file ext) for each origin
         for ls_file in local_storage_listing:
@@ -890,7 +889,7 @@ class Chrome(WebBrowser):
                     conn = utils.open_sqlite_db(self, ls_path, ls_file)
                     cursor = conn.cursor()
 
-                    cursor.execute('SELECT key,value FROM ItemTable')
+                    cursor.execute('SELECT key,value,rowid FROM ItemTable')
                     for row in cursor:
                         try:
                             printable_value = row.get('value', b'').decode('utf-16')
@@ -899,8 +898,9 @@ class Chrome(WebBrowser):
 
                         results.append(Chrome.LocalStorageItem(
                             profile=self.profile_path, origin=ls_file[:-13], key=row.get('key', ''),
-                            value=printable_value,
-                            last_modified=utils.to_datetime(ls_created, self.timezone)))
+                            value=printable_value, seq=row.get('rowid', 0), state='Live',
+                            last_modified=utils.to_datetime(ls_created, self.timezone),
+                            source_path=os.path.join(ls_path, ls_file)))
 
                     conn.close()
 
@@ -1681,7 +1681,11 @@ class Chrome(WebBrowser):
         //   key: "_" + <url::Origin> 'origin'> + '\x00' + <script controlled key>
         //   value: <script controlled value>
         """
-        parsed = {}
+        parsed = {
+            'seq': record['seq'],
+            'state': record['state'],
+            'origin_file': record['origin_file']
+        }
 
         if record['key'].startswith('META:'.encode('utf-8')):
             parsed['record_type'] = 'META'
@@ -1701,7 +1705,7 @@ class Chrome(WebBrowser):
                 parsed['value'] = f'Last modified: {last_modified}; size: {size_bytes}'
             return parsed
 
-        elif record['key'] == 'VERSION':
+        elif record['key'] == b'VERSION':
             return
 
         elif record['key'].startswith(b'_'):
@@ -1713,8 +1717,8 @@ class Chrome(WebBrowser):
                 if parsed['key'].startswith(b'\x01'):
                     parsed['key'] = parsed['key'].lstrip(b'\x01').decode()
 
-                elif parsed['key'].startswith('\x00'):
-                    parsed['key'] = parsed['key'].lstrip('\x00').decode('utf-16')
+                elif parsed['key'].startswith(b'\x00'):
+                    parsed['key'] = parsed['key'].lstrip(b'\x00').decode('utf-16')
 
             except Exception as e:
                 log.error("Origin/key parsing error: {}".format(e))
@@ -1730,9 +1734,15 @@ class Chrome(WebBrowser):
                 elif record['value'].startswith(b'\x08'):
                     parsed['value'] = record['value'].lstrip(b'\x08').decode()
 
+                elif record['value'] == b'':
+                    parsed['value'] = ''
+
             except Exception as e:
                 log.error(f'Value parsing error: {e}')
                 return
+
+        for item in parsed.values():
+            assert not isinstance(item, bytes)
 
         return parsed
 
@@ -1786,7 +1796,7 @@ class Chrome(WebBrowser):
         # web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
             ldb_path = os.path.join(fs_root_path, 'Origins')
-            origins = utils.get_ldb_pairs(ldb_path, 'ORIGIN:')
+            origins = utils.get_ldb_records(ldb_path, 'ORIGIN:')
             for origin in origins:
                 origin_domain = origin['key'].decode()
                 origin_id = origin['value'].decode()
@@ -1822,7 +1832,7 @@ class Chrome(WebBrowser):
                         '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
                               'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'children': {}}}
 
-                    path_items = utils.get_ldb_pairs(fs_paths_path)
+                    path_items = utils.get_ldb_records(fs_paths_path)
 
                     for item in path_items:
                         # This will find keys that start with a number, rather than letter (ASCII code),

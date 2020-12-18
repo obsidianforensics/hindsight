@@ -141,14 +141,14 @@ def friendly_date(timestamp):
         return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
-def get_ldb_pairs(ldb_path, prefix=''):
-    """Open a LevelDB at given path and return a list of all key/value pairs, optionally
-    filtered by a prefix string. Key and value are kept as byte strings """
+def get_ldb_records(ldb_path, prefix=''):
+    """Open a LevelDB at given path and return a list of records, optionally
+    filtered by a prefix string. Key and value are kept as byte strings."""
 
     try:
-        import plyvel
+        from pyhindsight.lib.ccl_chrome_indexeddb import ccl_leveldb
     except ImportError:
-        log.warning(f' - Failed to import plyvel; unable to process {ldb_path}')
+        log.warning(f' - Failed to import ccl_leveldb; unable to process {ldb_path}')
         return []
 
     # The ldb key and value are both bytearrays, so the prefix must be too. We allow
@@ -157,31 +157,28 @@ def get_ldb_pairs(ldb_path, prefix=''):
         prefix = prefix.encode()
 
     try:
-        db = plyvel.DB(ldb_path, create_if_missing=False)
+        db = ccl_leveldb.RawLevelDb(ldb_path)
     except Exception as e:
         log.warning(f' - Couldn\'t open {ldb_path} as LevelDB; {e}')
         return []
 
-    cleaned_pairs = []
+    cleaned_records = []
 
-    try:
-        pairs = list(db.iterator())
-    except Exception as e:
-        log.warning(f' - Couldn\'t read {ldb_path} LevelDB data; {e}')
-        return []
+    for record in db.iterate_records_raw():
+        cleaned_record = record.__dict__
 
-    for pair in pairs:
-        # Each leveldb pair should be a tuple of length 2 (key & value); if not, log it and skip it.
-        if not isinstance(pair, tuple) or len(pair) is not 2:
-            log.warning(f' - Found LevelDB key/value pair that is not formed as expected ({str(pair)}); skipping.')
-            continue
+        if record.file_type.name == 'Ldb':
+            cleaned_record['key'] = record.key[:-8]
 
-        key, value = pair
-        if key.startswith(prefix):
-            key = key[len(prefix):]
-            cleaned_pairs.append({'key': key, 'value': value})
+        if cleaned_record['key'].startswith(prefix):
+            cleaned_record['key'] = cleaned_record['key'][len(prefix):]
 
-    return cleaned_pairs
+        cleaned_record['state'] = cleaned_record['state'].name
+        cleaned_record['file_type'] = cleaned_record['file_type'].name
+
+        cleaned_records.append(cleaned_record)
+
+    return cleaned_records
 
 
 def read_varint(source):

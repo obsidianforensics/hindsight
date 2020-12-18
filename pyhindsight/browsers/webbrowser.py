@@ -273,12 +273,16 @@ class WebBrowser(object):
             self.has_audio = has_audio
 
     class StorageItem(object):
-        def __init__(self, item_type, profile, origin, key, value=None, last_modified=None, interpretation=None):
+        def __init__(self, item_type, profile, origin, key, value=None, seq=None, state=None, source_path=None,
+                     last_modified=None, interpretation=None):
             self.row_type = item_type
             self.profile = profile
             self.origin = origin
             self.key = key
             self.value = value
+            self.seq = seq
+            self.state = state
+            self.source_path = source_path
             self.last_modified = last_modified
             self.interpretation = interpretation
 
@@ -289,7 +293,7 @@ class WebBrowser(object):
             return iter(self.__dict__)
 
     class LocalStorageItem(StorageItem):
-        def __init__(self, profile, origin, key, value, last_modified=None):
+        def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None):
             """
 
             :param profile: The path to the browser profile this item is part of.
@@ -297,6 +301,9 @@ class WebBrowser(object):
             :param key: The key of the LocalStorage item.
             :param value: The value of the LocalStorage item. It will be rendered in UTF-16 if possible; if not, it
             will be shown as a string repr of bytes.
+            :param seq: The sequence number of the key.
+            :param state: The state of the record (live or deleted).
+            :param source_path: The path to the source of the record.
             :param last_modified: Approximation of time content under this origin was last modified.
             If the LocalStorage items were stored in SQLite, this timestamp is when that SQLite file was last modified.
             This means copying the file or otherwise altering the LocalStorage SQLite file's metadata will change this
@@ -304,11 +311,15 @@ class WebBrowser(object):
             If the LocalStorage items were stored in LevelDB, this will be blank.
             """
             super(WebBrowser.LocalStorageItem, self).__init__(
-                'local storage', profile=profile, origin=origin, key=key, value=value, last_modified=last_modified)
+                'local storage', profile=profile, origin=origin, key=key, value=value, seq=seq, state=state,
+                source_path=source_path, last_modified=last_modified)
             self.profile = profile
             self.origin = origin
             self.key = key
             self.value = value
+            self.seq = seq
+            self.state = state
+            self.source_path = source_path
             self.last_modified = last_modified
 
     class FileSystemItem(StorageItem):
