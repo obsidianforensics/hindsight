@@ -2,8 +2,9 @@
 
 <div id='sqlite-viewer'></div>
 
-<script type="module">
-  import SqliteView from 'https://unpkg.com/sqlite-view/sqlite-view.module.bundled.js';
+<script type='module'>
+  import SqliteView from '/static/web_modules/sqlite-view.js';
+
   const viewer = new SqliteView('sqlite-viewer');
   viewer.load('/sqlite');
 </script>
