@@ -323,11 +323,15 @@ class WebBrowser(object):
             self.last_modified = last_modified
 
     class FileSystemItem(StorageItem):
-        def __init__(self, profile, origin, key, value, last_modified=None):
+        def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None):
             super(WebBrowser.FileSystemItem, self).__init__(
-                'file system', profile=profile, origin=origin, key=key, value=value, last_modified=last_modified)
+                'file system', profile=profile, origin=origin, key=key, value=value, seq=seq, state=state,
+                source_path=source_path, last_modified=last_modified)
             self.profile = profile
             self.origin = origin
             self.key = key
             self.value = value
+            self.seq = seq
+            self.state = state
+            self.source_path = source_path
             self.last_modified = last_modified

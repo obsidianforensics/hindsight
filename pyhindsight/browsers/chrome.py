@@ -1758,14 +1758,18 @@ class Chrome(WebBrowser):
     def flatten_nodes_to_list(self, output_list, node):
         output_row = {
             'type': node['type'],
-            'display_type': node['display_type'],
+            #'display_type': node['display_type'],
             'origin': node['path'][0],
             'logical_path': '\\'.join(node['path'][1:]),
-            'local_path': os.path.join('File System', node['origin_id'], node['type'])
+            # 'local_path': os.path.join('File System', node['origin_id'], node['type']),
+            'local_path': node['fs_path'],
+            'seq': node['seq'],
+            'state': node['state'],
+            'source_path': node['source_path']
         }
-        if node.get('fs_path'):
-            fs_path = os.path.split(node['fs_path'])
-            output_row['local_path'] = os.path.join(output_row['local_path'], fs_path[0], fs_path[1])
+        # if node.get('fs_path'):
+        #     fs_path = os.path.split(node['fs_path'])
+        #     output_row['local_path'] = os.path.join(output_row['local_path'], fs_path[0], fs_path[1])
 
         if node.get('modification_time'):
             output_row['modification_time'] = utils.to_datetime(node['modification_time'])
@@ -1775,12 +1779,6 @@ class Chrome(WebBrowser):
             self.flatten_nodes_to_list(output_list, child_node)
 
     def get_file_system(self, path, dir_name):
-        try:
-            import plyvel
-        except ImportError:
-            self.artifacts_counts['File System'] = 'Failed'
-            log.info('File System: Failed to parse; couldn\'t import plyvel.')
-            return
 
         result_list = []
         result_count = 0
@@ -1801,12 +1799,23 @@ class Chrome(WebBrowser):
                 origin_domain = origin['key'].decode()
                 origin_id = origin['value'].decode()
                 origin_root_path = os.path.join(fs_root_path, origin_id)
-                if not os.path.isdir(origin_root_path):
-                    continue
+                # if not os.path.isdir(origin_root_path):
+                #     continue
+
+                node_tree = {}
+                backing_files = {}
+                path_nodes = {
+                    '0': {
+                        'name': origin_domain, 'origin_id': origin_id, 'type': 'origin',
+                        'fs_path': os.path.join('File System', origin_id),
+                        'seq': origin['seq'], 'state': origin['state'],
+                        'source_path': origin['origin_file'], 'children': {}
+                    }
+                }
 
                 # Each Origin can have a temporary (t) and persistent (p) storage section.
                 for fs_type in ['t', 'p']:
-                    node_tree = {}
+                    # node_tree = {}
                     fs_type_path = os.path.join(origin_root_path, fs_type)
                     if not os.path.isdir(fs_type_path):
                         continue
@@ -1827,14 +1836,19 @@ class Chrome(WebBrowser):
                     # // where FileInfo has |parent_id|, |data_path|, |name| and |modification_time|
                     # from cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
 
-                    backing_files = {}
-                    path_nodes = {
-                        '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
-                              'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'children': {}}}
+                    # backing_files = {}
+                    # path_nodes = {
+                    #     '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
+                    #           'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'seq': origin['seq'],
+                    #           'state': origin['state'], 'source_path': origin['origin_file'], 'children': {}}}
 
                     path_items = utils.get_ldb_records(fs_paths_path)
 
                     for item in path_items:
+                        # Deleted records have no value
+                        if item['value'] == b'':
+                            continue
+
                         # This will find keys that start with a number, rather than letter (ASCII code),
                         # which only matches "file id" items (from above list of four types).
                         if item['key'][0] < 58:
@@ -1846,15 +1860,45 @@ class Chrome(WebBrowser):
 
                             path_parts = re.split(r'[/\\]', backing_file_path)
                             if path_parts != ['']:
-                                normalized_backing_file_path = os.path.join(path_parts[0], path_parts[1])
+                                normalized_backing_file_path = os.path.join(
+                                    path_nodes['0']['fs_path'], fs_type, path_parts[0], path_parts[1])
                             else:
-                                normalized_backing_file_path = backing_file_path
+                                normalized_backing_file_path = os.path.join(
+                                    path_nodes['0']['fs_path'], fs_type, backing_file_path)
 
                             backing_files[item['key'].decode()] = {
                                 'backing_file_path': normalized_backing_file_path,
-                                'modification_time': mod_time}
+                                'modification_time': mod_time,
+                                'seq': item['seq'],
+                                'state': item['state'],
+                                'source_path': item['origin_file']
+                            }
 
-                        elif item['key'].startswith(b'CHILD_OF:'):
+                    for item in path_items:
+                        # Deleted records have no value
+                        # if item['value'] == b'':
+                        #     continue
+
+                        if item['key'].startswith(b'CHILD_OF:'):
+                            if item['value'] == b'':
+                                parent, name = item['key'][9:].split(b':')
+                                path_nodes[f"deleted-{item['seq']}"] = {
+                                    'name': name.decode(),
+                                    'type': fs_type,
+                                    'display_type': f'file system ({fs_type})',
+                                    'origin_id': origin_id,
+                                    'parent': parent.decode(),
+                                    # 'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
+                                    'fs_path': '',
+                                    # 'modification_time': backing_files[item['value'].decode()]['modification_time'],
+                                    'modification_time': '',
+                                    'seq': item['seq'],
+                                    'state': item['state'],
+                                    'source_path': item['origin_file'],
+                                    'children': {}}
+                                result_count += 1
+                                continue
+
                             parent, name = item['key'][9:].split(b':')
                             path_nodes[item['value'].decode()] = {
                                 'name': name.decode(),
@@ -1864,23 +1908,27 @@ class Chrome(WebBrowser):
                                 'parent': parent.decode(),
                                 'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
                                 'modification_time': backing_files[item['value'].decode()]['modification_time'],
+                                'seq': item['seq'],
+                                'state': item['state'],
+                                'source_path': item['origin_file'],
                                 'children': {}}
                             result_count += 1
 
-                    for entry_id in path_nodes:
-                        if path_nodes[entry_id].get('parent'):
-                            path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
-                        else:
-                            node_tree[entry_id] = path_nodes[entry_id]
+                for entry_id in path_nodes:
+                    if path_nodes[entry_id].get('parent'):
+                        path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
+                    else:
+                        node_tree[entry_id] = path_nodes[entry_id]
 
-                    self.build_logical_fs_path(node_tree['0'])
-                    flattened_list = []
-                    self.flatten_nodes_to_list(flattened_list, node_tree['0'])
+                self.build_logical_fs_path(node_tree['0'])
+                flattened_list = []
+                self.flatten_nodes_to_list(flattened_list, node_tree['0'])
 
-                    for item in flattened_list:
-                        result_list.append(Chrome.FileSystemItem(
-                            self.profile_path, item.get('origin'), item.get('logical_path'), item.get('local_path'),
-                            item.get('modification_time')))
+                for item in flattened_list:
+                    result_list.append(Chrome.FileSystemItem(
+                        profile=self.profile_path, origin=item.get('origin'), key=item.get('logical_path'),
+                        value=item.get('local_path'), seq=item['seq'], state=item['state'],
+                        source_path=str(item['source_path']), last_modified=item.get('modification_time')))
 
         log.info(f' - Parsed {len(result_list)} items')
         self.artifacts_counts['File System'] = len(result_list)

@@ -172,11 +172,10 @@ def get_ldb_records(ldb_path, prefix=''):
 
         if cleaned_record['key'].startswith(prefix):
             cleaned_record['key'] = cleaned_record['key'][len(prefix):]
+            cleaned_record['state'] = cleaned_record['state'].name
+            cleaned_record['file_type'] = cleaned_record['file_type'].name
 
-        cleaned_record['state'] = cleaned_record['state'].name
-        cleaned_record['file_type'] = cleaned_record['file_type'].name
-
-        cleaned_records.append(cleaned_record)
+            cleaned_records.append(cleaned_record)
 
     return cleaned_records
 

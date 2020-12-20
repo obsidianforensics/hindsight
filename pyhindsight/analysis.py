@@ -845,24 +845,24 @@ class AnalysisSession(object):
         s.write(1, 1, 'Origin', header_format)
         s.write(1, 2, 'Key', header_format)
         s.write(1, 3, 'Value', header_format)
-        s.write(1, 4, 'Sequence', header_format)
-        s.write(1, 5, 'State', header_format)
-        s.write(1, 6, 'Modification Time ({})'.format(self.timezone), header_format)
-        s.write(1, 7, 'Interpretation', header_format)
-        s.write(1, 8, 'Profile', header_format)
-        s.write(1, 9, 'Source Path', header_format)
+        s.write(1, 4, 'Modification Time ({})'.format(self.timezone), header_format)
+        s.write(1, 5, 'Interpretation', header_format)
+        s.write(1, 6, 'Profile', header_format)
+        s.write(1, 7, 'Source Path', header_format)
+        s.write(1, 8, 'Sequence', header_format)
+        s.write(1, 9, 'State', header_format)
 
         # Set column widths
         s.set_column('A:A', 16)  # Type
         s.set_column('B:B', 30)  # Origin
         s.set_column('C:C', 35)  # Key
         s.set_column('D:D', 60)  # Value
-        s.set_column('E:E', 8)  # Seq
-        s.set_column('F:F', 8)  # State
-        s.set_column('G:G', 16)  # Mod Time
-        s.set_column('H:H', 50)  # Interpretation
-        s.set_column('I:I', 50)  # Profile
-        s.set_column('J:J', 50)  # Source Path
+        s.set_column('E:E', 16)  # Mod Time
+        s.set_column('F:F', 50)  # Interpretation
+        s.set_column('G:G', 50)  # Profile
+        s.set_column('H:H', 50)  # Source Path
+        s.set_column('I:I', 8)  # Seq
+        s.set_column('J:J', 8)  # State
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -876,18 +876,21 @@ class AnalysisSession(object):
                     s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
                     s.write(row_number, 5, item.interpretation, black_value_format)
                     s.write(row_number, 6, item.profile, black_value_format)
+                    s.write(row_number, 7, item.source_path, black_value_format)
+                    s.write_number(row_number, 8, item.seq, black_value_format)
+                    s.write_string(row_number, 9, item.state, black_value_format)
 
                 elif item.row_type.startswith("local storage"):
                     s.write_string(row_number, 0, item.row_type, black_type_format)
                     s.write_string(row_number, 1, item.origin, black_url_format)
                     s.write_string(row_number, 2, item.key, black_field_format)
                     s.write_string(row_number, 3, item.value, black_value_format)
-                    s.write_number(row_number, 4, item.seq, black_value_format)
-                    s.write_string(row_number, 5, item.state, black_value_format)
-                    s.write(row_number, 6, friendly_date(item.last_modified), black_date_format)
-                    s.write(row_number, 7, item.interpretation, black_value_format)
-                    s.write(row_number, 8, item.profile, black_value_format)
-                    s.write(row_number, 9, item.source_path, black_value_format)
+                    s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+                    s.write(row_number, 7, item.source_path, black_value_format)
+                    s.write_number(row_number, 8, item.seq, black_value_format)
+                    s.write_string(row_number, 9, item.state, black_value_format)
 
             except Exception as e:
                 log.error(f'Failed to write row to XLSX: {e}')
