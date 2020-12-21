@@ -265,5 +265,9 @@ h1 {
 }
 
 input:disabled.button {
-    background-color: grey;
+    color: grey;
+}
+
+input:disabled.button:hover {
+    background-color: #fafafa;
 }
