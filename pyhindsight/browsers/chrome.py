@@ -9,6 +9,7 @@ import struct
 import json
 import logging
 import shutil
+import puremagic
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
 
@@ -856,8 +857,6 @@ class Chrome(WebBrowser):
 
     def get_local_storage(self, path, dir_name):
         results = []
-        illegal_xml_re = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff\ufdd0-\ufddf\ufffe-\uffff]',
-                                    re.UNICODE)
 
         # Grab file list of 'Local Storage' directory
         ls_path = os.path.join(path, dir_name)
@@ -870,13 +869,16 @@ class Chrome(WebBrowser):
 
         # Chrome v61+ used leveldb for LocalStorage, but kept old SQLite .localstorage files if upgraded.
         if 'leveldb' in local_storage_listing:
+            log.debug(f' - Found "leveldb" directory; reading Local Storage LevelDB records')
             ls_ldb_path = os.path.join(ls_path, 'leveldb')
-            ls_ldb_records = utils.get_ldb_pairs(ls_ldb_path)
+            ls_ldb_records = utils.get_ldb_records(ls_ldb_path)
+            log.debug(f' - Reading {len(ls_ldb_records)} Local Storage raw LevelDB records; beginning parsing')
             for record in ls_ldb_records:
                 ls_item = self.parse_ls_ldb_record(record)
                 if ls_item and ls_item.get('record_type') == 'entry':
                     results.append(Chrome.LocalStorageItem(
-                        self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value']))
+                        self.profile_path, ls_item['origin'], ls_item['key'], ls_item['value'],
+                        ls_item['seq'], ls_item['state'], str(ls_item['origin_file'])))
 
         # Chrome v60 and earlier used a SQLite file (with a .localstorage file ext) for each origin
         for ls_file in local_storage_listing:
@@ -890,7 +892,7 @@ class Chrome(WebBrowser):
                     conn = utils.open_sqlite_db(self, ls_path, ls_file)
                     cursor = conn.cursor()
 
-                    cursor.execute('SELECT key,value FROM ItemTable')
+                    cursor.execute('SELECT key,value,rowid FROM ItemTable')
                     for row in cursor:
                         try:
                             printable_value = row.get('value', b'').decode('utf-16')
@@ -899,8 +901,9 @@ class Chrome(WebBrowser):
 
                         results.append(Chrome.LocalStorageItem(
                             profile=self.profile_path, origin=ls_file[:-13], key=row.get('key', ''),
-                            value=printable_value,
-                            last_modified=utils.to_datetime(ls_created, self.timezone)))
+                            value=printable_value, seq=row.get('rowid', 0), state='Live',
+                            last_modified=utils.to_datetime(ls_created, self.timezone),
+                            source_path=os.path.join(ls_path, ls_file)))
 
                     conn.close()
 
@@ -1681,7 +1684,11 @@ class Chrome(WebBrowser):
         //   key: "_" + <url::Origin> 'origin'> + '\x00' + <script controlled key>
         //   value: <script controlled value>
         """
-        parsed = {}
+        parsed = {
+            'seq': record['seq'],
+            'state': record['state'],
+            'origin_file': record['origin_file']
+        }
 
         if record['key'].startswith('META:'.encode('utf-8')):
             parsed['record_type'] = 'META'
@@ -1701,7 +1708,7 @@ class Chrome(WebBrowser):
                 parsed['value'] = f'Last modified: {last_modified}; size: {size_bytes}'
             return parsed
 
-        elif record['key'] == 'VERSION':
+        elif record['key'] == b'VERSION':
             return
 
         elif record['key'].startswith(b'_'):
@@ -1713,8 +1720,8 @@ class Chrome(WebBrowser):
                 if parsed['key'].startswith(b'\x01'):
                     parsed['key'] = parsed['key'].lstrip(b'\x01').decode()
 
-                elif parsed['key'].startswith('\x00'):
-                    parsed['key'] = parsed['key'].lstrip('\x00').decode('utf-16')
+                elif parsed['key'].startswith(b'\x00'):
+                    parsed['key'] = parsed['key'].lstrip(b'\x00').decode('utf-16')
 
             except Exception as e:
                 log.error("Origin/key parsing error: {}".format(e))
@@ -1730,9 +1737,15 @@ class Chrome(WebBrowser):
                 elif record['value'].startswith(b'\x08'):
                     parsed['value'] = record['value'].lstrip(b'\x08').decode()
 
+                elif record['value'] == b'':
+                    parsed['value'] = ''
+
             except Exception as e:
                 log.error(f'Value parsing error: {e}')
                 return
+
+        for item in parsed.values():
+            assert not isinstance(item, bytes)
 
         return parsed
 
@@ -1748,14 +1761,16 @@ class Chrome(WebBrowser):
     def flatten_nodes_to_list(self, output_list, node):
         output_row = {
             'type': node['type'],
-            'display_type': node['display_type'],
             'origin': node['path'][0],
             'logical_path': '\\'.join(node['path'][1:]),
-            'local_path': os.path.join('File System', node['origin_id'], node['type'])
+            'local_path': node['fs_path'],
+            'seq': node['seq'],
+            'state': node['state'],
+            'source_path': node['source_path'],
+            'file_exists': node.get('file_exists'),
+            'file_size': node.get('file_size'),
+            'magic_results': node.get('magic_results')
         }
-        if node.get('fs_path'):
-            fs_path = os.path.split(node['fs_path'])
-            output_row['local_path'] = os.path.join(output_row['local_path'], fs_path[0], fs_path[1])
 
         if node.get('modification_time'):
             output_row['modification_time'] = utils.to_datetime(node['modification_time'])
@@ -1764,13 +1779,27 @@ class Chrome(WebBrowser):
         for child_node in node['children'].values():
             self.flatten_nodes_to_list(output_list, child_node)
 
+    @staticmethod
+    def get_local_file_info(file_path):
+        file_size, magic_results = None, None
+        exists = os.path.isfile(file_path)
+
+        if exists:
+            file_size = os.stat(file_path).st_size
+
+        if file_size:
+            magic_candidates = puremagic.magic_file(file_path)
+            if magic_candidates:
+                for magic_candidate in magic_candidates:
+                    if magic_candidate.mime_type != '':
+                        magic_results = f'{magic_candidate.mime_type} ({magic_candidate.confidence:.0%})'
+                        break
+                    else:
+                        magic_results = f'{magic_candidate.name} ({magic_candidate.confidence:.0%})'
+
+        return exists, file_size, magic_results
+
     def get_file_system(self, path, dir_name):
-        try:
-            import plyvel
-        except ImportError:
-            self.artifacts_counts['File System'] = 'Failed'
-            log.info('File System: Failed to parse; couldn\'t import plyvel.')
-            return
 
         result_list = []
         result_count = 0
@@ -1786,17 +1815,25 @@ class Chrome(WebBrowser):
         # web origin (https_www.google.com_0)
         if 'Origins' in fs_root_listing:
             ldb_path = os.path.join(fs_root_path, 'Origins')
-            origins = utils.get_ldb_pairs(ldb_path, 'ORIGIN:')
+            origins = utils.get_ldb_records(ldb_path, 'ORIGIN:')
             for origin in origins:
                 origin_domain = origin['key'].decode()
                 origin_id = origin['value'].decode()
                 origin_root_path = os.path.join(fs_root_path, origin_id)
-                if not os.path.isdir(origin_root_path):
-                    continue
+
+                node_tree = {}
+                backing_files = {}
+                path_nodes = {
+                    '0': {
+                        'name': origin_domain, 'origin_id': origin_id, 'type': 'origin',
+                        'fs_path': os.path.join('File System', origin_id),
+                        'seq': origin['seq'], 'state': origin['state'],
+                        'source_path': origin['origin_file'], 'children': {}
+                    }
+                }
 
                 # Each Origin can have a temporary (t) and persistent (p) storage section.
                 for fs_type in ['t', 'p']:
-                    node_tree = {}
                     fs_type_path = os.path.join(origin_root_path, fs_type)
                     if not os.path.isdir(fs_type_path):
                         continue
@@ -1817,16 +1854,18 @@ class Chrome(WebBrowser):
                     # // where FileInfo has |parent_id|, |data_path|, |name| and |modification_time|
                     # from cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
 
-                    backing_files = {}
-                    path_nodes = {
-                        '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
-                              'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'children': {}}}
+                    path_items = utils.get_ldb_records(fs_paths_path)
 
-                    path_items = utils.get_ldb_pairs(fs_paths_path)
-
+                    # Loop over records looking for "file_id" records to build backing_files dict. We skip
+                    # deleted records here, as deleted "file_id" records aren't useful. We'll loop over this
+                    # again below to get the "CHILD_OF" records, as they might be out of order due to deletions.
                     for item in path_items:
+                        # Deleted records have no value
+                        if item['value'] == b'':
+                            continue
+
                         # This will find keys that start with a number, rather than letter (ASCII code),
-                        # which only matches "file id" items (from above list of four types).
+                        # which only matches "file_id" items (from above list of four types).
                         if item['key'][0] < 58:
                             overall_length, ptr = utils.read_int32(item['value'], 0)
                             parent_id, ptr = utils.read_int64(item['value'], ptr)
@@ -1834,43 +1873,85 @@ class Chrome(WebBrowser):
                             name, ptr = utils.read_string(item['value'], ptr)
                             mod_time, ptr = utils.read_int64(item['value'], ptr)
 
+                            backing_files[item['key'].decode()] = {
+                                'modification_time': mod_time,
+                                'seq': item['seq'],
+                                'state': item['state'],
+                                'source_path': item['origin_file']
+                            }
+
                             path_parts = re.split(r'[/\\]', backing_file_path)
                             if path_parts != ['']:
-                                normalized_backing_file_path = os.path.join(path_parts[0], path_parts[1])
+                                normalized_backing_file_path = os.path.join(
+                                    path_nodes['0']['fs_path'], fs_type, path_parts[0], path_parts[1])
+                                file_exists, file_size, magic_results = self.get_local_file_info(
+                                           os.path.join(self.profile_path, normalized_backing_file_path))
+                                backing_files[item['key'].decode()]['file_exists'] = file_exists
+                                backing_files[item['key'].decode()]['file_size'] = file_size
+                                backing_files[item['key'].decode()]['magic_results'] = magic_results
+
                             else:
-                                normalized_backing_file_path = backing_file_path
+                                normalized_backing_file_path = os.path.join(
+                                    path_nodes['0']['fs_path'], fs_type, backing_file_path)
 
-                            backing_files[item['key'].decode()] = {
-                                'backing_file_path': normalized_backing_file_path,
-                                'modification_time': mod_time}
+                            backing_files[item['key'].decode()]['backing_file_path'] = normalized_backing_file_path
 
-                        elif item['key'].startswith(b'CHILD_OF:'):
-                            parent, name = item['key'][9:].split(b':')
-                            path_nodes[item['value'].decode()] = {
-                                'name': name.decode(),
-                                'type': fs_type,
-                                'display_type': f'file system ({fs_type})',
-                                'origin_id': origin_id,
-                                'parent': parent.decode(),
+                    # Loop over records again, this time to add to the path_nodes dict (used later to construct
+                    # the logical path for items in FileSystem. We look at deleted records here; while the value
+                    # is empty, the key still exists and has useful info in it.
+                    for item in path_items:
+                        if not item['key'].startswith(b'CHILD_OF:'):
+                            continue
+
+                        parent, name = item['key'][9:].split(b':')
+
+                        path_node_key = item['value'].decode()
+                        if item['value'] == b'':
+                            path_node_key = f"deleted-{item['seq']}"
+
+                        path_nodes[path_node_key] = {
+                            'name': name.decode(),
+                            'type': fs_type,
+                            'origin_id': origin_id,
+                            'parent': parent.decode(),
+                            'fs_path': '',
+                            'modification_time': '',
+                            'seq': item['seq'],
+                            'state': item['state'],
+                            'source_path': item['origin_file'],
+                            'children': {}
+                        }
+
+                        if not item['value'] == b'':
+                            value_dict = {
                                 'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
                                 'modification_time': backing_files[item['value'].decode()]['modification_time'],
-                                'children': {}}
-                            result_count += 1
+                                'file_exists': backing_files[item['value'].decode()].get('file_exists'),
+                                'file_size': backing_files[item['value'].decode()].get('file_size'),
+                                'magic_results': backing_files[item['value'].decode()].get('magic_results'),
+                            }
+                            path_nodes[path_node_key].update(value_dict)
 
-                    for entry_id in path_nodes:
-                        if path_nodes[entry_id].get('parent'):
-                            path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
-                        else:
-                            node_tree[entry_id] = path_nodes[entry_id]
+                        result_count += 1
 
-                    self.build_logical_fs_path(node_tree['0'])
-                    flattened_list = []
-                    self.flatten_nodes_to_list(flattened_list, node_tree['0'])
+                for entry_id in path_nodes:
+                    if path_nodes[entry_id].get('parent'):
+                        path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
+                    else:
+                        node_tree[entry_id] = path_nodes[entry_id]
 
-                    for item in flattened_list:
-                        result_list.append(Chrome.FileSystemItem(
-                            self.profile_path, item.get('origin'), item.get('logical_path'), item.get('local_path'),
-                            item.get('modification_time')))
+                self.build_logical_fs_path(node_tree['0'])
+                flattened_list = []
+                self.flatten_nodes_to_list(flattened_list, node_tree['0'])
+
+                for item in flattened_list:
+                    result_list.append(Chrome.FileSystemItem(
+                        profile=self.profile_path, origin=item.get('origin'), key=item.get('logical_path'),
+                        value=item.get('local_path'), seq=item['seq'], state=item['state'],
+                        source_path=str(item['source_path']), last_modified=item.get('modification_time'),
+                        file_exists=item.get('file_exists'), file_size=item.get('file_size'),
+                        magic_results=item.get('magic_results')
+                    ))
 
         log.info(f' - Parsed {len(result_list)} items')
         self.artifacts_counts['File System'] = len(result_list)
@@ -2064,11 +2145,15 @@ class Chrome(WebBrowser):
         self.cached_key = None
 
         self.parsed_artifacts.sort()
+        self.parsed_storage.sort()
 
         # Clean temp directory after processing profile
         if not self.no_copy:
             log.info(f'Deleting temporary directory {self.temp_dir}')
-            shutil.rmtree(self.temp_dir)
+            try:
+                shutil.rmtree(self.temp_dir)
+            except Exception as e:
+                log.error(f'Exception deleting temporary directory: {e}')
 
     class URLItem(WebBrowser.URLItem):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,

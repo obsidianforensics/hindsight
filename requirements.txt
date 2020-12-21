@@ -1,7 +1,9 @@
-plyvel>=1.2
 keyring>=21.2.1
 pytz>=2020.1
 pycryptodome>=3.9.7
 pycryptodomex>=3.9.7
 xlsxwriter>=1.2.9
 bottle>=0.12.18
+setuptools~=51.0.0
+puremagic~=1.10
+argparse~=1.4.0
