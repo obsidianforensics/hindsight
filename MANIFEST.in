@@ -1,5 +1,6 @@
 recursive-include pyhindsight/plugins *.py
 recursive-include pyhindsight/static *
+recursive-exclude pyhindsight/static/web_modules *
 recursive-include pyhindsight/templates *.tpl
 include hindsight.py
 include hindsight_gui.py

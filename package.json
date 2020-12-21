@@ -1,0 +1,30 @@
+{
+  "name": "hindsight",
+  "version": "1.0.0",
+  "description": "Web browser forensics for Google Chrome/Chromium",
+  "main": "index.js",
+  "type": "module",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/obsidianforensics/hindsight.git"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/obsidianforensics/hindsight/issues"
+  },
+  "homepage": "https://github.com/obsidianforensics/hindsight#readme",
+  "dependencies": {
+    "sqlite-view": "^0.1.7"
+  },
+  "devDependencies": {
+    "esinstall": "^0.5.1",
+    "terser": "^5.5.1"
+  }
+}

@@ -11,6 +11,13 @@ It has a simple web UI - to start it, run "hindsight_gui.py" (or on Windows, the
 
 The only field you are required to complete is "Profile Path". This is the location of the Chrome profile you want to analyze (the default profile paths for different OSes is listed at the bottom of this page). Click "Run" and you'll be taken to the results page in where you can save the results to a spreadsheet (or other formats). 
 
+## Manual Installation
+
+```sh
+pip install pyhindsight
+curl -sSL https://raw.githubusercontent.com/obsidianforensics/hindsight/master/install-js.sh | sh
+```
+
 ## Command Line
 
 There also is command line version of Hindsight - hindsight.py or hindsight.exe. The user guide in the documentation folder covers many topics, but the info below should get you started with the command line version:

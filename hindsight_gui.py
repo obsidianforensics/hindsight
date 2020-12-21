@@ -109,7 +109,7 @@ def get_plugins_info():
 
 
 # Static Routes
-@bottle.get('/static/<filename:re:.*\.(png|css|ico|svg|json|eot|svg|ttf|woff|woff2)>')
+@bottle.get('/static/<filename:re:.*\.(png|css|ico|svg|json|eot|svg|ttf|woff|woff2|js)>')
 def images(filename):
     return bottle.static_file(filename, root=STATIC_PATH)
 
@@ -184,7 +184,11 @@ def display_error():
 
 @bottle.route('/results')
 def display_results():
-    return bottle.template('templates/results.tpl', analysis_session.__dict__)
+    return bottle.template('templates/results.tpl', {
+        'js_installed': os.path.exists(
+            os.path.join(STATIC_PATH, 'web_modules/sqlite-view.js')),
+        **analysis_session.__dict__
+        })
 
 
 @bottle.route('/sqlite')
@@ -255,6 +259,12 @@ def generate_jsonl():
     bottle.response.headers['Content-Disposition'] = f'attachment; filename={analysis_session.output_name}.jsonl'
     string_buffer.seek(0)
     return string_buffer
+
+
+@bottle.route('/sqlite-view')
+def sqlite_view():
+    return bottle.template(
+        'templates/sqlite_view.tpl', analysis_session.__dict__)
 
 
 def main():

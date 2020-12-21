@@ -263,3 +263,11 @@ h1 {
     border: 1px solid #444444;
     /*border-top: 2px #81d742;*/
 }
+
+input:disabled.button {
+    color: grey;
+}
+
+input:disabled.button:hover {
+    background-color: #fafafa;
+}
