@@ -9,6 +9,7 @@ import struct
 import json
 import logging
 import shutil
+import puremagic
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
 
@@ -868,8 +869,10 @@ class Chrome(WebBrowser):
 
         # Chrome v61+ used leveldb for LocalStorage, but kept old SQLite .localstorage files if upgraded.
         if 'leveldb' in local_storage_listing:
+            log.debug(f' - Found "leveldb" directory; reading Local Storage LevelDB records')
             ls_ldb_path = os.path.join(ls_path, 'leveldb')
             ls_ldb_records = utils.get_ldb_records(ls_ldb_path)
+            log.debug(f' - Reading {len(ls_ldb_records)} Local Storage raw LevelDB records; beginning parsing')
             for record in ls_ldb_records:
                 ls_item = self.parse_ls_ldb_record(record)
                 if ls_item and ls_item.get('record_type') == 'entry':
@@ -1758,18 +1761,16 @@ class Chrome(WebBrowser):
     def flatten_nodes_to_list(self, output_list, node):
         output_row = {
             'type': node['type'],
-            #'display_type': node['display_type'],
             'origin': node['path'][0],
             'logical_path': '\\'.join(node['path'][1:]),
-            # 'local_path': os.path.join('File System', node['origin_id'], node['type']),
             'local_path': node['fs_path'],
             'seq': node['seq'],
             'state': node['state'],
-            'source_path': node['source_path']
+            'source_path': node['source_path'],
+            'file_exists': node.get('file_exists'),
+            'file_size': node.get('file_size'),
+            'magic_results': node.get('magic_results')
         }
-        # if node.get('fs_path'):
-        #     fs_path = os.path.split(node['fs_path'])
-        #     output_row['local_path'] = os.path.join(output_row['local_path'], fs_path[0], fs_path[1])
 
         if node.get('modification_time'):
             output_row['modification_time'] = utils.to_datetime(node['modification_time'])
@@ -1777,6 +1778,26 @@ class Chrome(WebBrowser):
         output_list.append(output_row)
         for child_node in node['children'].values():
             self.flatten_nodes_to_list(output_list, child_node)
+
+    @staticmethod
+    def get_local_file_info(file_path):
+        file_size, magic_results = None, None
+        exists = os.path.isfile(file_path)
+
+        if exists:
+            file_size = os.stat(file_path).st_size
+
+        if file_size:
+            magic_candidates = puremagic.magic_file(file_path)
+            if magic_candidates:
+                for magic_candidate in magic_candidates:
+                    if magic_candidate.mime_type != '':
+                        magic_results = f'{magic_candidate.mime_type} ({magic_candidate.confidence:.0%})'
+                        break
+                    else:
+                        magic_results = f'{magic_candidate.name} ({magic_candidate.confidence:.0%})'
+
+        return exists, file_size, magic_results
 
     def get_file_system(self, path, dir_name):
 
@@ -1799,8 +1820,6 @@ class Chrome(WebBrowser):
                 origin_domain = origin['key'].decode()
                 origin_id = origin['value'].decode()
                 origin_root_path = os.path.join(fs_root_path, origin_id)
-                # if not os.path.isdir(origin_root_path):
-                #     continue
 
                 node_tree = {}
                 backing_files = {}
@@ -1815,7 +1834,6 @@ class Chrome(WebBrowser):
 
                 # Each Origin can have a temporary (t) and persistent (p) storage section.
                 for fs_type in ['t', 'p']:
-                    # node_tree = {}
                     fs_type_path = os.path.join(origin_root_path, fs_type)
                     if not os.path.isdir(fs_type_path):
                         continue
@@ -1836,21 +1854,18 @@ class Chrome(WebBrowser):
                     # // where FileInfo has |parent_id|, |data_path|, |name| and |modification_time|
                     # from cs.chromium.org/chromium/src/storage/browser/file_system/sandbox_directory_database.cc
 
-                    # backing_files = {}
-                    # path_nodes = {
-                    #     '0': {'name': origin_domain, 'type': fs_type, 'display_type': f'file system ({fs_type})',
-                    #           'origin_id': origin_id, 'fs_path': backing_files.get('0'), 'seq': origin['seq'],
-                    #           'state': origin['state'], 'source_path': origin['origin_file'], 'children': {}}}
-
                     path_items = utils.get_ldb_records(fs_paths_path)
 
+                    # Loop over records looking for "file_id" records to build backing_files dict. We skip
+                    # deleted records here, as deleted "file_id" records aren't useful. We'll loop over this
+                    # again below to get the "CHILD_OF" records, as they might be out of order due to deletions.
                     for item in path_items:
                         # Deleted records have no value
                         if item['value'] == b'':
                             continue
 
                         # This will find keys that start with a number, rather than letter (ASCII code),
-                        # which only matches "file id" items (from above list of four types).
+                        # which only matches "file_id" items (from above list of four types).
                         if item['key'][0] < 58:
                             overall_length, ptr = utils.read_int32(item['value'], 0)
                             parent_id, ptr = utils.read_int64(item['value'], ptr)
@@ -1858,61 +1873,66 @@ class Chrome(WebBrowser):
                             name, ptr = utils.read_string(item['value'], ptr)
                             mod_time, ptr = utils.read_int64(item['value'], ptr)
 
-                            path_parts = re.split(r'[/\\]', backing_file_path)
-                            if path_parts != ['']:
-                                normalized_backing_file_path = os.path.join(
-                                    path_nodes['0']['fs_path'], fs_type, path_parts[0], path_parts[1])
-                            else:
-                                normalized_backing_file_path = os.path.join(
-                                    path_nodes['0']['fs_path'], fs_type, backing_file_path)
-
                             backing_files[item['key'].decode()] = {
-                                'backing_file_path': normalized_backing_file_path,
                                 'modification_time': mod_time,
                                 'seq': item['seq'],
                                 'state': item['state'],
                                 'source_path': item['origin_file']
                             }
 
+                            path_parts = re.split(r'[/\\]', backing_file_path)
+                            if path_parts != ['']:
+                                normalized_backing_file_path = os.path.join(
+                                    path_nodes['0']['fs_path'], fs_type, path_parts[0], path_parts[1])
+                                file_exists, file_size, magic_results = self.get_local_file_info(
+                                           os.path.join(self.profile_path, normalized_backing_file_path))
+                                backing_files[item['key'].decode()]['file_exists'] = file_exists
+                                backing_files[item['key'].decode()]['file_size'] = file_size
+                                backing_files[item['key'].decode()]['magic_results'] = magic_results
+
+                            else:
+                                normalized_backing_file_path = os.path.join(
+                                    path_nodes['0']['fs_path'], fs_type, backing_file_path)
+
+                            backing_files[item['key'].decode()]['backing_file_path'] = normalized_backing_file_path
+
+                    # Loop over records again, this time to add to the path_nodes dict (used later to construct
+                    # the logical path for items in FileSystem. We look at deleted records here; while the value
+                    # is empty, the key still exists and has useful info in it.
                     for item in path_items:
-                        # Deleted records have no value
-                        # if item['value'] == b'':
-                        #     continue
+                        if not item['key'].startswith(b'CHILD_OF:'):
+                            continue
 
-                        if item['key'].startswith(b'CHILD_OF:'):
-                            if item['value'] == b'':
-                                parent, name = item['key'][9:].split(b':')
-                                path_nodes[f"deleted-{item['seq']}"] = {
-                                    'name': name.decode(),
-                                    'type': fs_type,
-                                    'display_type': f'file system ({fs_type})',
-                                    'origin_id': origin_id,
-                                    'parent': parent.decode(),
-                                    # 'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
-                                    'fs_path': '',
-                                    # 'modification_time': backing_files[item['value'].decode()]['modification_time'],
-                                    'modification_time': '',
-                                    'seq': item['seq'],
-                                    'state': item['state'],
-                                    'source_path': item['origin_file'],
-                                    'children': {}}
-                                result_count += 1
-                                continue
+                        parent, name = item['key'][9:].split(b':')
 
-                            parent, name = item['key'][9:].split(b':')
-                            path_nodes[item['value'].decode()] = {
-                                'name': name.decode(),
-                                'type': fs_type,
-                                'display_type': f'file system ({fs_type})',
-                                'origin_id': origin_id,
-                                'parent': parent.decode(),
+                        path_node_key = item['value'].decode()
+                        if item['value'] == b'':
+                            path_node_key = f"deleted-{item['seq']}"
+
+                        path_nodes[path_node_key] = {
+                            'name': name.decode(),
+                            'type': fs_type,
+                            'origin_id': origin_id,
+                            'parent': parent.decode(),
+                            'fs_path': '',
+                            'modification_time': '',
+                            'seq': item['seq'],
+                            'state': item['state'],
+                            'source_path': item['origin_file'],
+                            'children': {}
+                        }
+
+                        if not item['value'] == b'':
+                            value_dict = {
                                 'fs_path': backing_files[item['value'].decode()]['backing_file_path'],
                                 'modification_time': backing_files[item['value'].decode()]['modification_time'],
-                                'seq': item['seq'],
-                                'state': item['state'],
-                                'source_path': item['origin_file'],
-                                'children': {}}
-                            result_count += 1
+                                'file_exists': backing_files[item['value'].decode()].get('file_exists'),
+                                'file_size': backing_files[item['value'].decode()].get('file_size'),
+                                'magic_results': backing_files[item['value'].decode()].get('magic_results'),
+                            }
+                            path_nodes[path_node_key].update(value_dict)
+
+                        result_count += 1
 
                 for entry_id in path_nodes:
                     if path_nodes[entry_id].get('parent'):
@@ -1928,7 +1948,10 @@ class Chrome(WebBrowser):
                     result_list.append(Chrome.FileSystemItem(
                         profile=self.profile_path, origin=item.get('origin'), key=item.get('logical_path'),
                         value=item.get('local_path'), seq=item['seq'], state=item['state'],
-                        source_path=str(item['source_path']), last_modified=item.get('modification_time')))
+                        source_path=str(item['source_path']), last_modified=item.get('modification_time'),
+                        file_exists=item.get('file_exists'), file_size=item.get('file_size'),
+                        magic_results=item.get('magic_results')
+                    ))
 
         log.info(f' - Parsed {len(result_list)} items')
         self.artifacts_counts['File System'] = len(result_list)

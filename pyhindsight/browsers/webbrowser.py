@@ -274,7 +274,7 @@ class WebBrowser(object):
 
     class StorageItem(object):
         def __init__(self, item_type, profile, origin, key, value=None, seq=None, state=None, source_path=None,
-                     last_modified=None, interpretation=None):
+                     last_modified=None, interpretation=None, file_exists=None, file_size=None, magic_results=None):
             self.row_type = item_type
             self.profile = profile
             self.origin = origin
@@ -285,6 +285,9 @@ class WebBrowser(object):
             self.source_path = source_path
             self.last_modified = last_modified
             self.interpretation = interpretation
+            self.file_exists = file_exists
+            self.file_size = file_size
+            self.magic_results = magic_results
 
         def __lt__(self, other):
             return self.origin < other.origin
@@ -323,10 +326,12 @@ class WebBrowser(object):
             self.last_modified = last_modified
 
     class FileSystemItem(StorageItem):
-        def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None):
+        def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None,
+                     file_exists=None, file_size=None, magic_results=None):
             super(WebBrowser.FileSystemItem, self).__init__(
                 'file system', profile=profile, origin=origin, key=key, value=value, seq=seq, state=state,
-                source_path=source_path, last_modified=last_modified)
+                source_path=source_path, last_modified=last_modified, file_exists=file_exists,
+                file_size=file_size, magic_results=magic_results)
             self.profile = profile
             self.origin = origin
             self.key = key
@@ -335,3 +340,6 @@ class WebBrowser(object):
             self.state = state
             self.source_path = source_path
             self.last_modified = last_modified
+            self.file_exists = file_exists
+            self.file_size = file_size
+            self.magic_results = magic_results
