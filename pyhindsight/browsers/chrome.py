@@ -2145,11 +2145,15 @@ class Chrome(WebBrowser):
         self.cached_key = None
 
         self.parsed_artifacts.sort()
+        self.parsed_storage.sort()
 
         # Clean temp directory after processing profile
         if not self.no_copy:
             log.info(f'Deleting temporary directory {self.temp_dir}')
-            shutil.rmtree(self.temp_dir)
+            try:
+                shutil.rmtree(self.temp_dir)
+            except Exception as e:
+                log.error(f'Exception deleting temporary directory: {e}')
 
     class URLItem(WebBrowser.URLItem):
         def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,

@@ -992,7 +992,8 @@ class AnalysisSession(object):
 
             c.execute(
                 'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, seq INT, state TEXT, '
-                'modification_time TEXT, interpretation TEXT, profile TEXT, source_path TEXT)')
+                'modification_time TEXT, interpretation TEXT, profile TEXT, source_path TEXT, '
+                'file_exists BOOL, file_size INT, magic_results TEXT)')
 
             c.execute(
                 'CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, '
@@ -1092,18 +1093,21 @@ class AnalysisSession(object):
             for item in self.parsed_storage:
                 if item.row_type.startswith('local'):
                     c.execute(
-                        'INSERT INTO storage (type, origin, key, value, seq, state, modification_time, '
-                        'interpretation, profile, source_path) '
+                        'INSERT INTO storage (type, origin, key, value, modification_time, '
+                        'interpretation, profile, source_path, seq, state) '
                         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (item.row_type, item.origin, item.key, item.value, item.seq, item.state,
-                         item.last_modified, item.interpretation, item.profile, item.source_path))
+                        (item.row_type, item.origin, item.key, item.value, item.last_modified,
+                         item.interpretation, item.profile, item.source_path, item.seq, item.state))
 
                 if item.row_type.startswith('file system'):
                     c.execute(
-                        'INSERT INTO storage (type, origin, key, value, modification_time, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
-                        (item.row_type, item.origin, item.key, item.value, item.last_modified, item.interpretation,
-                         item.profile))
+                        'INSERT INTO storage (type, origin, key, value, modification_time, '
+                        'interpretation, profile, source_path, seq, state, file_exists, file_size, '
+                        'magic_results) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, item.origin, item.key, item.value, item.last_modified,
+                         item.interpretation, item.profile, item.source_path, item.seq, item.state,
+                         item.file_exists, item.file_size, item.magic_results))
 
             if self.__dict__.get('installed_extensions'):
                 for extension in self.installed_extensions['data']:
