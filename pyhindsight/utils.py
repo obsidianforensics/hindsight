@@ -159,7 +159,7 @@ def get_ldb_records(ldb_path, prefix=''):
     try:
         db = ccl_leveldb.RawLevelDb(ldb_path)
     except Exception as e:
-        log.warning(f' - Couldn\'t open {ldb_path} as LevelDB; {e}')
+        log.warning(f' - Could not open {ldb_path} as LevelDB; {e}')
         return []
 
     cleaned_records = []
@@ -177,6 +177,7 @@ def get_ldb_records(ldb_path, prefix=''):
 
             cleaned_records.append(cleaned_record)
 
+    db.close()
     return cleaned_records
 
 
@@ -234,7 +235,7 @@ banner = '''
                   | | | | | | | | (_| \__ \ | (_| | | | | |_
                   |_| |_|_|_| |_|\__,_|___/_|\__, |_| |_|\__|
                                               __/ |
-                        by @_RyanBenson      |___/   v{}
+                        by @_RyanBenson      |___/ v{}
 
 ################################################################################
 '''.format(__version__)

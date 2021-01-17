@@ -790,15 +790,15 @@ class AnalysisSession(object):
                         w.write_string(row_number, 2, item.url, gray_url_format)  # URL
                     except Exception as e:
                         print(e, item.url, item.location)
-                    w.write_string(row_number, 3, str(item.name), gray_field_format)  # cached status // Normal (data cached)
-                    w.write_string(row_number, 4, item.value, gray_value_format)  # content-type (size) // image/jpeg (2035 bytes)
+                    w.write_string(row_number, 3, str(item.name), gray_field_format)  # status // Normal (data cached)
+                    w.write_string(row_number, 4, item.value, gray_value_format)  # type (size) // image/jpeg (35 bytes)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
                     w.write(row_number, 16, item.etag, gray_value_format)  # ETag
                     w.write(row_number, 17, item.last_modified, gray_value_format)  # Last Modified
                     w.write(row_number, 18, item.server_name, gray_value_format)  # Server name
-                    w.write(row_number, 19, item.location, gray_value_format)  # Cached data location // data_2 [1542523]
-                    w.write(row_number, 20, item.http_headers_str, gray_value_format)  # Cached data location // data_2 [1542523]
+                    w.write(row_number, 19, item.location, gray_value_format)  # data location // data_2 [1542523]
+                    w.write(row_number, 20, item.http_headers_str, gray_value_format) # headers
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type

@@ -274,7 +274,7 @@ class Chrome(WebBrowser):
         while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
-        if compatible_version is not 0:
+        if compatible_version != 0:
             log.info(f' - Using SQL query for History items for Chrome {compatible_version}')
             try:
                 # Copy and connect to copy of 'History' SQLite DB
@@ -344,7 +344,7 @@ class Chrome(WebBrowser):
         while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
-        if compatible_version is not 0:
+        if compatible_version != 0:
             log.info(f' - Using SQL query for Media History items for Chrome {compatible_version}')
             try:
                 # Copy and connect to copy of 'Media History' SQLite DB
@@ -430,7 +430,7 @@ class Chrome(WebBrowser):
         while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
-        if compatible_version is not 0:
+        if compatible_version != 0:
             log.info(f' - Using SQL query for Download items for Chrome v{compatible_version}')
             try:
                 # Copy and connect to copy of 'History' SQLite DB
@@ -517,13 +517,13 @@ class Chrome(WebBrowser):
         if encrypted_value is not None:
             if len(encrypted_value) >= 2:
                 # If running Chrome on Windows
-                if sys.platform == 'win32' and self.available_decrypts['windows'] is 1:
+                if sys.platform == 'win32' and self.available_decrypts['windows'] == 1:
                     try:
                         decrypted_value = win32crypt.CryptUnprotectData(encrypted_value, None, None, None, 0)[1]
                     except:
                         decrypted_value = "<encrypted>"
                 # If running Chrome on OSX
-                elif sys.platform == 'darwin' and self.available_decrypts['mac'] is 1:
+                elif sys.platform == 'darwin' and self.available_decrypts['mac'] == 1:
                     try:
                         if not self.cached_key:
                             my_pass = keyring.get_password('Chrome Safe Storage', 'Chrome')
@@ -538,7 +538,7 @@ class Chrome(WebBrowser):
 
                 # If running Chromium on Linux.
                 # Unlike Win/Mac, we can decrypt Linux cookies without the user's pw
-                if decrypted_value is "<encrypted>" and self.available_decrypts['linux'] is 1:
+                if decrypted_value == "<encrypted>" and self.available_decrypts['linux'] == 1:
                     try:
                         if not self.cached_key:
                             my_pass = 'peanuts'
@@ -583,7 +583,7 @@ class Chrome(WebBrowser):
         while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
-        if compatible_version is not 0:
+        if compatible_version != 0:
             log.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
             try:
                 # Copy and connect to copy of 'Cookies' SQLite DB
@@ -664,7 +664,7 @@ class Chrome(WebBrowser):
         while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
-        if compatible_version is not 0:
+        if compatible_version != 0:
             log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
 
             # Copy and connect to copy of 'Login Data' SQLite DB
@@ -708,7 +708,7 @@ class Chrome(WebBrowser):
                         username_row.row_type = 'login (username)'
                         results.append(username_row)
 
-                if row.get('password_value') is not None and self.available_decrypts['windows'] is 1:
+                if row.get('password_value') is not None and self.available_decrypts['windows'] == 1:
                     try:
                         # Windows is all I've had time to test; Ubuntu uses built-in password manager
                         password = win32crypt.CryptUnprotectData(
@@ -734,7 +734,7 @@ class Chrome(WebBrowser):
             while compatible_version not in list(query.keys()) and compatible_version > 0:
                 compatible_version -= 1
 
-            if compatible_version is not 0:
+            if compatible_version != 0:
                 log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
 
                 # Copy and connect to copy of 'Login Data' SQLite DB
@@ -779,7 +779,7 @@ class Chrome(WebBrowser):
         while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
 
-        if compatible_version is not 0:
+        if compatible_version != 0:
             log.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
             try:
                 # Copy and connect to copy of 'Web Data' SQLite DB
@@ -1420,7 +1420,7 @@ class Chrome(WebBrowser):
                                     prefs['profile']['content_settings']['exceptions']['sound'].items():
                                 if pref_data.get('last_modified'):
                                     interpretation = ''
-                                    if pref_data.get('setting') is 2:
+                                    if pref_data.get('setting') == 2:
                                         interpretation = 'Muted site'
                                     pref_item = Chrome.PreferenceItem(
                                         self.profile_path, url=origin, 
