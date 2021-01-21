@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+set -e
 
 # Install
 if [ "$1" = "-u" ] || [ "$1" = "--update" ]; then
