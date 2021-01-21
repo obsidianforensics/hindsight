@@ -115,11 +115,9 @@ def to_datetime(timestamp, timezone=None):
         elif 13800000000 > timestamp >= 12900000000:  # 2038 > ts > 2009
             # Webkit seconds
             new_timestamp = datetime.datetime.utcfromtimestamp(timestamp - 11644473600)
-        elif 1900000000 > timestamp >= 1380000000:  # 2030 > ts > 2013
+        else:
             # Epoch
             new_timestamp = datetime.datetime.utcfromtimestamp(timestamp)
-        else:
-            new_timestamp = datetime.datetime.utcfromtimestamp(0)
 
         if timezone is not None:
             try:
