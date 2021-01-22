@@ -2263,7 +2263,7 @@ class Chrome(WebBrowser):
                 4:    'IE (Imported)',
                 5:    'Safari (Imported)',
                 6:    'Chrome/Edge (Imported)',                
-                7:    'EdgeHTML(Imported)'}
+                7:    'EdgeHTML (Imported)'}
 
             raw = self.visit_source
 
