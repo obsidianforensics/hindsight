@@ -177,7 +177,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'Not a time'
             item['data_type'] = 'chrome:local_storage:entry'
             item['source_long'] = 'Chrome LocalStorage'
-            item['url'] = item['url'][1:]
+            item['url'] = item['origin'][1:]
 
             item['message'] = 'key: {} value: {}'.format(
                 item['key'], item['value'])
