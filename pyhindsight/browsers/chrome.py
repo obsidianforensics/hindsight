@@ -2261,7 +2261,9 @@ class Chrome(WebBrowser):
                 2:    'Added by Extension',   # Added by an extension.
                 3:    'Firefox (Imported)',
                 4:    'IE (Imported)',
-                5:    'Safari (Imported)'}
+                5:    'Safari (Imported)',
+                6:    'Chrome/Edge (Imported)',                
+                7:    'EdgeHTML (Imported)'}
 
             raw = self.visit_source
 
