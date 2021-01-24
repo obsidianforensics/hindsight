@@ -18,9 +18,9 @@ class TestGetHistory(unittest.TestCase):
 
         for config in test_config:
             with self.subTest(config):
-                test_instance = Chrome(os.path.join('tests', 'fixtures', 'profiles', '{:02d}'.format(config['version'][0])), version=config['version'])
+                test_instance = Chrome(os.path.join('tests', 'fixtures', 'profiles', '{:02d}'.format(config['version'][0])), version=config['version'], no_copy=True)
 
-                Chrome.get_history(test_instance, test_instance.profile_path, 'History', test_instance.version, 'url')
+                test_instance.get_history(test_instance.profile_path, 'History', test_instance.version, 'url')
 
                 # Total number of records parsed; make sure we aren't dropping/adding any
                 self.assertEqual(len(test_instance.parsed_artifacts), config['record_count'])
