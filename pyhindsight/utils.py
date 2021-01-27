@@ -106,17 +106,20 @@ def to_datetime(timestamp, timezone=None):
         except:
             timestamp = 0
 
-        if 13700000000000000 > timestamp > 12000000000000000:  # 2035 > ts > 1981
-            # Webkit
+        # Webkit microseconds (17 digits)
+        if timestamp > 12000000000000000:  # ts > 1981
             new_timestamp = datetime.datetime.utcfromtimestamp((timestamp / 1000000) - 11644473600)
-        elif 1900000000000 > timestamp > 1380000000000:  # 2030 > ts > 2013
-            # Epoch milliseconds
+
+        # Epoch milliseconds (13 digits)
+        elif 2500000000000 > timestamp > 1280000000000:  # 2049 > ts > 2010
             new_timestamp = datetime.datetime.utcfromtimestamp(timestamp / 1000)
-        elif 13800000000 > timestamp >= 12900000000:  # 2038 > ts > 2009
-            # Webkit seconds
+
+        # Webkit seconds (11 digits)
+        elif 15000000000 > timestamp >= 12900000000:  # 2076 > ts > 2009
             new_timestamp = datetime.datetime.utcfromtimestamp(timestamp - 11644473600)
+
+        # Epoch seconds (10 digits typically, but could be less)
         else:
-            # Epoch
             new_timestamp = datetime.datetime.utcfromtimestamp(timestamp)
 
         if timezone is not None:
@@ -127,7 +130,7 @@ def to_datetime(timestamp, timezone=None):
         else:
             return new_timestamp
     except Exception as e:
-        print(e)
+        log.warning(f'Exception parsing {timestamp} to datetime: {e}')
 
 
 def friendly_date(timestamp):
