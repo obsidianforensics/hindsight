@@ -77,24 +77,6 @@ class MyEncoder(json.JSONEncoder):
             return obj.__dict__
 
 
-def to_epoch(timestamp):
-    try:
-        timestamp = float(timestamp)
-    except:
-        return 0
-    if timestamp > 99999999999999:
-        # Webkit
-        return (float(timestamp) / 1000000) - 11644473600
-    elif timestamp > 99999999999:
-        # Epoch milliseconds
-        return float(timestamp) / 1000
-    elif timestamp >= 0:
-        # Epoch
-        return float(timestamp)
-    else:
-        return 0
-
-
 def to_datetime(timestamp, timezone=None):
     """Convert a variety of timestamp formats to a datetime object."""
 
@@ -103,11 +85,18 @@ def to_datetime(timestamp, timezone=None):
             return timestamp
         try:
             timestamp = float(timestamp)
-        except:
-            timestamp = 0
+        except Exception as e:
+            log.warning(f'Exception parsing {timestamp} to datetime: {e}')
+            return datetime.datetime.fromtimestamp(0)
+
+        # Really big Webkit microseconds (17-8 digits), most often cookie expiry dates.
+        # Microsecond timestamps past 2038 can be problematic with datetime.utcfromtimestamp(timestamp).
+        if timestamp > 13700000000000000:
+            new_timestamp = datetime.datetime.fromtimestamp(0) \
+                            + datetime.timedelta(seconds=(timestamp / 1000000) - 11644473600)
 
         # Webkit microseconds (17 digits)
-        if timestamp > 12000000000000000:  # ts > 1981
+        elif timestamp > 12000000000000000:  # ts > 1981
             new_timestamp = datetime.datetime.utcfromtimestamp((timestamp / 1000000) - 11644473600)
 
         # Epoch milliseconds (13 digits)
@@ -131,6 +120,7 @@ def to_datetime(timestamp, timezone=None):
             return new_timestamp
     except Exception as e:
         log.warning(f'Exception parsing {timestamp} to datetime: {e}')
+        return datetime.datetime.fromtimestamp(0)
 
 
 def friendly_date(timestamp):
