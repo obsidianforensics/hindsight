@@ -793,12 +793,18 @@ class Chrome(WebBrowser):
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
-                    results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                                                       row.get('name'), row.get('value'), row.get('count')))
+                    autofill_value = row.get('value')
+                    if isinstance(autofill_value, bytes):
+                        autofill_value = '<encrypted>'
+
+                    results.append(Chrome.AutofillItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        row.get('name'), autofill_value, row.get('count')))
 
                     if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(Chrome.AutofillItem(self.profile_path, utils.to_datetime(row.get('date_last_used'),
-                                                           self.timezone), row.get('name'), row.get('value'), row.get('count')))
+                        results.append(Chrome.AutofillItem(
+                            self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
+                            row.get('name'), autofill_value, row.get('count')))
 
                 conn.close()
                 self.artifacts_counts['Autofill'] = len(results)
