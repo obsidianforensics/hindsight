@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import sqlite3
 import os
 import sys
 import errno
@@ -248,23 +247,28 @@ class Chrome(WebBrowser):
         query = {59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
                             visits.transition, visit_source.source
-                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                        FROM urls JOIN visits 
+                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
                             visits.transition, visit_source.source
-                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                        FROM urls JOIN visits 
+                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  29: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.is_indexed
-                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                        FROM urls JOIN visits 
+                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  20: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.is_indexed
-                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                        FROM urls JOIN visits 
+                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  7:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
                             visit_source.source
-                        FROM urls JOIN visits ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                        FROM urls JOIN visits 
+                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  1:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
                         FROM urls, visits WHERE urls.id = visits.url'''}
@@ -404,7 +408,7 @@ class Chrome(WebBrowser):
         # Set up empty return array
         results = []
 
-        log.info("Download items from {}:".format(database))
+        log.info(f'Download items from {database}:')
 
         # Queries for different versions
         query = {30: '''SELECT downloads.id, downloads_url_chains.url, downloads.received_bytes, downloads.total_bytes,
@@ -473,7 +477,7 @@ class Chrome(WebBrowser):
                         new_row.value = new_row.target_path
                     else:
                         new_row.value = 'Error retrieving download location'
-                        log.error(" - Error retrieving download location for download '{}'".format(new_row.url))
+                        log.error(f' - Error retrieving download location for download "{new_row.url}"')
 
                     new_row.row_type = row_type
                     results.append(new_row)
@@ -481,12 +485,12 @@ class Chrome(WebBrowser):
                 conn.close()
 
                 self.artifacts_counts[database + '_downloads'] = len(results)
-                log.info(" - Parsed {} items".format(len(results)))
+                log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
 
             except IOError:
                 self.artifacts_counts[database + '_downloads'] = 'Failed'
-                log.error(" - Couldn't open {}".format(os.path.join(path, database)))
+                log.error(f' - Couldn\'t open {os.path.join(path, database)}')
 
     def decrypt_cookie(self, encrypted_value):
         """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
@@ -554,7 +558,7 @@ class Chrome(WebBrowser):
         # Set up empty return array
         results = []
 
-        log.info("Cookie items from {}:".format(database))
+        log.info(f'Cookie items from {database}:')
 
         # Queries for different versions
         query = {66: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
@@ -584,7 +588,7 @@ class Chrome(WebBrowser):
             compatible_version -= 1
 
         if compatible_version != 0:
-            log.info(" - Using SQL query for Cookie items for Chrome v{}".format(compatible_version))
+            log.info(f' - Using SQL query for Cookie items for Chrome v{compatible_version}')
             try:
                 # Copy and connect to copy of 'Cookies' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
@@ -605,20 +609,19 @@ class Chrome(WebBrowser):
                     else:
                         cookie_value = row.get('value')
 
-                    new_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'), row.get('name'),
-                                                cookie_value, utils.to_datetime(row.get('creation_utc'), self.timezone),
-                                                utils.to_datetime(row.get('last_access_utc'), self.timezone),
-                                                row.get('secure'), row.get('httponly'), row.get('persistent'),
-                                                row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
-                                                row.get('priority'))
+                    new_row = Chrome.CookieItem(
+                        self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                        utils.to_datetime(row.get('creation_utc'), self.timezone),
+                        utils.to_datetime(row.get('last_access_utc'), self.timezone), row.get('secure'),
+                        row.get('httponly'), row.get('persistent'), row.get('has_expires'),
+                        utils.to_datetime(row.get('expires_utc'), self.timezone), row.get('priority'))
 
-                    accessed_row = Chrome.CookieItem(self.profile_path, row.get('host_key'), row.get('path'),
-                                                     row.get('name'), cookie_value,
-                                                     utils.to_datetime(row.get('creation_utc'), self.timezone),
-                                                     utils.to_datetime(row.get('last_access_utc'), self.timezone),
-                                                     row.get('secure'), row.get('httponly'), row.get('persistent'),
-                                                     row.get('has_expires'), utils.to_datetime(row.get('expires_utc'), self.timezone),
-                                                     row.get('priority'))
+                    accessed_row = Chrome.CookieItem(
+                        self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                        utils.to_datetime(row.get('creation_utc'), self.timezone),
+                        utils.to_datetime(row.get('last_access_utc'), self.timezone), row.get('secure'),
+                        row.get('httponly'), row.get('persistent'), row.get('has_expires'),
+                        utils.to_datetime(row.get('expires_utc'), self.timezone), row.get('priority'))
 
                     new_row.url = (new_row.host_key + new_row.path)
                     accessed_row.url = (accessed_row.host_key + accessed_row.path)
@@ -637,12 +640,12 @@ class Chrome(WebBrowser):
 
                 conn.close()
                 self.artifacts_counts[database] = len(results)
-                log.info(" - Parsed {} items".format(len(results)))
+                log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
 
             except Exception as e:
                 self.artifacts_counts[database] = 'Failed'
-                log.error(" - Couldn't open {}".format(os.path.join(path, database)))
+                log.error(f' - Could not open {os.path.join(path, database)}')
 
     def get_login_data(self, path, database, version):
         # Set up empty return array
@@ -766,7 +769,7 @@ class Chrome(WebBrowser):
         # Set up empty return array
         results = []
 
-        log.info("Autofill items from {}:".format(database))
+        log.info(f'Autofill items from {database}:')
 
         # Queries for different versions
         query = {35: '''SELECT autofill.date_created, autofill.date_last_used, autofill.name, autofill.value,
@@ -780,7 +783,7 @@ class Chrome(WebBrowser):
             compatible_version -= 1
 
         if compatible_version != 0:
-            log.info(" - Using SQL query for Autofill items for Chrome v{}".format(compatible_version))
+            log.info(f' - Using SQL query for Autofill items for Chrome v{compatible_version}')
             try:
                 # Copy and connect to copy of 'Web Data' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
@@ -808,18 +811,18 @@ class Chrome(WebBrowser):
 
                 conn.close()
                 self.artifacts_counts['Autofill'] = len(results)
-                log.info(" - Parsed {} items".format(len(results)))
+                log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
 
             except Exception as e:
                 self.artifacts_counts['Autofill'] = 'Failed'
-                log.error(" - Couldn't open {}: {}".format(os.path.join(path, database), e))
+                log.error(f' - Could not open {os.path.join(path, database)}: {e}')
 
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
         results = []
 
-        log.info("Bookmark items from {}:".format(file))
+        log.info(f'Bookmark items from {file}:')
 
         # Connect to 'Bookmarks' JSON file
         bookmarks_path = os.path.join(path, file)
@@ -828,19 +831,22 @@ class Chrome(WebBrowser):
             with open(bookmarks_path, encoding='utf-8', errors='replace') as f:
                 decoded_json = json.loads(f.read())
 
-            log.info(" - Reading from file '{}'".format(bookmarks_path))
+            log.info(f' - Reading from file "{bookmarks_path}"')
 
             # TODO: sync_id
             def process_bookmark_children(parent, children):
                 for child in children:
-                    if child["type"] == "url":
-                        results.append(Chrome.BookmarkItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
-                                                           child["name"], child["url"], parent))
-                    elif child["type"] == "folder":
-                        new_parent = parent + " > " + child["name"]
-                        results.append(Chrome.BookmarkFolderItem(self.profile_path, utils.to_datetime(child["date_added"], self.timezone),
-                                                                 child["date_modified"], child["name"], parent))
-                        process_bookmark_children(new_parent, child["children"])
+                    if child['type'] == 'url':
+                        results.append(Chrome.BookmarkItem(
+                            self.profile_path, utils.to_datetime(child['date_added'], self.timezone),
+                            child['name'], child['url'], parent))
+                        
+                    elif child['type'] == 'folder':
+                        new_parent = parent + ' > ' + child['name']
+                        results.append(Chrome.BookmarkFolderItem(
+                            self.profile_path, utils.to_datetime(child['date_added'], self.timezone),
+                            child['date_modified'], child['name'], parent))
+                        process_bookmark_children(new_parent, child['children'])
 
             for top_level_folder in list(decoded_json['roots'].keys()):
                 if top_level_folder == 'synced':
@@ -853,11 +859,11 @@ class Chrome(WebBrowser):
                                                   decoded_json['roots'][top_level_folder]['children'])
 
             self.artifacts_counts['Bookmarks'] = len(results)
-            log.info(" - Parsed {} items".format(len(results)))
+            log.info(f' - Parsed {len(results)} items')
             self.parsed_artifacts.extend(results)
 
         except:
-            log.error(" - Error parsing '{}'".format(bookmarks_path))
+            log.error(f' - Error parsing "{bookmarks_path}"')
             self.artifacts_counts['Bookmarks'] = 'Failed'
             return
 
@@ -1034,7 +1040,7 @@ class Chrome(WebBrowser):
                 pass
 
         self.artifacts_counts['Extensions'] = len(results)
-        log.info(' - Parsed {} items'.format(len(results)))
+        log.info(f' - Parsed {len(results)} items')
         presentation = {'title': 'Installed Extensions',
                         'columns': [
                             {'display_name': 'Extension Name',
@@ -2346,26 +2352,28 @@ class Chrome(WebBrowser):
                 self.interrupt_reason_friendly = None
             else:
                 self.interrupt_reason_friendly = '[Error - Unknown Interrupt Code]'
-                log.error(" - Error decoding interrupt code for download '{}'".format(self.url))
+                log.error(f' - Error decoding interrupt code for download "{self.url}"')
 
         def decode_danger_type(self):
             # from download_danger_type.h on Chromium site
             dangers = {
                 0: 'Not Dangerous',                 # The download is safe.
-                1: 'Dangerous',                     # A dangerous file to the system (e.g.: a pdf or extension from places
+                1: 'Dangerous',                     # A dangerous file to the system (eg: a pdf or extension from places
                                                     #  other than gallery).
-                2: 'Dangerous URL',                 # SafeBrowsing download service shows this URL leads to malicious file
-                                                    #  download.
+                2: 'Dangerous URL',                 # Safe Browsing download service shows this URL leads to malicious
+                                                    #  file download.
                 3: 'Dangerous Content',             # SafeBrowsing download service shows this file content as being
                                                     #  malicious.
-                4: 'Content May Be Malicious',      # The content of this download may be malicious (e.g., extension is exe
-                                                    #  but SafeBrowsing has not finished checking the content).
-                5: 'Uncommon Content',              # SafeBrowsing download service checked the contents of the download,
-                                                    #  but didn't have enough data to determine whether it was malicious.
+                4: 'Content May Be Malicious',      # The content of this download may be malicious (eg: extension is
+                                                    #  exe but Safe Browsing has not finished checking the content).
+                5: 'Uncommon Content',              # Safe Browsing download service checked the contents of the
+                                                    #  download, but didn't have enough data to determine whether 
+                                                    #  it was malicious.
                 6: 'Dangerous But User Validated',  # The download was evaluated to be one of the other types of danger,
                                                     #  but the user told us to go ahead anyway.
-                7: 'Dangerous Host',                # SafeBrowsing download service checked the contents of the download
-                                                    #  and didn't have data on this specific file, but the file was served
+                7: 'Dangerous Host',                # Safe Browsing download service checked the contents of the
+                                                    #  download and didn't have data on this specific file, 
+                                                    #  but the file was served
                                                     #  from a host known to serve mostly malicious content.
                 8: 'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
                                                     #  settings
@@ -2377,22 +2385,22 @@ class Chrome(WebBrowser):
                 self.danger_type_friendly = None
             else:
                 self.danger_type_friendly = '[Error - Unknown Danger Code]'
-                log.error(" - Error decoding danger code for download '{}'".format(self.url))
+                log.error(f' - Error decoding danger code for download "{self.url}"')
 
         def decode_download_state(self):
             # from download_item.h on Chromium site
             states = {
-                0: "In Progress",   # Download is actively progressing.
-                1: "Complete",      # Download is completely finished.
-                2: "Cancelled",     # Download has been cancelled.
-                3: "Interrupted",   # '3' was the old "Interrupted" code until a bugfix in Chrome v22. 22+ it's '4'
-                4: "Interrupted"}   # This state indicates that the download has been interrupted.
+                0: 'In Progress',   # Download is actively progressing.
+                1: 'Complete',      # Download is completely finished.
+                2: 'Cancelled',     # Download has been cancelled.
+                3: 'Interrupted',   # '3' was the old 'Interrupted' code until a bugfix in Chrome v22. 22+ it's '4'
+                4: 'Interrupted'}   # This state indicates that the download has been interrupted.
 
             if self.state in list(states.keys()):
                 self.state_friendly = states[self.state]
             else:
-                self.state_friendly = "[Error - Unknown State]"
-                log.error(" - Error decoding download state for download '{}'".format(self.url))
+                self.state_friendly = '[Error - Unknown State]'
+                log.error(f' - Error decoding download state for download "{self.url}"')
 
         def create_friendly_status(self):
             try:

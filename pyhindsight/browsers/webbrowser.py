@@ -1,5 +1,4 @@
 import sqlite3
-import os
 import sys
 import logging
 from pyhindsight import utils
@@ -83,7 +82,7 @@ class WebBrowser(object):
                       "Chrome installation while it is running.  Please close Chrome and try again.")
                 sys.exit(1)
             except:
-                log.error(f' - Couldn\'t query {database} in {path}')
+                log.error(f' - Could not query {database} in {path}')
                 return
 
             # For each table, find all the columns in it

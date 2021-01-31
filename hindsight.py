@@ -24,29 +24,29 @@ import time
 try:
     import pytz
 except ImportError:
-    print(f'Couldn\'t import module \'pytz\'; all timestamps in XLSX output '
+    print(f'Could not import module \'pytz\'; all timestamps in XLSX output '
           f'will be in examiner local time ({time.tzname[time.daylight]}).')
 
 
 def parse_arguments(analysis_session):
-    description = '''
-Hindsight v{} - Internet history forensics for Google Chrome/Chromium.
+    description = f'''
+Hindsight v{pyhindsight.__version__} - Internet history forensics for Google Chrome/Chromium.
 
 This script parses the files in the Chrome/Chromium/Brave data folder, runs various plugins
-   against the data, and then outputs the results in a spreadsheet. '''.format(pyhindsight.__version__)
+   against the data, and then outputs the results in a spreadsheet. '''
 
-    epi = '''
-Example:  C:\\hindsight.py -i "C:\\Users\Ryan\AppData\Local\Google\Chrome\\User Data\Default" -o test_case
+    epi = r'''
+Example:  C:\hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
 
 The Chrome data folder default locations are:
         WinXP: <userdir>\Local Settings\Application Data\Google\Chrome
-                \\User Data\Default\\
- Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\\User Data\Default\\
+                \User Data\Default\
+ Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\\User Data\Default\
         Linux: <userdir>/.config/google-chrome/Default/
          OS X: <userdir>/Library/Application Support/Google/Chrome/Default/
           iOS: \Applications\com.google.chrome.ios\Library\Application Support
-                \Google\Chrome\Default\\
-  Chromium OS: \home\\user\<GUID>\\
+                \Google\Chrome\Default\
+  Chromium OS: \home\user\<GUID>\
     '''
 
     class MyParser(argparse.ArgumentParser):
@@ -60,7 +60,9 @@ The Chrome data folder default locations are:
         description=description,
         epilog=epi)
 
-    parser.add_argument('-i', '--input', help='Path to the Chrome(ium) profile directory (typically "Default")', required=True)
+    parser.add_argument('-i', '--input', required=True,
+                        help='Path to the Chrome(ium) profile directory (typically "Default"). If a higher-level '
+                             'directory is specified instead, Hindsight will recursively search for profiles.', )
     parser.add_argument('-o', '--output', help='Name of the output file (without extension)')
     parser.add_argument('-b', '--browser_type', help='Type of input files', default='Chrome',
                         choices=['Chrome', 'Brave'])
@@ -74,10 +76,10 @@ The Chrome data folder default locations are:
                              'buggy and enabling this may cause problems. Only use "--decrypt linux" on data from a '
                              'Linux system, and only use "--decrypt mac" when running Hindsight on the same Mac the '
                              'Chrome data is from.')
-    parser.add_argument('-c', '--cache', help='Path to the cache directory; only needed if the directory is outside '
-                                              'the given "input" directory. Mac systems are set up this way by default. '
-                                              'On a Mac, the default cache directory location for Chrome is '
-                                              '<userdir>/Library/Caches/Google/Chrome/Default/Cache/')
+    parser.add_argument('-c', '--cache',
+                        help='Path to the cache directory; only needed if the directory is outside the given "input" '
+                             'directory. Mac systems are set up this way by default. On a Mac, the default cache '
+                             'directory location for Chrome is <userdir>/Library/Caches/Google/Chrome/Default/Cache/')
     parser.add_argument('--nocopy', '--no_copy', help='Don\'t copy files before opening them; this might run faster, '
                                                       'but some locked files may be inaccessible', action='store_true')
     parser.add_argument('--temp_dir', default='hindsight-temp',
@@ -191,8 +193,9 @@ def main():
 
     # Hindsight version info
     log.info(
-        '\n' + '#' * 80 + '\n###    Hindsight v{} (https://github.com/obsidianforensics/hindsight)    ###\n'
-        .format(pyhindsight.__version__) + '#' * 80)
+        '\n' + '#' * 80 +
+        f'\n###    Hindsight v{pyhindsight.__version__} (https://github.com/obsidianforensics/hindsight)    ###\n' +
+        '#' * 80)
 
     # Analysis start time
     print((format_meta_output("Start time", str(datetime.datetime.now())[:-3])))
