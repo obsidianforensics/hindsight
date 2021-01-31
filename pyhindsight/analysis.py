@@ -798,7 +798,7 @@ class AnalysisSession(object):
                     w.write(row_number, 17, item.last_modified, gray_value_format)  # Last Modified
                     w.write(row_number, 18, item.server_name, gray_value_format)  # Server name
                     w.write(row_number, 19, item.location, gray_value_format)  # data location // data_2 [1542523]
-                    w.write(row_number, 20, item.http_headers_str, gray_value_format) # headers
+                    w.write(row_number, 20, item.http_headers_str, gray_value_format)  # headers
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1065,7 +1065,7 @@ class AnalysisSession(object):
                         'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
                         'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                        item.interpretation, item.profile))
+                         item.interpretation, item.profile))
 
                 elif item.row_type.startswith('cache'):
                     c.execute(

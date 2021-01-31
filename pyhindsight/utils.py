@@ -71,7 +71,7 @@ class MyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
-        elif isinstance(obj, buffer):
+        elif isinstance(obj, bytes):
             return str(obj, encoding='utf-8', errors='replace')
         else:
             return obj.__dict__
@@ -216,7 +216,7 @@ def read_int64(input_bytes, ptr):
 #     return temp_directory_name
 
 
-banner = '''
+banner = r'''
 ################################################################################
 
                    _     _           _     _       _     _
