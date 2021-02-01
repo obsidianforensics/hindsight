@@ -100,7 +100,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 88))
+        possible_versions = list(range(1, 89))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -166,6 +166,7 @@ class Chrome(WebBrowser):
             log.debug("Analyzing 'Cookies' structure")
             log.debug(f' - Starting possible versions:  {possible_versions}')
             if 'cookies' in list(self.structure['Cookies'].keys()):
+                trim_lesser_versions_if('is_same_party', self.structure['Cookies']['cookies'], 88)
                 trim_lesser_versions_if('source_scheme', self.structure['Cookies']['cookies'], 80)
                 trim_lesser_versions_if('samesite', self.structure['Cookies']['cookies'], 76)
                 trim_lesser_versions_if('is_persistent', self.structure['Cookies']['cookies'], 66)
