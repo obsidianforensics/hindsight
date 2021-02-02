@@ -36,11 +36,11 @@ class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
                  parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None,
                  artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None,
-                 no_copy=None, temp_dir=None):
+                 no_copy=None, temp_dir=None, origin_hashes=None):
         WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
                             timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
                             artifacts_counts=artifacts_counts, artifacts_display=artifacts_display,
-                            preferences=preferences, no_copy=no_copy, temp_dir=temp_dir)
+                            preferences=preferences, no_copy=no_copy, temp_dir=temp_dir, origin_hashes=origin_hashes)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.cache_path = cache_path
@@ -52,6 +52,7 @@ class Chrome(WebBrowser):
         self.preferences = preferences
         self.no_copy = no_copy
         self.temp_dir = temp_dir
+        self.origin_hashes = origin_hashes
 
         if self.version is None:
             self.version = []
@@ -70,6 +71,9 @@ class Chrome(WebBrowser):
 
         if self.preferences is None:
             self.preferences = []
+
+        if self.origin_hashes is None:
+            self.origin_hashes = {}
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
@@ -1970,6 +1974,52 @@ class Chrome(WebBrowser):
         self.artifacts_counts['File System'] = len(result_list)
         self.parsed_storage.extend(result_list)
 
+    def get_site_characteristics(self, path, dir_name):
+        result_list = []
+
+        self.build_hash_list_of_origins()
+
+        log.info('Site Characteristics:')
+        sc_root_path = os.path.join(path, dir_name)
+        log.info(f' - Reading from {sc_root_path}')
+
+        # Grab listing of 'Site Characteristics' directory
+        sc_root_listing = os.listdir(sc_root_path)
+        log.debug(f' - {len(sc_root_listing)} files in Site Characteristics directory: {str(sc_root_listing)}')
+
+        items = utils.get_ldb_records(sc_root_path)
+        for item in items:
+            try:
+                from pyhindsight.lib.site_data_pb2 import SiteDataProto
+
+                if item['key'] == b'database_metadata':
+                    if item['value'] != b'1':
+                        log.warning(f' - Expected type 1; got type {item["value"].encode()}. Trying to parse anyway.')
+                    continue
+
+                raw_proto = item['value']
+
+                # Deleted records won't have a value
+                if raw_proto:
+                    # SiteDataProto built from components/performance_manager/persistence/site_data/site_data.proto
+                    parsed_proto = SiteDataProto.FromString(raw_proto)
+                    last_loaded = parsed_proto.last_loaded
+                else:
+                    parsed_proto = ''
+                    last_loaded = 0
+
+                matched_url = self.origin_hashes.get(item['key'].decode(), f'MD5 of origin: {item["key"].decode()}')
+                result_list.append(Chrome.PreferenceItem(
+                    self.profile_path, url=matched_url, timestamp=utils.to_datetime(last_loaded, self.timezone),
+                    key=f'Status: {item["state"]}', value=str(parsed_proto), interpretation=''))
+
+            except Exception as e:
+                log.exception(f' - Exception parsing SiteDataProto ({item}): {e}')
+
+        log.info(f' - Parsed {len(result_list)} items')
+        self.artifacts_counts['Site Characteristics'] = len(result_list)
+        self.parsed_artifacts.extend(result_list)
+
     def process(self):
         supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies', 'Login Data',
                                'Extension Cookies']
@@ -2145,6 +2195,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['Preferences'],
                 self.artifacts_counts.get('Preferences', '0')))
+
+        if 'Site Characteristics Database' in input_listing:
+            self.get_site_characteristics(self.profile_path, 'Site Characteristics Database')
+            self.artifacts_display['Site Characteristics'] = "Site Characteristics records"
+            print(self.format_processing_output(
+                self.artifacts_display['Site Characteristics'],
+                self.artifacts_counts.get('Site Characteristics', '0')))
 
         if 'File System' in input_listing:
             self.get_file_system(self.profile_path, 'File System')

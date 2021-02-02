@@ -1,6 +1,8 @@
+import hashlib
+import logging
 import sqlite3
 import sys
-import logging
+import urllib.parse
 from pyhindsight import utils
 
 log = logging.getLogger(__name__)
@@ -10,7 +12,7 @@ class WebBrowser(object):
     def __init__(
             self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
             timezone=None, structure=None, parsed_artifacts=None, parsed_storage=None, artifacts_counts=None,
-            artifacts_display=None, preferences=None, no_copy=None, temp_dir=None):
+            artifacts_display=None, preferences=None, no_copy=None, temp_dir=None, origin_hashes=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -25,6 +27,7 @@ class WebBrowser(object):
         self.preferences = preferences
         self.no_copy = no_copy
         self.temp_dir = temp_dir
+        self.origin_hashes = origin_hashes
 
         if self.version is None:
             self.version = []
@@ -43,6 +46,9 @@ class WebBrowser(object):
 
         if self.preferences is None:
             self.preferences = []
+
+        if self.origin_hashes is None:
+            self.origin_hashes = {}
 
     @staticmethod
     def format_processing_output(name, items):
@@ -103,6 +109,14 @@ class WebBrowser(object):
         for idx, col in enumerate(cursor.description):
             d[col[0]] = row[idx]
         return d
+
+    def build_hash_list_of_origins(self):
+        for artifact in self.parsed_artifacts:
+            if isinstance(artifact, self.HistoryItem):
+                domain = urllib.parse.urlparse(artifact.url).hostname
+                # Some URLs don't have a domain, like local PDF files
+                if domain:
+                    self.origin_hashes[hashlib.md5(domain.encode()).hexdigest()] = domain
 
     class HistoryItem(object):
         def __init__(self, item_type, timestamp, profile, url=None, name=None, value=None, interpretation=None):

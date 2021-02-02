@@ -827,6 +827,9 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
+                if friendly_date(item.timestamp) < '1970-01-02':
+                    w.set_row(row_number, options={'hidden': True})
+
             except Exception as e:
                 log.error(f'Failed to write row to XLSX: {e}')
 
@@ -835,6 +838,7 @@ class AnalysisSession(object):
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
         w.autofilter(1, 0, row_number, 19)  # Add autofilter
+        w.filter_column('B', 'Timestamp > 1970-01-02')
 
         s = workbook.add_worksheet('Storage')
         # Title bar
