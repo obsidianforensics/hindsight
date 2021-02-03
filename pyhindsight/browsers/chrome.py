@@ -1308,8 +1308,8 @@ class Chrome(WebBrowser):
         append_group('Per Host Zoom Levels', 'These settings persist even when the history is cleared, and may be '
                                              'useful in some cases.')
 
-        # There are per_host_zoom_levels keys in at least two locations: profile.per_host_zoom_levels and
-        # partition.per_host_zoom_levels.[integer].
+        # There may be per_host_zoom_levels keys in at least two locations: profile.per_host_zoom_levels and
+        # partition.per_host_zoom_levels. The profile location may have been deprecated; unsure.
         if prefs.get('profile'):
             if prefs['profile'].get('per_host_zoom_levels'):
                 try:
@@ -1321,9 +1321,17 @@ class Chrome(WebBrowser):
         if prefs.get('partition'):
             if prefs['partition'].get('per_host_zoom_levels'):
                 try:
-                    for number in list(prefs['partition']['per_host_zoom_levels'].keys()):
-                        for zoom in list(prefs['partition']['per_host_zoom_levels'][number].keys()):
-                            check_and_append_pref(prefs['partition']['per_host_zoom_levels'][number], zoom)
+                    for partition_key, zoom_levels in list(prefs['partition']['per_host_zoom_levels'].items()):
+                        for host, config in zoom_levels.items():
+                            if isinstance(config, float):
+                                append_pref(host, config)
+                            elif isinstance(config, dict):
+                                append_pref(host, config['zoom_level'])
+                                timestamped_preference_items.append(Chrome.PreferenceItem(
+                                    self.profile_path, url=host,
+                                    timestamp=utils.to_datetime(config['last_modified'], self.timezone),
+                                    key=f'per_host_zoom_levels [in {preferences_file}.partition]',
+                                    value=f'Changed zoom level to {config["zoom_level"]}', interpretation=''))
                 except Exception as e:
                     log.exception(f' - Exception parsing Preference item: {e})')
 
