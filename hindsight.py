@@ -11,14 +11,15 @@ import datetime
 import importlib
 import logging
 import os
-import pyhindsight
-import pyhindsight.plugins
-from pyhindsight.analysis import AnalysisSession
-from pyhindsight.utils import banner, format_meta_output, format_plugin_output
 import re
 import shutil
 import sys
 import time
+
+import pyhindsight
+import pyhindsight.plugins
+from pyhindsight.analysis import AnalysisSession
+from pyhindsight.utils import banner, format_meta_output, format_plugin_output
 
 # Try to import module for timezone support
 try:
