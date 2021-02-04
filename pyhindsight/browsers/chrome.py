@@ -374,7 +374,9 @@ class Chrome(WebBrowser):
                 for row in cursor:
                     duration = None
                     if row.get('duration_ms'):
-                        duration = str(datetime.timedelta(milliseconds=row.get('duration_ms')))[:-3]
+                        # Check is duration value is reasonable; some have been equivalent of 300 million years
+                        if row.get('duration_ms') < 2600000:
+                            duration = str(datetime.timedelta(milliseconds=row.get('duration_ms')))[:-3]
 
                     position = None
                     if row.get('position_ms'):
