@@ -155,18 +155,25 @@ def get_ldb_records(ldb_path, prefix=''):
 
     cleaned_records = []
 
-    for record in db.iterate_records_raw():
-        cleaned_record = record.__dict__
+    try:
+        for record in db.iterate_records_raw():
+            cleaned_record = record.__dict__
 
-        if record.file_type.name == 'Ldb':
-            cleaned_record['key'] = record.key[:-8]
+            if record.file_type.name == 'Ldb':
+                cleaned_record['key'] = record.key[:-8]
 
-        if cleaned_record['key'].startswith(prefix):
-            cleaned_record['key'] = cleaned_record['key'][len(prefix):]
-            cleaned_record['state'] = cleaned_record['state'].name
-            cleaned_record['file_type'] = cleaned_record['file_type'].name
+            if cleaned_record['key'].startswith(prefix):
+                cleaned_record['key'] = cleaned_record['key'][len(prefix):]
+                cleaned_record['state'] = cleaned_record['state'].name
+                cleaned_record['file_type'] = cleaned_record['file_type'].name
 
-            cleaned_records.append(cleaned_record)
+                cleaned_records.append(cleaned_record)
+
+    except ValueError:
+        log.warning(f' - Exception reading LevelDB: ValueError')
+
+    except Exception as e:
+        log.warning(f' - Exception reading LevelDB: {e}')
 
     db.close()
     return cleaned_records
