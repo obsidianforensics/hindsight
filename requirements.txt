@@ -7,3 +7,4 @@ bottle>=0.12.18
 setuptools~=51.0.0
 puremagic~=1.10
 argparse~=1.4.0
+dfir-unfurl
