@@ -8,6 +8,11 @@
 ###################################################################################################
 
 from unfurl import core
+import unfurl
+import logging
+# Disable most Unfurl logs, as we're about to shove a lot of garbage at it
+# and don't want to swamp the Hindsight log.
+unfurl.log.setLevel(logging.CRITICAL)
 
 # Config
 friendlyName = "Unfurl"
@@ -16,7 +21,7 @@ artifactTypes = ["local storage"]  # Artifacts that this plugin processes
 remoteLookups = 1  # if this plugin will query online sources/databases
 browser = "Chrome"  # browsers that the plugin applies to
 browserVersion = 1  # browser versions that the plugin applies to
-version = "20210220"  # version of the plugin (use the date)
+version = "20210307"  # version of the plugin (use the date)
 parsedItems = 0  # count of items that the plugin parsed; initialized to 0
 
 
