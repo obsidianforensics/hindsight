@@ -700,7 +700,7 @@ class AnalysisSession(object):
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
-        for item in self.parsed_artifacts:
+        for item in sorted(self.parsed_artifacts):
             try:
                 if item.row_type.startswith("url"):
                     w.write_string(row_number, 0, item.row_type, black_type_format)  # record_type
