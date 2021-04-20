@@ -26,7 +26,7 @@
          % for artifact in display_items:
             <tr class="results-row">
                 <td align="right">{{artifacts_display[artifact]}}:</td>
-                <td align="right">{{artifacts_counts[artifact]}}</td>
+                <td align="right">{{artifacts_counts.get(artifact, 0)}}</td>
                 <td width=10%></td>
             </tr>
          % end
