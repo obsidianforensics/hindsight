@@ -104,7 +104,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 89))
+        possible_versions = list(range(1, 91))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -222,6 +222,8 @@ class Chrome(WebBrowser):
                 trim_lesser_versions(80)
             if 'compromised_credentials' in list(self.structure['Login Data'].keys()):
                 trim_lesser_versions(83)
+            if 'insecure_credentials' in list(self.structure['Login Data'].keys()):
+                trim_lesser_versions(89)
             log.debug(f' - Finishing possible versions: {possible_versions}')
 
         possible_versions, previous_possible_versions = \
