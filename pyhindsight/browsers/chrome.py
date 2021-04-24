@@ -2238,14 +2238,16 @@ class Chrome(WebBrowser):
                 log.error(f'Exception deleting temporary directory: {e}')
 
     class URLItem(WebBrowser.URLItem):
-        def __init__(self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
-                     transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
-                     transition_friendly=None):
-            WebBrowser.URLItem.__init__(self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time,
-                                        last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
-                                        from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
-                                        indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
-                                        transition_friendly=transition_friendly)
+        def __init__(
+                self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
+                transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
+                transition_friendly=None):
+            WebBrowser.URLItem.__init__(
+                self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time,
+                last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
+                from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
+                indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
+                transition_friendly=transition_friendly)
 
         def decode_transition(self):
             # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
@@ -2299,8 +2301,9 @@ class Chrome(WebBrowser):
                                            #  wikipedia the generated url has a transition qualifer of KEYWORD, and
                                            #  TemplateURLModel generates a visit for 'wikipedia.org' with a transition
                                            #  type of KEYWORD_GENERATED.
-                10: 'keyword generated'}   # Corresponds to a visit generated for a keyword. See description of
+                10: 'keyword generated'    # Corresponds to a visit generated for a keyword. See description of
                                            #  KEYWORD for more details.
+            }
 
             qualifiers_friendly = {
                 0x00800000: 'Blocked',                # A managed user attempted to visit a URL but was blocked.
@@ -2308,14 +2311,16 @@ class Chrome(WebBrowser):
                                                       #  history.
                 0x02000000: 'From Address Bar',       # User used the address bar to trigger this navigation.
                 0x04000000: 'Home Page',              # User is navigating to the home page.
-                0x08000000: 'From API',               # The transition originated from an external application; the exact
-                                                      #  definition of this is embedder dependent.
+                0x08000000: 'From API',               # The transition originated from an external application; the
+                                                      #  exact definition of this is embedder dependent.
                 0x10000000: 'Navigation Chain Start', # The beginning of a navigation chain.
                 0x20000000: 'Navigation Chain End',   # The last transition in a redirect chain.
-                0x40000000: 'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page.
-                0x80000000: 'Server Redirect'}        # Redirects sent from the server by HTTP headers. It might be nice to
-                                                      #  break this out into 2 types in the future, permanent or temporary,
-                                                      #  if we can get that information from WebKit.
+                0x40000000: 'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page
+                0x80000000: 'Server Redirect'         # Redirects sent from the server by HTTP headers. It might be nice
+                                                      #  to break this out into 2 types in the future, permanent or
+                                                      #  temporary, if we can get that information from WebKit.
+                }
+
             raw = self.transition
             # If the transition has already been translated to a string, just use that
             if isinstance(raw, str):
@@ -2335,11 +2340,12 @@ class Chrome(WebBrowser):
                     self.transition_friendly += qualifiers_friendly[qualifier] + '; '
 
         def decode_source(self):
-            # https://code.google.com/p/chromium/codesearch#chromium/src/components/history/core/browser/history_types.h
+            # https://source.chromium.org/chromium/chromium/src/+/master:components/history/core/browser/history_types.h
             source_friendly = {
                 0:    'Synced',               # Synchronized from somewhere else.
-                1:    'Local',                # User browsed. In my experience, this value isn't written; it will be null.
-                None: 'Local',                # See https://cs.chromium.org/chromium/src/components/history/core/browser/visit_database.cc
+                1:    'Local',                # User browsed. In my experience, this value isn't written; it will be
+                                              # null. See https://cs.chromium.org/chromium/src/components/history/
+                None: 'Local',                #  core/browser/visit_database.cc
                 2:    'Added by Extension',   # Added by an extension.
                 3:    'Firefox (Imported)',
                 4:    'IE (Imported)',
@@ -2353,17 +2359,18 @@ class Chrome(WebBrowser):
                 self.visit_source = source_friendly[raw]
 
     class DownloadItem(WebBrowser.DownloadItem):
-        def __init__(self, profile, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
-                     end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
-                     interrupt_reason=None, etag=None, last_modified=None, chain_index=None, interrupt_reason_friendly=None,
-                     danger_type_friendly=None, state_friendly=None, status_friendly=None):
-            WebBrowser.DownloadItem.__init__(self, profile, download_id, url, received_bytes, total_bytes, state, full_path=full_path,
-                                             start_time=start_time, end_time=end_time, target_path=target_path,
-                                             current_path=current_path, opened=opened, danger_type=danger_type,
-                                             interrupt_reason=interrupt_reason, etag=etag, last_modified=last_modified,
-                                             chain_index=chain_index, interrupt_reason_friendly=interrupt_reason_friendly,
-                                             danger_type_friendly=danger_type_friendly, state_friendly=state_friendly,
-                                             status_friendly=status_friendly)
+        def __init__(
+                self, profile, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
+                end_time=None, target_path=None, current_path=None, opened=None, danger_type=None,
+                interrupt_reason=None, etag=None, last_modified=None, chain_index=None, interrupt_reason_friendly=None,
+                danger_type_friendly=None, state_friendly=None, status_friendly=None):
+            WebBrowser.DownloadItem.__init__(
+                self, profile, download_id, url, received_bytes, total_bytes, state, full_path=full_path,
+                start_time=start_time, end_time=end_time, target_path=target_path, current_path=current_path,
+                opened=opened, danger_type=danger_type, interrupt_reason=interrupt_reason, etag=etag,
+                last_modified=last_modified, chain_index=chain_index,
+                interrupt_reason_friendly=interrupt_reason_friendly, danger_type_friendly=danger_type_friendly,
+                state_friendly=state_friendly, status_friendly=status_friendly)
 
         def decode_interrupt_reason(self):
             interrupts = {
@@ -2382,8 +2389,8 @@ class Chrome(WebBrowser):
                 11: 'Blocked',                     # The file was blocked due to local policy.
                 12: 'Security Check Failed',       # An attempt to check the safety of the download failed due to
                                                    #  unexpected reasons. See http://crbug.com/153212.
-                13: 'Resume Error',                # An attempt was made to seek past the end of a file in opening a file
-                                                   #  (as part of resuming a previously interrupted download).
+                13: 'Resume Error',                # An attempt was made to seek past the end of a file in opening a
+                                                   #  file (as part of resuming a previously interrupted download).
 
                 # Network errors
                 20: 'Network Error',               # Generic network failure.
@@ -2402,12 +2409,12 @@ class Chrome(WebBrowser):
                 36: 'Server Access Forbidden',     # Server access forbidden.
                 37: 'Server Unreachable',          # Unexpected server response. This might indicate that the responding
                                                    #  server may not be the intended server.
-                38: 'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may indicate
-                                                   #  that the connection was closed prematurely, or the Content-Length header was
-                                                   #  invalid. The download is only interrupted if strong validators are present.
-                                                   #  Otherwise, it is treated as finished.
+                38: 'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may
+                                                   #  indicate that the connection was closed prematurely, or the
+                                                   #  Content-Length header was invalid. The download is only
+                                                   #  interrupted if strong validators are present. Otherwise, it is
+                                                   #  treated as finished.
                 39: 'Cross Origin Redirect',       # An unexpected cross-origin redirect happened.
-
 
                 # User input
                 40: 'Cancelled',                   # The user cancelled the download.
@@ -2447,7 +2454,23 @@ class Chrome(WebBrowser):
                                                     #  from a host known to serve mostly malicious content.
                 8: 'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
                                                     #  settings
-                9: 'Whitelisted by Policy'}         # Download URL whitelisted by enterprise policy.
+                9: 'Allowlisted by Policy',         # Download URL allowed by enterprise policy.
+                10: 'Pending Scan',                 # Download is pending a more detailed verdict.
+                11: 'Blocked - Password Protected', # Download is password protected, and should be blocked according
+                                                    #  to policy.
+                12: 'Blocked - Too Large',          # Download is too large, and should be blocked according to policy.
+                13: 'Warning - Sensitive Content',  # Download deep scanning identified sensitive content, and
+                                                    #  recommended warning the user.
+                14: 'Blocked - Sensitive Content',  # Download deep scanning identified sensitive content, and
+                                                    #  recommended blocking the file.
+                15: 'Safe - Deep Scanned',          # Download deep scanning identified no problems.
+                16: 'Dangerous, but user opened',   # Download deep scanning identified a problem, but the file has
+                                                    #  already been opened by the user.
+                17: 'Prompt for Scanning',          # The user is enrolled in the Advanced Protection Program, and
+                                                    #  the server has recommended this file be deep scanned.
+                18: 'Blocked - Unsupported Type'   # The download has a file type that is unsupported for deep
+                                                    #  scanning, and should be blocked according to policy.
+            }
 
             if self.danger_type in list(dangers.keys()):
                 self.danger_type_friendly = dangers[self.danger_type]
