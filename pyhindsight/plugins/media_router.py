@@ -1,25 +1,25 @@
 ###################################################################################################
 #
-# unfurl_interpretation.py
-#   Run storage values through Unfurl to (hopefully) make some more clear.
+# media_router.py
+#   Parse the Media Router extension logs from Local Storage and add back into Timeline.
 #
 # Plugin Author: Ryan Benson (ryan@dfir.blog)
 #
 ###################################################################################################
 
-import json
 import datetime
+import json
 import pytz
 import re
 
 # Config
 friendlyName = "Media Router"
-description = "Run storage values through Unfurl"
+description = "Parse the Media Router extension logs from Local Storage and add back into Timeline"
 artifactTypes = ["local storage"]  # Artifacts that this plugin processes
 remoteLookups = 1  # if this plugin will query online sources/databases
 browser = "Chrome"  # browsers that the plugin applies to
 browserVersion = 1  # browser versions that the plugin applies to
-version = "20210307"  # version of the plugin (use the date)
+version = "20210425"  # version of the plugin (use the date)
 parsedItems = 0  # count of items that the plugin parsed; initialized to 0
 
 
@@ -36,7 +36,7 @@ def plugin(target_browser):
         if item.row_type not in artifactTypes:
             continue
 
-        # If the item already has an interpretation don't replace it.
+        # Only look at items from the Media Router extension
         if item.origin != 'chrome-extension://pkedcjkdefgpdelpbcmbmeomcjbeemfm':
             continue
 
