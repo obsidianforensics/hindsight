@@ -12,7 +12,10 @@ import unfurl
 import logging
 # Disable most Unfurl logs, as we're about to shove a lot of garbage at it
 # and don't want to swamp the Hindsight log.
-unfurl.log.setLevel(logging.CRITICAL)
+try:
+    unfurl.log.setLevel(logging.CRITICAL)
+except Exception:
+    pass
 
 # Config
 friendlyName = "Unfurl"
