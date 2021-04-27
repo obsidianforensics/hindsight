@@ -224,22 +224,25 @@ def main():
         if plugin in completed_plugins:
             continue
 
-        log.debug(" - Loading '{}'".format(plugin))
+        log.debug(f" - Loading '{plugin}'")
         try:
-            module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
+            module = importlib.import_module(f'pyhindsight.plugins.{plugin}')
         except ImportError as e:
-            log.error(" - Error: {}".format(e))
+            log.error(f' - Error: {e}')
             print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
             continue
+        except Exception as e:
+            log.error(f' - Exception in {plugin} plugin: {e}')
+
         try:
-            log.info(" - Running '{}' plugin".format(module.friendlyName))
+            log.info(f" - Running '{module.friendlyName}' plugin")
             parsed_items = module.plugin(analysis_session)
             print((format_plugin_output(module.friendlyName, module.version, parsed_items)))
-            log.info(" - Completed; {}".format(parsed_items))
+            log.info(f' - Completed; {parsed_items}')
             completed_plugins.append(plugin)
         except Exception as e:
             print((format_plugin_output(module.friendlyName, module.version, 'failed')))
-            log.info(" - Failed; {}".format(e))
+            log.info(f' - Failed; {e}')
 
     # Then look for any custom user-provided plugins in a 'plugins' directory
     log.info(" Custom Plugins:")
@@ -275,9 +278,12 @@ def main():
                             try:
                                 module = __import__(plugin)
                             except ImportError as e:
-                                log.error(" - Error: {}".format(e))
+                                log.error(f' - Error: {e}')
                                 print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
                                 continue
+                            except Exception as e:
+                                log.error(f' - Exception in {plugin} plugin: {e}')
+
                             try:
                                 log.info(" - Running '{}' plugin".format(module.friendlyName))
                                 parsed_items = module.plugin(analysis_session)
