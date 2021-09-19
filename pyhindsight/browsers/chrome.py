@@ -1339,11 +1339,13 @@ class Chrome(WebBrowser):
                                 append_pref(host, config)
                             elif isinstance(config, dict):
                                 append_pref(host, config['zoom_level'])
-                                timestamped_preference_items.append(Chrome.PreferenceItem(
+                                timestamped_preference_item = Chrome.SiteSetting(
                                     self.profile_path, url=host,
                                     timestamp=utils.to_datetime(config['last_modified'], self.timezone),
                                     key=f'per_host_zoom_levels [in {preferences_file}.partition]',
-                                    value=f'Changed zoom level to {config["zoom_level"]}', interpretation=''))
+                                    value=f'Changed zoom level to {config["zoom_level"]}', interpretation='')
+                                timestamped_preference_item.row_type += ' (zoom level)'
+                                timestamped_preference_items.append(timestamped_preference_item)
                 except Exception as e:
                     log.exception(f' - Exception parsing Preference item: {e})')
 
@@ -1374,11 +1376,12 @@ class Chrome(WebBrowser):
                             for origin, pref_data in \
                                     prefs['profile']['content_settings']['exceptions']['media_engagement'].items():
                                 if pref_data.get('last_modified'):
-                                    pref_item = Chrome.PreferenceItem(
+                                    pref_item = Chrome.SiteSetting(
                                         self.profile_path, url=origin, 
                                         timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
                                         key=f'media_engagement [in {preferences_file}.profile.content_settings.exceptions]', 
                                         value=str(pref_data), interpretation='')
+                                    pref_item.row_type += ' (engagement)'
                                     timestamped_preference_items.append(pref_item)
                         except Exception as e:
                             log.exception(f' - Exception parsing Preference item: {e})')
@@ -1393,11 +1396,12 @@ class Chrome(WebBrowser):
                             for origin, pref_data in \
                                     prefs['profile']['content_settings']['exceptions']['notifications'].items():
                                 if pref_data.get('last_modified'):
-                                    pref_item = Chrome.PreferenceItem(
+                                    pref_item = Chrome.SiteSetting(
                                         self.profile_path, url=origin, 
                                         timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
                                         key=f'notifications [in {preferences_file}.profile.content_settings.exceptions]', 
                                         value=str(pref_data), interpretation='')
+                                    pref_item.row_type += ' (engagement)'
                                     timestamped_preference_items.append(pref_item)
                         except Exception as e:
                             log.exception(f' - Exception parsing Preference item: {e})')
@@ -1414,11 +1418,12 @@ class Chrome(WebBrowser):
                             for origin, pref_data in \
                                     prefs['profile']['content_settings']['exceptions']['permission_autoblocking_data'].items():
                                 if pref_data.get('last_modified') and pref_data.get('last_modified') != '0':
-                                    pref_item = Chrome.PreferenceItem(
+                                    pref_item = Chrome.SiteSetting(
                                         self.profile_path, url=origin, 
                                         timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
                                         key=f'permission_autoblocking_data [in {preferences_file}.profile.content_settings.exceptions]', 
                                         value=str(pref_data), interpretation='')
+                                    pref_item.row_type += ' (engagement)'
                                     timestamped_preference_items.append(pref_item)
                         except Exception as e:
                             log.exception(f' - Exception parsing Preference item: {e})')
@@ -1437,11 +1442,12 @@ class Chrome(WebBrowser):
                             for origin, pref_data in \
                                     prefs['profile']['content_settings']['exceptions']['site_engagement'].items():
                                 if pref_data.get('last_modified'):
-                                    pref_item = Chrome.PreferenceItem(
+                                    pref_item = Chrome.SiteSetting(
                                         self.profile_path, url=origin, 
                                         timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
                                         key=f'site_engagement [in {preferences_file}.profile.content_settings.exceptions]', 
                                         value=str(pref_data), interpretation='')
+                                    pref_item.row_type += ' (engagement)'
                                     timestamped_preference_items.append(pref_item)
                         except Exception as e:
                             log.exception(f' - Exception parsing Preference item: {e})')
@@ -1459,11 +1465,12 @@ class Chrome(WebBrowser):
                                     interpretation = ''
                                     if pref_data.get('setting') == 2:
                                         interpretation = 'Muted site'
-                                    pref_item = Chrome.PreferenceItem(
+                                    pref_item = Chrome.SiteSetting(
                                         self.profile_path, url=origin, 
                                         timestamp=utils.to_datetime(pref_data['last_modified'], self.timezone),
                                         key=f'sound [in {preferences_file}.profile.content_settings.exceptions]', 
                                         value=str(pref_data), interpretation=interpretation)
+                                    pref_item.row_type += ' (engagement)'
                                     timestamped_preference_items.append(pref_item)
                         except Exception as e:
                             log.exception(f' - Exception parsing Preference item: {e})')
@@ -2029,9 +2036,12 @@ class Chrome(WebBrowser):
                     last_loaded = 0
 
                 matched_url = self.origin_hashes.get(item['key'].decode(), f'MD5 of origin: {item["key"].decode()}')
-                result_list.append(Chrome.PreferenceItem(
+
+                sc_record = Chrome.SiteSetting(
                     self.profile_path, url=matched_url, timestamp=utils.to_datetime(last_loaded, self.timezone),
-                    key=f'Status: {item["state"]}', value=str(parsed_proto), interpretation=''))
+                    key=f'Status: {item["state"]}', value=str(parsed_proto), interpretation='')
+                sc_record.row_type += ' (characteristic)'
+                result_list.append(sc_record)
 
             except Exception as e:
                 log.exception(f' - Exception parsing SiteDataProto ({item}): {e}')
@@ -2112,12 +2122,14 @@ class Chrome(WebBrowser):
                     if item['host'] in self.hsts_hashes:
                         hsts_domain = self.hsts_hashes[item['host']]
                     else:
-                        hsts_domain = f'{item["host"]} (encoded domain)'
+                        hsts_domain = f'Encoded domain: {item["host"]}'
 
-                    result_list.append(Chrome.PreferenceItem(
+                    hsts_record = Chrome.SiteSetting(
                         self.profile_path, url=hsts_domain,
                         timestamp=utils.to_datetime(item['sts_observed'], self.timezone),
-                        key='', value=str(item), interpretation=''))
+                        key='HSTS observed', value=str(item), interpretation='')
+                    hsts_record.row_type += ' (hsts)'
+                    result_list.append(hsts_record)
 
             # Version 1
             elif len(ts_json):
@@ -2127,10 +2139,12 @@ class Chrome(WebBrowser):
                     else:
                         hsts_domain = f'{hashed_domain} (encoded domain)'
 
-                    result_list.append(Chrome.PreferenceItem(
+                    hsts_record = Chrome.SiteSetting(
                         self.profile_path, url=hsts_domain,
                         timestamp=utils.to_datetime(domain_settings['sts_observed'], self.timezone),
-                        key='', value=f'{hashed_domain}: {domain_settings}', interpretation=''))
+                        key='HSTS observed', value=f'{hashed_domain}: {domain_settings}', interpretation='')
+                    hsts_record.row_type += ' (hsts)'
+                    result_list.append(hsts_record)
 
             else:
                 log.warning('Unable to process TransportSecurity file; could not determine version.')

@@ -827,6 +827,15 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
+                elif item.row_type.startswith("site setting"):
+                    w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), blue_date_format)  # date
+                    w.write_string(row_number, 2, item.url, blue_url_format)  # URL
+                    w.write_string(row_number, 3, item.name, blue_field_format)  # form field name
+                    w.write_string(row_number, 4, item.value, blue_value_format)  # username or pw value
+                    w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
+                    w.write(row_number, 6, item.profile, blue_value_format)  # Profile
+
                 if friendly_date(item.timestamp) < '1970-01-02':
                     w.set_row(row_number, options={'hidden': True})
 

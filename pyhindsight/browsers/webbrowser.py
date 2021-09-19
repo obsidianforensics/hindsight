@@ -268,6 +268,17 @@ class WebBrowser(object):
             self.value = value
             self.interpretation = interpretation
 
+    class SiteSetting(HistoryItem):
+        def __init__(self, profile, url, timestamp, key, value, interpretation):
+            super(WebBrowser.SiteSetting, self).__init__(
+                'site setting', timestamp=timestamp, profile=profile, name=key, value=value)
+            self.profile = profile
+            self.url = url
+            self.timestamp = timestamp
+            self.key = key
+            self.value = value
+            self.interpretation = interpretation
+
     class MediaItem(HistoryItem):
         def __init__(
                 self, profile, url, title, last_updated, position=None, media_duration=None,
