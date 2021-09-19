@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import hashlib
 import os
 import sys
 import errno
@@ -9,6 +10,8 @@ import json
 import logging
 import shutil
 import puremagic
+import urllib
+import base64
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
 
@@ -36,11 +39,12 @@ class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
                  parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None,
                  artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None,
-                 no_copy=None, temp_dir=None, origin_hashes=None):
-        WebBrowser.__init__(self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version,
-                            timezone=timezone, parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage,
-                            artifacts_counts=artifacts_counts, artifacts_display=artifacts_display,
-                            preferences=preferences, no_copy=no_copy, temp_dir=temp_dir, origin_hashes=origin_hashes)
+                 no_copy=None, temp_dir=None, origin_hashes=None, hsts_hashes=None):
+        WebBrowser.__init__(
+            self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version, timezone=timezone,
+            parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage, artifacts_counts=artifacts_counts,
+            artifacts_display=artifacts_display, preferences=preferences, no_copy=no_copy, temp_dir=temp_dir,
+            origin_hashes=origin_hashes)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.cache_path = cache_path
@@ -53,6 +57,7 @@ class Chrome(WebBrowser):
         self.no_copy = no_copy
         self.temp_dir = temp_dir
         self.origin_hashes = origin_hashes
+        self.hsts_hashes = hsts_hashes
 
         if self.version is None:
             self.version = []
@@ -74,6 +79,9 @@ class Chrome(WebBrowser):
 
         if self.origin_hashes is None:
             self.origin_hashes = {}
+
+        if self.hsts_hashes is None:
+            self.hsts_hashes = {}
 
         if self.artifacts_counts is None:
             self.artifacts_counts = {}
@@ -1989,7 +1997,7 @@ class Chrome(WebBrowser):
     def get_site_characteristics(self, path, dir_name):
         result_list = []
 
-        self.build_hash_list_of_origins()
+        self.build_md5_hash_list_of_origins()
 
         log.info('Site Characteristics:')
         sc_root_path = os.path.join(path, dir_name)
@@ -2032,11 +2040,111 @@ class Chrome(WebBrowser):
         self.artifacts_counts['Site Characteristics'] = len(result_list)
         self.parsed_artifacts.extend(result_list)
 
+    def build_hsts_domain_hashes(self):
+        domains = set()
+        for artifact in self.parsed_artifacts:
+            if isinstance(artifact, self.HistoryItem):
+                domain = urllib.parse.urlparse(artifact.url).hostname
+                # Some URLs don't have a domain, like local PDF files
+                if domain:
+                    domains.add(domain)
+
+        for domain in domains:
+
+            # From https://source.chromium.org/chromium/chromium/src/+
+            #  /main:net/http/transport_security_state.cc;l=223:
+            #   Converts |hostname| from dotted form ("www.google.com") to the form
+            #   used in DNS: "\x03www\x06google\x03com", lowercases that, and returns
+            #   the result.
+            domain_parts = domain.lower().split('.')
+            while len(domain_parts) > 1:
+                dns_hostname = ''
+                for domain_part in domain_parts:
+                    dns_hostname += f'{chr(len(domain_part))}{domain_part}'
+                dns_hostname += chr(0)
+
+                # From https://source.chromium.org/chromium/chromium/src/+
+                #  /main:net/http/transport_security_persister.h;l=103:
+                #    The JSON dictionary keys are strings containing
+                #    Base64(SHA256(TransportSecurityState::CanonicalizeHost(domain))).
+                hashed_domain = base64.b64encode(
+                    hashlib.sha256(dns_hostname.encode()).digest()).decode('utf-8')
+
+                # Check if this is new hash (break if not), add it to the dict,
+                # and then repeat with the leading domain part removed.
+                if hashed_domain in self.hsts_hashes:
+                    break
+                self.hsts_hashes[hashed_domain] = '.'.join(domain_parts)
+                domain_parts = domain_parts[1:]
+
+    def get_transport_security(self, path, dir_name):
+        result_list = []
+
+        # Use the URLs from other previously-processed artifacts to generate hashes of domains
+        # in the form Chrome uses as the 'host' identifier.
+        self.build_hsts_domain_hashes()
+
+        log.info('Transport Security (HSTS):')
+        ts_file_path = os.path.join(path, dir_name)
+        log.info(f' - Reading from {ts_file_path}')
+
+        # From https://source.chromium.org/chromium/chromium/src/+
+        #  /main:net/http/transport_security_persister.h;l=103:
+        #    The JSON dictionary keys are strings containing
+        #    Base64(SHA256(TransportSecurityState::CanonicalizeHost(domain))).
+        #    The reason for hashing them is so that the stored state does not
+        #    trivially reveal a user's browsing history to an attacker reading the
+        #    serialized state on disk.
+
+        with open(ts_file_path, encoding='utf-8', errors='replace') as f:
+            ts_json = json.loads(f.read())
+
+            # As of now (2021), there are two versions of the TransportSecurity JSON file.
+            # Version 2 has a top level "version" key (with a value of 2), and version 1
+            # has the HSTS domain hashes as top level keys.
+
+            # Version 2
+            if ts_json.get('version'):
+                assert ts_json['version'] == 2, '"2" is only supported value for "version"'
+                hsts = ts_json['sts']
+
+                for item in hsts:
+                    if item['host'] in self.hsts_hashes:
+                        hsts_domain = self.hsts_hashes[item['host']]
+                    else:
+                        hsts_domain = f'{item["host"]} (encoded domain)'
+
+                    result_list.append(Chrome.PreferenceItem(
+                        self.profile_path, url=hsts_domain,
+                        timestamp=utils.to_datetime(item['sts_observed'], self.timezone),
+                        key='', value=str(item), interpretation=''))
+
+            # Version 1
+            elif len(ts_json):
+                for hashed_domain, domain_settings in ts_json.items():
+                    if hashed_domain in self.hsts_hashes:
+                        hsts_domain = self.hsts_hashes[hashed_domain]
+                    else:
+                        hsts_domain = f'{hashed_domain} (encoded domain)'
+
+                    result_list.append(Chrome.PreferenceItem(
+                        self.profile_path, url=hsts_domain,
+                        timestamp=utils.to_datetime(domain_settings['sts_observed'], self.timezone),
+                        key='', value=f'{hashed_domain}: {domain_settings}', interpretation=''))
+
+            else:
+                log.warning('Unable to process TransportSecurity file; could not determine version.')
+                return
+
+        log.info(f' - Parsed {len(result_list)} items')
+        self.artifacts_counts['HSTS'] = len(result_list)
+        self.parsed_artifacts.extend(result_list)
+
     def process(self):
         supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies', 'Login Data',
                                'Extension Cookies']
         supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications']
-        supported_jsons = ['Bookmarks']  # , 'Preferences']
+        supported_jsons = ['Bookmarks', 'TransportSecurity']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
         log.debug(f'Supported items: {supported_items}')
 
@@ -2214,6 +2322,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['Site Characteristics'],
                 self.artifacts_counts.get('Site Characteristics', '0')))
+
+        if 'TransportSecurity' in input_listing:
+            self.get_transport_security(self.profile_path, 'TransportSecurity')
+            self.artifacts_display['HSTS'] = "HSTS records"
+            print(self.format_processing_output(
+                self.artifacts_display['HSTS'],
+                self.artifacts_counts.get('HSTS', '0')))
 
         if 'File System' in input_listing:
             self.get_file_system(self.profile_path, 'File System')
