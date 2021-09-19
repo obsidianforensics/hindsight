@@ -110,7 +110,7 @@ class WebBrowser(object):
             d[col[0]] = row[idx]
         return d
 
-    def build_hash_list_of_origins(self):
+    def build_md5_hash_list_of_origins(self):
         for artifact in self.parsed_artifacts:
             if isinstance(artifact, self.HistoryItem):
                 domain = urllib.parse.urlparse(artifact.url).hostname
