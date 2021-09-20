@@ -110,7 +110,7 @@ class WebBrowser(object):
             d[col[0]] = row[idx]
         return d
 
-    def build_hash_list_of_origins(self):
+    def build_md5_hash_list_of_origins(self):
         for artifact in self.parsed_artifacts:
             if isinstance(artifact, self.HistoryItem):
                 domain = urllib.parse.urlparse(artifact.url).hostname
@@ -261,6 +261,17 @@ class WebBrowser(object):
         def __init__(self, profile, url, timestamp, key, value, interpretation):
             super(WebBrowser.PreferenceItem, self).__init__(
                 'preference', timestamp=timestamp, profile=profile, name=key, value=value)
+            self.profile = profile
+            self.url = url
+            self.timestamp = timestamp
+            self.key = key
+            self.value = value
+            self.interpretation = interpretation
+
+    class SiteSetting(HistoryItem):
+        def __init__(self, profile, url, timestamp, key, value, interpretation):
+            super(WebBrowser.SiteSetting, self).__init__(
+                'site setting', timestamp=timestamp, profile=profile, name=key, value=value)
             self.profile = profile
             self.url = url
             self.timestamp = timestamp

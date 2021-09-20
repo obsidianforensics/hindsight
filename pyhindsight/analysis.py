@@ -79,7 +79,7 @@ class HindsightEncoder(json.JSONEncoder):
 
             if item.get('source_title'):
                 item['message'] = f"Watched{item['watch_time']} on {item['source_title']} "\
-                                  f"(ending at {item['position']}/{item['media_duration']}) " \
+                                  f"(ending at {item['position']}/{item.get('media_duration')}) " \
                                   f"[has_video: {item['has_video']}; has_audio: {item['has_audio']}]"
             else:
                 item['message'] = f"Watched{item['watch_time']} on {item['url']} " \
@@ -207,6 +207,19 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Preferences'
 
             item['message'] = 'Updated preference: {}: {})'.format(
+                item['key'], item['value'])
+
+            del(item['row_type'], item['name'])
+            return item
+
+        if isinstance(obj, Chrome.SiteSetting):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Update Time'
+            item['data_type'] = 'chrome:site_setting:entry'
+            item['source_long'] = 'Chrome Site Settings'
+
+            item['message'] = 'Updated site setting: {}: {})'.format(
                 item['key'], item['value'])
 
             del(item['row_type'], item['name'])
@@ -827,6 +840,15 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
 
+                elif item.row_type.startswith("site setting"):
+                    w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), blue_date_format)  # date
+                    w.write_string(row_number, 2, item.url, blue_url_format)  # URL
+                    w.write_string(row_number, 3, item.name, blue_field_format)  # form field name
+                    w.write_string(row_number, 4, item.value, blue_value_format)  # username or pw value
+                    w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
+                    w.write(row_number, 6, item.profile, blue_value_format)  # Profile
+
                 if friendly_date(item.timestamp) < '1970-01-02':
                     w.set_row(row_number, options={'hidden': True})
 
@@ -1088,6 +1110,13 @@ class AnalysisSession(object):
                          item.interpretation, item.profile))
 
                 elif item.row_type.startswith('preference'):
+                    c.execute(
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
+                         item.interpretation, item.profile))
+
+                elif item.row_type.startswith('site setting'):
                     c.execute(
                         'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
                         'VALUES (?, ?, ?, ?, ?, ?, ?)',
