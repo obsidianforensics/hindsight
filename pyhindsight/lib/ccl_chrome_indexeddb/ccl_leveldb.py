@@ -1,5 +1,5 @@
 """
-Copyright 2020, CCL Forensics
+Copyright 2020-2021, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -33,7 +33,7 @@ from types import MappingProxyType
 
 from pyhindsight.lib.ccl_chrome_indexeddb import ccl_simplesnappy
 
-__version__ = "0.2"
+__version__ = "0.4"
 __description__ = "A module for reading LevelDB databases"
 __contact__ = "Alex Caithness"
 
@@ -128,6 +128,17 @@ class Record:
     offset: int
     was_compressed: bool
 
+    @property
+    def user_key(self):
+        if self.file_type == FileType.Ldb:
+            if len(self.key) < 8:
+                return self.key
+            else:
+                return self.key[0:-8]
+        else:
+            return self.key
+
+
     @classmethod
     def ldb_record(cls, key: bytes, value: bytes, origin_file: os.PathLike,
                    offset: int, was_compressed: bool):
@@ -188,7 +199,7 @@ class Block:
 
 
 class LdbFile:
-    """A leveldb table (.ldb) file."""
+    """A leveldb table (.ldb or .sst) file."""
     BLOCK_TRAILER_SIZE = 5
     FOOTER_SIZE = 48
     MAGIC = 0xdb4775248b80fb57
@@ -526,7 +537,7 @@ class ManifestFile:
 
 
 class RawLevelDb:
-    DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log)"
+    DATA_FILE_PATTERN = r"[0-9]{6}\.(ldb|log|sst)"
 
     def __init__(self, in_dir: os.PathLike):
 
@@ -540,7 +551,7 @@ class RawLevelDb:
             if file.is_file() and re.match(RawLevelDb.DATA_FILE_PATTERN, file.name):
                 if file.suffix.lower() == ".log":
                     self._files.append(LogFile(file))
-                elif file.suffix.lower() == ".ldb":
+                elif file.suffix.lower() == ".ldb" or file.suffix.lower() == ".sst":
                     self._files.append(LdbFile(file))
             if file.is_file() and re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name):
                 manifest_no = int(re.match(ManifestFile.MANIFEST_FILENAME_PATTERN, file.name).group(1), 16)

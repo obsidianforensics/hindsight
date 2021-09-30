@@ -101,7 +101,7 @@ class Constants:
                                       # height:uint32_t, pixelDataLength:uint32_t,
                                       # data:byte[pixelDataLength]
                                       # -> ImageBitmap (ref)
-    tag_kImageBitmapTransferTag = "G"       # index:uint32_t -> ImageBitmap. For ImageBitmap transfer
+    tag_kImageBitmapTransferTag = b"G"      # index:uint32_t -> ImageBitmap. For ImageBitmap transfer
     tag_kOffscreenCanvasTransferTag = b"H"  # index, width, height, id,
                                             # filter_quality::uint32_t ->
                                             # OffscreenCanvas. For OffscreenCanvas

@@ -73,6 +73,12 @@ class _Undefined:
             return True
         return False
 
+    def __repr__(self):
+        return "<Undefined>"
+
+    def __str__(self):
+        return "<Undefined>"
+
 
 class Constants:
     # Constants
