@@ -25,7 +25,7 @@ import enum
 import typing
 from dataclasses import dataclass
 
-import ccl_v8_value_deserializer
+from pyhindsight.lib.ccl_chrome_indexeddb import ccl_v8_value_deserializer
 
 # See: https://chromium.googlesource.com/chromium/src/third_party/+/master/blink/renderer/bindings/core/v8/serialization
 

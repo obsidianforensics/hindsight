@@ -13,6 +13,8 @@ import shutil
 import puremagic
 import urllib
 import base64
+
+import pyhindsight.lib.ccl_chrome_indexeddb.ccl_blink_value_deserializer
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
 
@@ -942,6 +944,41 @@ class Chrome(WebBrowser):
                     pass
 
         self.artifacts_counts['Local Storage'] = len(results)
+        log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
+        self.parsed_storage.extend(results)
+
+    def get_session_storage(self, path, dir_name):
+        results = []
+
+        # Grab file list of 'Session Storage' directory
+        ss_path = os.path.join(path, dir_name)
+        log.info('Session Storage:')
+        log.info(f' - Reading from {ss_path}')
+
+        session_storage_listing = os.listdir(ss_path)
+        log.debug(f' - {len(session_storage_listing)} files in Session Storage directory')
+        filtered_listing = []
+
+        # Session Storage parsing is thanks to Alex Caithness of CCL Forensics; ccl_chrome_indexeddb
+        # is bundled with Hindsight with his consent (and our thanks!). The below logic is adapted
+        # from his Chromium_dump_session_storage.py script.
+        import pathlib
+        from pyhindsight.lib.ccl_chrome_indexeddb import ccl_chromium_sessionstorage
+
+        ss_ldb_records = ccl_chromium_sessionstorage.SessionStoreDb(pathlib.Path(ss_path))
+        for origin in ss_ldb_records.iter_hosts():
+            origin_kvs = ss_ldb_records.get_all_for_host(origin)
+            for key, values in origin_kvs.items():
+                for value in values:
+                    results.append(Chrome.SessionStorageItem(
+                        self.profile_path, origin, key, value.value, value.leveldb_sequence_number, 'Live', ss_path))
+
+        # Some records don't have an associated host for some unknown reason; still inclue them.
+        for key, value in ss_ldb_records.iter_orphans():
+            results.append(Chrome.SessionStorageItem(
+                self.profile_path, '<orphan>', key, value.value, value.leveldb_sequence_number, 'Live', ss_path))
+
+        self.artifacts_counts['Session Storage'] = len(results)
         log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
         self.parsed_storage.extend(results)
 
@@ -2326,6 +2363,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['Local Storage'],
                 self.artifacts_counts.get('Local Storage', '0')))
+
+        if 'Session Storage' in input_listing:
+            self.get_session_storage(self.profile_path, 'Session Storage')
+            self.artifacts_display['Session Storage'] = 'Session Storage records'
+            print(self.format_processing_output(
+                self.artifacts_display['Session Storage'],
+                self.artifacts_counts.get('Session Storage', '0')))
 
         if 'Extensions' in input_listing:
             self.get_extensions(self.profile_path, 'Extensions')
