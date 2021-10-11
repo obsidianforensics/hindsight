@@ -917,7 +917,7 @@ class AnalysisSession(object):
                     s.write(row_number, 11, item.file_size, black_value_format)
                     s.write(row_number, 12, item.magic_results, black_value_format)
 
-                elif item.row_type.startswith("local storage"):
+                elif item.row_type.startswith(("local storage", "session storage")):
                     s.write_string(row_number, 0, item.row_type, black_type_format)
                     s.write_string(row_number, 1, item.origin, black_url_format)
                     s.write_string(row_number, 2, item.key, black_field_format)

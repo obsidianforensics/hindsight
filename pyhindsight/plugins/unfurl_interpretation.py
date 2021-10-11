@@ -20,7 +20,7 @@ except Exception:
 # Config
 friendlyName = "Unfurl"
 description = "Run storage values through Unfurl"
-artifactTypes = ["local storage"]  # Artifacts that this plugin processes
+artifactTypes = ["local storage", "session storage"]  # Artifacts that this plugin processes
 remoteLookups = 1  # if this plugin will query online sources/databases
 browser = "Chrome"  # browsers that the plugin applies to
 browserVersion = 1  # browser versions that the plugin applies to

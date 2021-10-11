@@ -349,6 +349,29 @@ class WebBrowser(object):
             self.source_path = source_path
             self.last_modified = last_modified
 
+    class SessionStorageItem(StorageItem):
+        def __init__(self, profile, origin, key, value, seq, state, source_path):
+            """
+
+            :param profile: The path to the browser profile this item is part of.
+            :param origin: The web origin this SessionStorage item belongs to.
+            :param key: The key of the SessionStorage item.
+            :param value: The value of the SessionStorage item (rendered in UTF-16).
+            :param seq: The sequence number of the key.
+            :param state: The state of the record (live or deleted).
+            :param source_path: The path to the source of the record.
+            """
+            super(WebBrowser.SessionStorageItem, self).__init__(
+                'session storage', profile=profile, origin=origin, key=key, value=value, seq=seq, state=state,
+                source_path=source_path)
+            self.profile = profile
+            self.origin = origin
+            self.key = key
+            self.value = value
+            self.seq = seq
+            self.state = state
+            self.source_path = source_path
+
     class FileSystemItem(StorageItem):
         def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None,
                      file_exists=None, file_size=None, magic_results=None):

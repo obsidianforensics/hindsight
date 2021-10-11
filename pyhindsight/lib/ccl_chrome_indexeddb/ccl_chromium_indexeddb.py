@@ -1,5 +1,5 @@
 """
-Copyright 2020, CCL Forensics
+Copyright 2020-2021, CCL Forensics
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+import sys
 import struct
 import os
 import pathlib
@@ -34,7 +35,7 @@ import ccl_leveldb
 import ccl_v8_value_deserializer
 import ccl_blink_value_deserializer
 
-__version__ = "0.2"
+__version__ = "0.6"
 __description__ = "Module for reading Chromium IndexedDB LevelDB databases."
 __contact__ = "Alex Caithness"
 
@@ -135,11 +136,22 @@ class IdbKey:
         else:
             raise ValueError()  # Shouldn't happen
 
+        # trim the raw_key in case this is an inner key:
+        self.raw_key = self.raw_key[0: self._raw_length]
+
     def __repr__(self):
         return f"<IdbKey {self.value}>"
 
     def __str__(self):
         return self.__repr__()
+
+    def __eq__(self, other):
+        if not isinstance(other, IdbKey):
+            raise NotImplementedError()
+        return self.raw_key == other.raw_key
+
+    def __ne__(self, other):
+        return not self == other
 
 
 class IndexedDBExternalObjectType(enum.IntEnum):
@@ -278,12 +290,16 @@ class ObjectStoreMetadata:
 
 
 class IndexedDbRecord:
-    def __init__(self, owner: "IndexedDb", db_id: int, obj_store_id: int, key: IdbKey, value: typing.Any):
+    def __init__(
+            self, owner: "IndexedDb", db_id: int, obj_store_id: int, key: IdbKey,
+            value: typing.Any, is_live: bool, ldb_seq_no: int):
         self.owner = owner
         self.db_id = db_id
         self.obj_store_id = obj_store_id
         self.key = key
         self.value = value
+        self.is_live = is_live
+        self.sequence_number = ldb_seq_no
 
     def resolve_blob_index(self, blob_index: ccl_blink_value_deserializer.BlobIndex) -> IndexedDBExternalObject:
         """Resolve a ccl_blink_value_deserializer.BlobIndex to its IndexedDBExternalObject
@@ -372,7 +388,9 @@ class IndexedDb:
                 if record.key.startswith(prefix) and record.state == ccl_leveldb.KeyState.Live:
                     # we only want live keys and the newest version thereof (highest seq)
                     meta_type = record.key[len(prefix)]
-                    db_meta[(db_id.dbid_no, meta_type)] = record
+                    old_version = db_meta.get((db_id.dbid_no, meta_type))
+                    if old_version is None or old_version.seq < record.seq:
+                        db_meta[(db_id.dbid_no, meta_type)] = record
 
         return db_meta
 
@@ -403,7 +421,7 @@ class IndexedDb:
 
     def iterate_records(
             self, db_id: int, store_id: int, *,
-            live_only=True, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
+            live_only=False, bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
         if db_id > 0x7f or store_id > 0x7f:
             raise NotImplementedError("there could be this many dbs or object stores, but I don't support it yet")
 
@@ -423,7 +441,11 @@ class IndexedDb:
                 blink_type_tag = record.value[val_idx]
                 if blink_type_tag != 0xff:
                     # TODO: probably don't want to fail hard here long term...
-                    raise ValueError("Blink type tag not present")
+                    if bad_deserializer_data_handler is not None:
+                        bad_deserializer_data_handler(key, record.value)
+                        continue
+                    else:
+                        raise ValueError("Blink type tag not present")
                 val_idx += 1
 
                 blink_version, varint_raw = _le_varint_from_bytes(record.value[val_idx:])
@@ -437,9 +459,11 @@ class IndexedDb:
                     value = deserializer.read()
                 except Exception:
                     if bad_deserializer_data_handler is not None:
-                        bad_deserializer_data_handler(key, record.value[val_idx:])
+                        bad_deserializer_data_handler(key, record.value)
+                        continue
                     raise
-                yield IndexedDbRecord(self, db_id, store_id, key, value)
+                yield IndexedDbRecord(self, db_id, store_id, key, value,
+                                      record.state == ccl_leveldb.KeyState.Live, record.seq)
 
     def get_blob_info(self, db_id: int, store_id: int, raw_key: bytes, file_index: int) -> IndexedDBExternalObject:
         if db_id > 0x7f or store_id > 0x7f:
@@ -501,14 +525,31 @@ class WrappedObjectStore:
         return self._raw_db.get_object_store_metadata(
             self._dbid_no, self._obj_store_id, ObjectStoreMetadataType.StoreName)
 
+    @staticmethod
+    def _log_error(key: IdbKey, data: bytes):
+        sys.stderr.write(f"ERROR decoding key: {key}\n")
+
     def get_blob(self, raw_key: bytes, file_index: int) -> typing.BinaryIO:
         return self._raw_db.get_blob(self._dbid_no, self.object_store_id, raw_key, file_index)
 
     # def __iter__(self):
     #     yield from self._raw_db.iterate_records(self._dbid_no, self._obj_store_id)
 
-    def iterate_records(self):
-        yield from self._raw_db.iterate_records(self._dbid_no, self._obj_store_id)
+    def iterate_records(
+            self, *, live_only=False, errors_to_stdout=False,
+            bad_deserializer_data_handler: typing.Callable[[IdbKey, bytes], typing.Any] = None):
+
+        def _handler(key, record):
+            if bad_deserializer_data_handler is not None:
+                bad_deserializer_data_handler(key, record)
+            if errors_to_stdout:
+                WrappedObjectStore._log_error(key, record)
+
+        handler = _handler if errors_to_stdout or bad_deserializer_data_handler is not None else None
+
+        yield from self._raw_db.iterate_records(
+            self._dbid_no, self._obj_store_id, live_only=live_only,
+            bad_deserializer_data_handler=handler)
 
     def __repr__(self):
         return f"<WrappedObjectStore: object_store_id={self.object_store_id}; name={self.name}>"
@@ -526,7 +567,8 @@ class WrappedDatabase:
         self._obj_store_names = tuple(names)
         # pre-compile object store wrappers as there's little overhead
         self._obj_stores = tuple(
-            WrappedObjectStore(self._raw_db, self.db_number, i) for i in range(1, self.object_store_count + 1))
+            WrappedObjectStore(
+                self._raw_db, self.db_number, i) for i in range(1, self.object_store_count + 1))
 
     @property
     def name(self) -> str:
@@ -568,7 +610,7 @@ class WrappedDatabase:
     def __contains__(self, item):
         return item in self._obj_store_names
 
-    def __getitem__(self, item) -> "WrappedObjectStore":
+    def __getitem__(self, item) -> WrappedObjectStore:
         if isinstance(item, int):
             return self.get_object_store_by_id(item)
         elif isinstance(item, str):
@@ -623,7 +665,7 @@ class WrappedIndexDB:
         else:
             raise TypeError("keys must be provided as a tuple of (name, origin) or a str (if only single origin) or int")
 
-    def __getitem__(self, item: typing.Union[int, str, typing.Tuple[str, str]]) -> "WrappedDatabase":
+    def __getitem__(self, item: typing.Union[int, str, typing.Tuple[str, str]]) -> WrappedDatabase:
         if isinstance(item, int):
             if item in self._db_number_lookup:
                 return self._db_number_lookup[item]
