@@ -957,7 +957,6 @@ class Chrome(WebBrowser):
 
         session_storage_listing = os.listdir(ss_path)
         log.debug(f' - {len(session_storage_listing)} files in Session Storage directory')
-        filtered_listing = []
 
         # Session Storage parsing is thanks to Alex Caithness of CCL Forensics; ccl_chrome_indexeddb
         # is bundled with Hindsight with his consent (and our thanks!). The below logic is adapted
@@ -973,13 +972,14 @@ class Chrome(WebBrowser):
                     results.append(Chrome.SessionStorageItem(
                         self.profile_path, origin, key, value.value, value.leveldb_sequence_number, 'Live', ss_path))
 
-        # Some records don't have an associated host for some unknown reason; still inclue them.
+        # Some records don't have an associated host for some unknown reason; still include them.
         for key, value in ss_ldb_records.iter_orphans():
             results.append(Chrome.SessionStorageItem(
                 self.profile_path, '<orphan>', key, value.value, value.leveldb_sequence_number, 'Live', ss_path))
 
+        ss_ldb_records.close()
         self.artifacts_counts['Session Storage'] = len(results)
-        log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
+        log.info(f' - Parsed {len(results)} Session Storage items')
         self.parsed_storage.extend(results)
 
     def get_extensions(self, path, dir_name):
