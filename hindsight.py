@@ -195,7 +195,7 @@ def main():
     # Hindsight version info
     log.info(
         '\n' + '#' * 80 +
-        f'\n###    Hindsight v{pyhindsight.__version__} (https://github.com/obsidianforensics/hindsight)    ###\n' +
+        f'\n##   Hindsight v{pyhindsight.__version__} (https://github.com/obsidianforensics/hindsight)   ##\n' +
         '#' * 80)
 
     # Analysis start time
