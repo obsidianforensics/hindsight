@@ -653,7 +653,8 @@ class Chrome(WebBrowser):
 
                     # If the cookie was created and accessed at the same time (only used once), or if the last accessed
                     # time is 0 (happens on iOS), don't create an accessed row
-                    if new_row.creation_utc != new_row.last_access_utc and accessed_row.last_access_utc != utils.to_datetime(0, self.timezone):
+                    if new_row.creation_utc != new_row.last_access_utc and \
+                            accessed_row.last_access_utc != utils.to_datetime(0, self.timezone):
                         accessed_row.row_type = 'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)

@@ -89,7 +89,11 @@ def to_datetime(timestamp, timezone=None):
             log.warning(f'Exception parsing {timestamp} to datetime: {e}')
             return datetime.datetime.fromtimestamp(0)
 
-        # Really big Webkit microseconds (17-8 digits), most often cookie expiry dates.
+        # Really big Webkit microseconds (18 digits), most often cookie expiry dates.
+        if timestamp >= 253402300800000000:
+            new_timestamp = datetime.datetime.max
+            log.warning(f'Timestamp value {timestamp} is too large to convert; replaced with {datetime.datetime.max}')
+
         # Microsecond timestamps past 2038 can be problematic with datetime.utcfromtimestamp(timestamp).
         elif timestamp > 13700000000000000:
             new_timestamp = datetime.datetime.fromtimestamp(0) \
@@ -113,7 +117,12 @@ def to_datetime(timestamp, timezone=None):
 
         # Epoch seconds (10 digits typically, but could be less)
         else:
-            new_timestamp = datetime.datetime.utcfromtimestamp(timestamp)
+            try:
+                new_timestamp = datetime.datetime.utcfromtimestamp(timestamp)
+            except OSError as e:
+                log.warning(f'Exception parsing {timestamp} to datetime: {e}; '
+                            f'common issue is value is too big for the OS to convert it')
+                return datetime.datetime.utcfromtimestamp(0)
 
         if timezone is not None:
             try:
