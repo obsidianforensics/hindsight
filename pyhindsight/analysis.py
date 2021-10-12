@@ -405,7 +405,7 @@ class AnalysisSession(object):
             found_profile_paths.append(base_path)
         for item in base_dir_listing:
             item_path = os.path.join(base_path, item)
-            if os.path.isdir(item_path):
+            if os.path.isdir(item_path) and not os.path.islink(item_path):
                 profile_found_in_subdir = self.search_subdirs(item_path)
                 if profile_found_in_subdir:
                     found_profile_paths.extend(profile_found_in_subdir)
