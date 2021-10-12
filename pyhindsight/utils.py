@@ -91,13 +91,17 @@ def to_datetime(timestamp, timezone=None):
 
         # Really big Webkit microseconds (17-8 digits), most often cookie expiry dates.
         # Microsecond timestamps past 2038 can be problematic with datetime.utcfromtimestamp(timestamp).
-        if timestamp > 13700000000000000:
+        elif timestamp > 13700000000000000:
             new_timestamp = datetime.datetime.fromtimestamp(0) \
                             + datetime.timedelta(seconds=(timestamp / 1000000) - 11644473600)
 
         # Webkit microseconds (17 digits)
         elif timestamp > 12000000000000000:  # ts > 1981
             new_timestamp = datetime.datetime.utcfromtimestamp((timestamp / 1000000) - 11644473600)
+
+        # Epoch microseconds (16 digits)
+        elif 2500000000000000 > timestamp > 1280000000000000:  # 2049 > ts > 2010
+            new_timestamp = datetime.datetime.utcfromtimestamp(timestamp / 1000000)
 
         # Epoch milliseconds (13 digits)
         elif 2500000000000 > timestamp > 1280000000000:  # 2049 > ts > 2010
@@ -120,7 +124,7 @@ def to_datetime(timestamp, timezone=None):
             return new_timestamp
     except Exception as e:
         log.warning(f'Exception parsing {timestamp} to datetime: {e}')
-        return datetime.datetime.fromtimestamp(0)
+        return datetime.datetime.utcfromtimestamp(0)
 
 
 def friendly_date(timestamp):
