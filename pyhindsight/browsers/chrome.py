@@ -964,22 +964,32 @@ class Chrome(WebBrowser):
         # from his Chromium_dump_session_storage.py script.
         import pathlib
         from pyhindsight.lib.ccl_chrome_indexeddb import ccl_chromium_sessionstorage
+        ss_ldb_records = None
 
-        ss_ldb_records = ccl_chromium_sessionstorage.SessionStoreDb(pathlib.Path(ss_path))
-        for origin in ss_ldb_records.iter_hosts():
-            origin_kvs = ss_ldb_records.get_all_for_host(origin)
-            for key, values in origin_kvs.items():
-                for value in values:
-                    results.append(Chrome.SessionStorageItem(
-                        self.profile_path, origin, key, value.value, value.leveldb_sequence_number, 'Live', ss_path))
+        try:
+            ss_ldb_records = ccl_chromium_sessionstorage.SessionStoreDb(pathlib.Path(ss_path))
+        except ValueError as e:
+            log.warning(f' - Error reading records; possible LevelDB corruption')
+            self.artifacts_counts['Session Storage'] = 'Failed'
 
-        # Some records don't have an associated host for some unknown reason; still include them.
-        for key, value in ss_ldb_records.iter_orphans():
-            results.append(Chrome.SessionStorageItem(
-                self.profile_path, '<orphan>', key, value.value, value.leveldb_sequence_number, 'Live', ss_path))
+        if ss_ldb_records:
+            for origin in ss_ldb_records.iter_hosts():
+                origin_kvs = ss_ldb_records.get_all_for_host(origin)
+                for key, values in origin_kvs.items():
+                    for value in values:
+                        results.append(Chrome.SessionStorageItem(
+                            self.profile_path, origin, key, value.value,
+                            value.leveldb_sequence_number, 'Live', ss_path))
 
-        ss_ldb_records.close()
-        self.artifacts_counts['Session Storage'] = len(results)
+            # Some records don't have an associated host for some unknown reason; still include them.
+            for key, value in ss_ldb_records.iter_orphans():
+                results.append(Chrome.SessionStorageItem(
+                    self.profile_path, '<orphan>', key, value.value,
+                    value.leveldb_sequence_number, 'Live', ss_path))
+
+            ss_ldb_records.close()
+            self.artifacts_counts['Session Storage'] = len(results)
+
         log.info(f' - Parsed {len(results)} Session Storage items')
         self.parsed_storage.extend(results)
 
@@ -1341,7 +1351,7 @@ class Chrome(WebBrowser):
             }
             append_group('Network Prefetching')
             check_and_append_pref(prefs['net'], 'network_prediction_options',
-                                  NETWORK_PREDICTION_OPTIONS.get(prefs['net']['network_prediction_options']))
+                                  NETWORK_PREDICTION_OPTIONS.get(prefs['net'].get('network_prediction_options')))
 
         # Clearing Chrome Data
         if prefs.get('browser'):
