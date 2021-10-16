@@ -19,6 +19,13 @@ def dict_factory(cursor, row):
     return d
 
 
+def text_factory(row_data):
+    try:
+        return row_data.decode('utf-8')
+    except UnicodeDecodeError:
+        return row_data
+
+
 def open_sqlite_db(chrome, database_path, database_name):
     log.info(f' - Reading from {database_name} in {database_path}')
 
@@ -43,6 +50,8 @@ def open_sqlite_db(chrome, database_path, database_name):
 
         # Use a dictionary cursor
         db_conn.row_factory = dict_factory
+        db_conn.text_factory = text_factory
+
     except Exception as e:
         log.error(f' - Error opening {database_name}: {e}')
         return None
