@@ -1330,6 +1330,8 @@ class Chrome(WebBrowser):
             append_group('Account Information')
             for account in prefs['account_info']:
                 for account_item in list(account.keys()):
+                    if account_item == 'accountcapabilities':
+                        continue
                     append_pref(account_item, account[account_item])
 
         # Local file paths
@@ -1444,7 +1446,7 @@ class Chrome(WebBrowser):
                     timestamp=utils.to_datetime(
                         prefs['password_manager']['profile_store_date_last_used_for_filling'], self.timezone),
                     key=f'profile_store_date_last_used_for_filling [in {preferences_file}.password_manager]',
-                    value=None, interpretation='')
+                    value=prefs['password_manager']['profile_store_date_last_used_for_filling'], interpretation='')
                 timestamped_preference_item.row_type += ' (password fill)'
                 timestamped_preference_items.append(timestamped_preference_item)
 
@@ -1585,10 +1587,6 @@ class Chrome(WebBrowser):
             if prefs['sync'].get('last_synced_time'):
                 check_and_append_pref(prefs['sync'], 'last_synced_time',
                                       utils.friendly_date(prefs['sync']['last_synced_time']))
-
-            if prefs['sync'].get('last_synced_timexxxxx'):
-                check_and_append_pref(prefs['sync'], 'last_synced_timexxxxx',
-                                      utils.friendly_date(prefs['sync']['last_synced_timexxxxx']))
 
             sync_enabled_items = ['apps', 'autofill', 'bookmarks', 'cache_guid', 'extensions', 'gaia_id',
                                   'has_setup_completed', 'keep_everything_synced', 'passwords', 'preferences',

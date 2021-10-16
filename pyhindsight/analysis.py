@@ -35,6 +35,9 @@ class HindsightEncoder(json.JSONEncoder):
             if value is None:
                 continue
 
+            if key == 'interpretation' and value == '':
+                continue
+
             if isinstance(value, datetime.datetime):
                 value = value.isoformat()
 
@@ -185,6 +188,34 @@ class HindsightEncoder(json.JSONEncoder):
             del (item['row_type'])
             return item
 
+        if isinstance(obj, Chrome.SessionStorageItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:session_storage:entry'
+            item['source_long'] = 'Chrome Session Storage'
+            item['url'] = item['origin']
+
+            item['message'] = 'key: {} value: {}'.format(
+                item['key'], item['value'])
+
+            del (item['row_type'])
+            return item
+
+        if isinstance(obj, Chrome.FileSystemItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:file_system:entry'
+            item['source_long'] = 'Chrome File System'
+            item['url'] = item['origin']
+
+            item['message'] = 'key: {} value: {}'.format(
+                item['key'], item['value'])
+
+            del (item['row_type'])
+            return item
+
         if isinstance(obj, Chrome.LoginItem):
             item = HindsightEncoder.base_encoder(obj)
 
@@ -205,9 +236,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['timestamp_desc'] = 'Update Time'
             item['data_type'] = 'chrome:preferences:entry'
             item['source_long'] = 'Chrome Preferences'
-
-            item['message'] = 'Updated preference: {}: {})'.format(
-                item['key'], item['value'])
+            item['message'] = f'Updated preference: {item["key"]}: {item["value"]})'
 
             del(item['row_type'], item['name'])
             return item
@@ -215,12 +244,18 @@ class HindsightEncoder(json.JSONEncoder):
         if isinstance(obj, Chrome.SiteSetting):
             item = HindsightEncoder.base_encoder(obj)
 
-            item['timestamp_desc'] = 'Update Time'
+            if item['key'] == 'Status: Deleted':
+                item['timestamp_desc'] = 'Not a time'
+            else:
+                item['timestamp_desc'] = 'Update Time'
+
             item['data_type'] = 'chrome:site_setting:entry'
             item['source_long'] = 'Chrome Site Settings'
 
-            item['message'] = 'Updated site setting: {}: {})'.format(
-                item['key'], item['value'])
+            if item['key'] == 'Status: Deleted':
+                item['message'] = 'Updated site setting (recovered deleted record)'
+            else:
+                item['message'] = f'Updated site setting: {item["key"]}: {item["value"]})'
 
             del(item['row_type'], item['name'])
             return item
@@ -235,8 +270,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['cache_type'] = item['row_type']
             item['cached_state'] = item['name']
 
-            item['message'] = 'Original URL: {}'.format(
-                item['original_url'])
+            item['message'] = f'Original URL: {item["original_url"]}'
 
             del(item['row_type'], item['name'], item['timezone'])
             return item
