@@ -185,6 +185,20 @@ class HindsightEncoder(json.JSONEncoder):
             del (item['row_type'])
             return item
 
+        if isinstance(obj, Chrome.SessionStorageItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:session_storage:entry'
+            item['source_long'] = 'Chrome Session Storage'
+            item['url'] = item['origin']
+
+            item['message'] = 'key: {} value: {}'.format(
+                item['key'], item['value'])
+
+            del (item['row_type'])
+            return item
+
         if isinstance(obj, Chrome.LoginItem):
             item = HindsightEncoder.base_encoder(obj)
 
