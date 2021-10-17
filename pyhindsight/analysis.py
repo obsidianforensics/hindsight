@@ -470,10 +470,13 @@ class AnalysisSession(object):
 
     def generate_display_version(self):
         self.version = sorted(self.version)
-        if self.version[0] != self.version[-1]:
-            self.display_version = f'{self.version[0]}-{self.version[-1]}'
+        if self.version != None and len(self.version) >= 1:
+            if self.version[0] != self.version[-1]:
+                self.display_version = f'{self.version[0]}-{self.version[-1]}'
+            else:
+                self.display_version = self.version[0]
         else:
-            self.display_version = self.version[0]
+            self.display_version = "None"
 
     def run(self):
         if self.selected_output_format is None:
