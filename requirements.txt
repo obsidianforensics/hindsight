@@ -1,10 +1,10 @@
 keyring>=21.2.1
-pytz>=2020.1
+pytz>=2021.3
 pycryptodome>=3.9.7
 pycryptodomex>=3.9.7
-xlsxwriter>=1.2.9
+xlsxwriter>=3.0.1
 bottle>=0.12.18
-setuptools~=51.0.0
-puremagic~=1.10
+setuptools==58.2.0
+puremagic~=1.11
 argparse~=1.4.0
 dfir-unfurl
