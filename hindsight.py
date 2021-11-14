@@ -211,7 +211,9 @@ def main():
     print("\n Processing:")
     run_status = analysis_session.run()
     if not run_status:
-        return False
+        if analysis_session.fatal_error:
+            print(f"\n Fatal Error '{analysis_session.fatal_error}'")
+        sys.exit(1)
 
     print("\n Running plugins:")
     log.info("Plugins:")
