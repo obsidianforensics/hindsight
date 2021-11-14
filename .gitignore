@@ -1,3 +1,5 @@
 hindsight.log
 node_modules/
 pyhindsight/static/web_modules/
+*__pychache__*
+*.pyc
