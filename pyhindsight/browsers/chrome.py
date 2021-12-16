@@ -115,7 +115,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 95))
+        possible_versions = list(range(1, 97))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -157,7 +157,6 @@ class Chrome(WebBrowser):
             if 'visits' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('visit_duration', self.structure['History']['visits'], 20)
                 trim_lesser_versions_if('incremented_omnibox_typed_score', self.structure['History']['visits'], 68)
-                trim_lesser_versions_if('publicly_routable', self.structure['History']['visits'], 85)
             if 'visit_source' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
             if 'downloads' in list(self.structure['History'].keys()):
@@ -170,6 +169,7 @@ class Chrome(WebBrowser):
                 trim_lesser_versions(58)
             if 'content_annotations' in list(self.structure['History'].keys()):
                 trim_lesser_versions(91)
+                trim_lesser_versions_if('visibility_score', self.structure['History']['content_annotations'], 95)
             if 'context_annotations' in list(self.structure['History'].keys()):
                 trim_lesser_versions(92)
             if 'clusters' in list(self.structure['History'].keys()):
@@ -2226,12 +2226,13 @@ class Chrome(WebBrowser):
                     else:
                         hsts_domain = f'{hashed_domain} (encoded domain)'
 
-                    hsts_record = Chrome.SiteSetting(
-                        self.profile_path, url=hsts_domain,
-                        timestamp=utils.to_datetime(domain_settings['sts_observed'], self.timezone),
-                        key='HSTS observed', value=f'{hashed_domain}: {domain_settings}', interpretation='')
-                    hsts_record.row_type += ' (hsts)'
-                    result_list.append(hsts_record)
+                    if domain_settings.get('sts_observed'):
+                        hsts_record = Chrome.SiteSetting(
+                            self.profile_path, url=hsts_domain,
+                            timestamp=utils.to_datetime(domain_settings['sts_observed'], self.timezone),
+                            key='HSTS observed', value=f'{hashed_domain}: {domain_settings}', interpretation='')
+                        hsts_record.row_type += ' (hsts)'
+                        result_list.append(hsts_record)
 
             else:
                 log.warning('Unable to process TransportSecurity file; could not determine version.')

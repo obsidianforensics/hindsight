@@ -5,7 +5,7 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   scripts=['hindsight.py', 'hindsight_gui.py'],
-  version='20210427',
+  version='2021.12.0',
   description='Browser forensics for Google Chrome/Chromium',
   url='https://github.com/obsidianforensics/hindsight',
   author='Ryan Benson',
@@ -17,9 +17,10 @@ setup(
     'bottle>=0.12.18',
     'keyring>=21.2.1',
     'pycryptodomex>=3.9.7',
-    # 'pypiwin32>=219',
-    'pytz>=2020.1',
-    'xlsxwriter>=1.2.9',
-    'puremagic>=1.10'
+    'pypiwin32>=219',
+    'pytz>=2021.3',
+    'xlsxwriter>=3.0.1',
+    'puremagic>=1.11',
+    'dfir-unfurl'
   ]
 )
