@@ -58,21 +58,21 @@
                                     </select>
                                 </td>
                                 <td style="text-align: right;">
-                                    &nbsp&nbsp <b>Profile Path:</b> <input class="input-path" name="profile_path" type="text" onfocus=inputDefaults() size=60 value='C:\Path\To\Input\Data'/>&nbsp&nbsp&nbsp
+                                    &nbsp&nbsp <b>Profile Path:</b> <input class="input-path" name="profile_path" type="text" onfocus=inputDefaults() size=56 value='C:\Path\To\Input\Data'/>&nbsp&nbsp&nbsp
                                 </td>
                             </tr>
                             <tr>
                                 <td class="input-option">
                                 </td>
                                 <td style="text-align: right;">
-                                    &nbsp&nbsp <b>Cache Path:</b> <input class="input-path" name="cache_path" type="text" onfocus=cacheInput() size=60 value='(optional - only needed if outside of the profile path)'/>&nbsp&nbsp&nbsp
+                                    &nbsp&nbsp <b>Cache Path:</b> <input class="input-path" name="cache_path" type="text" onfocus=cacheInput() size=56 value='(optional - only needed if outside of the profile path)'/>&nbsp&nbsp&nbsp
                                 </td>
                             </tr>
                             <tr id="description-Chrome">
                                 <td colspan=2 class="input-description">
                                     <table>
                                         <tr><td>
-                                            <b>Description:</b> Chrome is a free web browser from Google that runs on Windows, Linux, OS X, iOS, and Android.
+                                            <b>Description:</b> Chrome is a free web browser from Google that runs on Windows, macOS, Linux, ChromeOS, iOS, and Android.
                                             Each user's web history and configuration information is stored under their user directory, so there may be multiple sets of browser data on the system.
                                             <br /><br />
                                         </td>
@@ -105,10 +105,10 @@
                                     <br />
                                     <b>Default Locations:</b>
                                     <table>
-                                        <tr><td class="input-option">Windows XP:</td><td> \[userdir\]\Local Settings\Application Data\Google\Chrome\User Data</td></tr>
-                                        <tr><td class="input-option">Vista/7/8/10:</td><td> \[userdir\]\AppData\Local\Google\Chrome\User Data</td></tr>
-                                        <tr><td class="input-option">Linux:</td><td> \[userdir\]/.config/google-chrome</td></tr>
-                                        <tr><td class="input-option">OSX/macOS:</td><td> \[userdir\]/Library/Application Support/Google/Chrome/Default</td></tr>
+                                        <tr><td class="input-option">Windows XP:</td><td> \[userdir]\Local Settings\Application Data\Google\Chrome\User Data</td></tr>
+                                        <tr><td class="input-option">Vista/7/8/10:</td><td> \[userdir]\AppData\Local\Google\Chrome\User Data</td></tr>
+                                        <tr><td class="input-option">Linux:</td><td> \[userdir]/.config/google-chrome</td></tr>
+                                        <tr><td class="input-option">OSX/macOS:</td><td> \[userdir]/Library/Application Support/Google/Chrome/Default</td></tr>
                                         <tr><td class="input-option">iOS:</td><td> \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome</td></tr>
                                         <tr><td class="input-option">Android:</td><td> /userdata/data/com.android.chrome/app_chrome</td></tr>
                                     </table>
@@ -118,7 +118,7 @@
                                 <td colspan=2 class="input-description">
                                     <table>
                                         <tr><td>
-                                            <b>Description:</b> Brave is a free web browser that aims to "speed up the web, stop bad ads and pay publishers." Brave has an integrated ad-blocker and an optional ad replacement system that pays both ad companies and the user in Bitcoin. Brave also claims to offer a faster and more private browsing experience by blocking trackers and intrusive ads.
+                                            <b>Description:</b> Brave is a free web browser that aims to "speed up the web, stop bad ads and pay publishers." Brave has an integrated ad-blocker and an optional ad replacement system that pays both ad companies and the user in BAT. Brave also claims to offer a faster and more private browsing experience by blocking trackers and intrusive ads.
 
                                         </td>
                                         <td>
@@ -128,9 +128,9 @@
                                     <br />
                                     <b>Default Locations:</b>
                                     <table>
-                                        <tr><td class="input-option">Vista/7/8/10:</td><td> \[userdir\]\AppData\Roaming\brave</td></tr>
-                                        <tr><td class="input-option">Linux:</td><td> \[userdir\]/.config/brave</td></tr>
-                                        <tr><td class="input-option">OSX/macOS:</td><td> \[userdir\]/Library/Application Support/brave</td></tr>
+                                        <tr><td class="input-option">Vista/7/8/10:</td><td> \[userdir]\AppData\Roaming\brave</td></tr>
+                                        <tr><td class="input-option">Linux:</td><td> \[userdir]/.config/brave</td></tr>
+                                        <tr><td class="input-option">OSX/macOS:</td><td> \[userdir]/Library/Application Support/brave</td></tr>
                                     </table>
                                 </td>
                             </tr>
