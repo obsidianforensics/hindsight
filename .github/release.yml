@@ -1,0 +1,19 @@
+# .github/release.yml
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot
+  categories:
+    - title: 🚀 Features
+      labels:
+        - feature
+    - title: 🛠️ Minor Changes & Fixes
+      labels:
+        - bug
+        - enhancement
+    - title: Other Changes
+      labels:
+        - "*"
