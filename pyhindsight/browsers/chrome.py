@@ -2244,7 +2244,7 @@ class Chrome(WebBrowser):
     def process(self):
         supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies', 'Login Data',
                                'Extension Cookies']
-        supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications']
+        supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications', 'Network']
         supported_jsons = ['Bookmarks', 'TransportSecurity']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
         log.debug(f'Supported items: {supported_items}')
@@ -2257,6 +2257,15 @@ class Chrome(WebBrowser):
                     input_file.startswith(tuple([db + '__' for db in supported_databases])):
                 # Process structure from Chrome database files
                 self.build_structure(self.profile_path, input_file)
+
+        network_listing = None
+        if 'Network' in input_listing:
+            network_listing = os.listdir(os.path.join(self.profile_path, 'Network'))
+            for input_file in network_listing:
+                if input_file in supported_databases or \
+                        input_file.startswith(tuple([db + '__' for db in supported_databases])):
+                    # Process structure from Chrome database files
+                    self.build_structure(self.profile_path, input_file)
 
         # Use the structure of the input files to determine possible Chrome versions
         self.determine_version()
@@ -2444,6 +2453,21 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['File System'],
                 self.artifacts_counts.get('File System', '0')))
+
+        if network_listing:
+            if 'Cookies' in network_listing:
+                self.get_cookies(os.path.join(self.profile_path, 'Network'), 'Cookies', self.version)
+                self.artifacts_display['Cookies'] = 'Cookie records'
+                print(self.format_processing_output(
+                    self.artifacts_display['Cookies'],
+                    self.artifacts_counts.get('Cookies', '0')))
+
+            if 'TransportSecurity' in network_listing:
+                self.get_transport_security(os.path.join(self.profile_path, 'Network'), 'TransportSecurity')
+                self.artifacts_display['HSTS'] = "HSTS records"
+                print(self.format_processing_output(
+                    self.artifacts_display['HSTS'],
+                    self.artifacts_counts.get('HSTS', '0')))
 
         # Destroy the cached key so that json serialization doesn't
         # have a cardiac arrest on the non-unicode binary data.
