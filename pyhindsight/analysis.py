@@ -1169,6 +1169,14 @@ class AnalysisSession(object):
                         (item.row_type, item.origin, item.key, item.value, item.last_modified,
                          item.interpretation, item.profile, item.source_path, item.seq, item.state))
 
+                if item.row_type.startswith('session'):
+                    c.execute(
+                        'INSERT INTO storage (type, origin, key, value, '
+                        'interpretation, profile, source_path, seq, state) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, item.origin, item.key, item.value, item.interpretation, item.profile,
+                         item.source_path, item.seq, item.state))
+
                 if item.row_type.startswith('file system'):
                     c.execute(
                         'INSERT INTO storage (type, origin, key, value, modification_time, '
