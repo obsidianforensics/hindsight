@@ -2141,7 +2141,14 @@ class Chrome(WebBrowser):
         domains = set()
         for artifact in self.parsed_artifacts:
             if isinstance(artifact, self.HistoryItem):
-                domain = urllib.parse.urlparse(artifact.url).hostname
+                artifact_url = artifact.url
+
+                # Cookie artifact's "URLs" will be in the form ".example.com",
+                # which won't parse, so modify it so it will
+                if artifact_url.startswith('.'):
+                    artifact_url = 'http://' + artifact_url[1:]
+
+                domain = urllib.parse.urlparse(artifact_url).hostname
                 # Some URLs don't have a domain, like local PDF files
                 if domain:
                     domains.add(domain)
