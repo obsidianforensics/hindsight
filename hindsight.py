@@ -235,6 +235,7 @@ def main():
             continue
         except Exception as e:
             log.error(f' - Exception in {plugin} plugin: {e}')
+            continue
 
         try:
             log.info(f" - Running '{module.friendlyName}' plugin")
