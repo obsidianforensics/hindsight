@@ -8,7 +8,7 @@ import importlib
 import pyhindsight
 import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
-from pyhindsight.utils import banner, MyEncoder
+from pyhindsight.utils import banner
 
 # This will be the main pyhindsight.AnalysisSession object that all the work will be done on
 analysis_session = None

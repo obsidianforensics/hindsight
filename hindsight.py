@@ -235,6 +235,7 @@ def main():
             continue
         except Exception as e:
             log.error(f' - Exception in {plugin} plugin: {e}')
+            continue
 
         try:
             log.info(f" - Running '{module.friendlyName}' plugin")
@@ -314,9 +315,9 @@ def main():
             print(("\n Writing {}.xlsx".format(analysis_session.output_name)))
             write_excel(analysis_session)
         except IOError:
-            type, value, traceback = sys.exc_info()
+            error_type, value, traceback = sys.exc_info()
             print((value, "- is the file open?  If so, please close it and try again."))
-            log.error("Error writing XLSX file; type: {}, value: {}, traceback: {}".format(type, value, traceback))
+            log.error(f"Error writing XLSX file; type: {error_type}, value: {value}, traceback: {traceback}")
 
     elif args.format == 'jsonl':
         log.info("Writing output; JSONL format selected")
