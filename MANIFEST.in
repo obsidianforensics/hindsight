@@ -1,4 +1,5 @@
 recursive-include pyhindsight/plugins *.py
+recursive-include pyhindsight/lib *.py LICENSE
 recursive-include pyhindsight/static *
 recursive-exclude pyhindsight/static/web_modules *
 recursive-include pyhindsight/templates *.tpl
