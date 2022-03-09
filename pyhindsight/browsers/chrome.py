@@ -115,7 +115,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 97))
+        possible_versions = list(range(1, 98))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -1721,7 +1721,10 @@ class Chrome(WebBrowser):
 
         index.close()
 
-        self.artifacts_counts[dir_name] = len(results)
+        cache_display_name = dir_name
+        if dir_name == 'Cache_Data':
+            cache_display_name = 'Cache'
+        self.artifacts_counts[cache_display_name] = len(results)
         log.info(f' - Parsed {len(results)} items')
         self.parsed_artifacts.extend(results)
 
@@ -2143,9 +2146,12 @@ class Chrome(WebBrowser):
             if isinstance(artifact, self.HistoryItem):
                 artifact_url = artifact.url
 
+                if not artifact_url:
+                    continue
+
                 # Cookie artifact's "URLs" will be in the form ".example.com",
                 # which won't parse, so modify it so it will
-                if artifact_url.startswith('.'):
+                if artifact_url and artifact_url.startswith('.'):
                     artifact_url = 'http://' + artifact_url[1:]
 
                 domain = urllib.parse.urlparse(artifact_url).hostname
@@ -2343,7 +2349,10 @@ class Chrome(WebBrowser):
                 self.artifacts_counts.get('Cache', '0')))
 
         elif 'Cache' in input_listing:
-            self.get_cache(self.profile_path, 'Cache', row_type='cache')
+            if os.path.isdir(os.path.join(self.profile_path, 'Cache', 'Cache_Data')):
+                self.get_cache(os.path.join(self.profile_path, 'Cache'), 'Cache_Data', row_type='cache')
+            else:
+                self.get_cache(self.profile_path, 'Cache', row_type='cache')
             self.artifacts_display['Cache'] = 'Cache records'
             print(self.format_processing_output(
                 self.artifacts_display['Cache'],
