@@ -115,7 +115,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 98))
+        possible_versions = list(range(1, 101))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -170,8 +170,11 @@ class Chrome(WebBrowser):
             if 'content_annotations' in list(self.structure['History'].keys()):
                 trim_lesser_versions(91)
                 trim_lesser_versions_if('visibility_score', self.structure['History']['content_annotations'], 95)
+                trim_lesser_versions_if('search_terms', self.structure['History']['content_annotations'], 100)
             if 'context_annotations' in list(self.structure['History'].keys()):
                 trim_lesser_versions(92)
+                trim_lesser_versions_if(
+                    'total_foreground_duration', self.structure['History']['context_annotations'], 96)
             if 'clusters' in list(self.structure['History'].keys()):
                 trim_lesser_versions(93)
             if 'downloads_reroute_info' in list(self.structure['History'].keys()):
