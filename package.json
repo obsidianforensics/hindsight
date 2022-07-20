@@ -25,6 +25,6 @@
   },
   "devDependencies": {
     "esinstall": "^0.5.2",
-    "terser": "^5.5.1"
+    "terser": "^5.14.2"
   }
 }
