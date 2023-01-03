@@ -4,7 +4,7 @@ pycryptodome>=3.9.7
 pycryptodomex>=3.9.7
 xlsxwriter>=3.0.1
 bottle>=0.12.18
-setuptools==58.2.0
+setuptools==65.5.1
 puremagic~=1.11
 argparse~=1.4.0
 dfir-unfurl
