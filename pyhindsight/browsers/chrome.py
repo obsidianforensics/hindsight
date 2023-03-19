@@ -121,7 +121,7 @@ class Chrome(WebBrowser):
 
         def update_and_rollback_if_empty(version_list, prev_version_list):
             if len(version_list) == 0:
-                version_list = prev_version_list
+                version_list = prev_version_list[:]
                 log.warning('Last version structure check eliminated all possible versions; skipping that file.')
             else:
                 prev_version_list = version_list[:]
