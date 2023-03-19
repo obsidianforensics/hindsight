@@ -1022,7 +1022,7 @@ class Chrome(WebBrowser):
 
         # Only process directories with the expected naming convention
         app_id_re = re.compile(r'^([a-z]{32})$')
-        ext_listing = [x for x in ext_listing if app_id_re.match(x)]
+        ext_listing = [str(x) for x in ext_listing if app_id_re.match(x)]
         log.debug(f' - {len(ext_listing)} files in Extensions directory will be processed: {str(ext_listing)}')
 
         # Process each directory with an app_id name
@@ -1032,8 +1032,9 @@ class Chrome(WebBrowser):
             ext_vers = os.listdir(ext_vers_listing)
             manifest_file = None
             selected_version = None
+            decoded_manifest = None
 
-            # Connect to manifest.json in latest version directory
+            # Connect to manifest.json in the latest version directory
             for version in sorted(ext_vers, reverse=True, key=lambda x: int(x.split('.', maxsplit=1)[0])):
                 manifest_path = os.path.join(ext_vers_listing, version, 'manifest.json')
                 try:
@@ -1099,7 +1100,7 @@ class Chrome(WebBrowser):
                                 except KeyError:
                                     try:
                                         # Google Wallet / Chrome Payments is weird/hidden - name is saved different
-                                        # than other extensions
+                                        # from other extensions
                                         description = decoded_locale_messages['app_description']['message']
                                     except:
                                         description = '<error>'
@@ -1114,7 +1115,6 @@ class Chrome(WebBrowser):
                 results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest['version']))
             except:
                 log.error(f' - Error decoding manifest file for {app_id}')
-                pass
 
         self.artifacts_counts['Extensions'] = len(results)
         log.info(f' - Parsed {len(results)} items')
