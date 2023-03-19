@@ -2143,6 +2143,91 @@ class Chrome(WebBrowser):
         self.artifacts_counts['Site Characteristics'] = len(result_list)
         self.parsed_artifacts.extend(result_list)
 
+    def get_platform_notifications(self, path, dir_name):
+        result_list = []
+
+        try:
+            from pyhindsight.lib.notification_database_data_pb2 import NotificationDatabaseDataProto
+
+        except Exception as e:
+            log.exception(f' - Exception importing NotificationDatabaseDataProto: {e}')
+            self.artifacts_counts['Platform Notifications'] = 'Failed'
+            return
+
+        log.info('Platform Notifications:')
+        pn_root_path = os.path.join(path, dir_name)
+        log.info(f' - Reading from {pn_root_path}')
+
+        # Grab listing of 'Platform Notifications' directory
+        pn_root_listing = os.listdir(pn_root_path)
+        log.debug(f' - {len(pn_root_listing)} files in Platform Notifications directory: {str(pn_root_listing)}')
+
+        items = utils.get_ldb_records(pn_root_path)
+        for item in items:
+            # print(item)
+
+            if item['key'] in (b'NEXT_NOTIFICATION_ID'):
+                continue
+
+            try:
+                key_prefix, key_remainder = item['key'].split(b':', 1)
+                assert key_prefix in (b'DATA', b'RESOURCES'), 'Unknown key prefix found for NotificationDatabaseDataProto'
+
+                key_origin, notification_id = key_remainder.split(b'\x00')
+
+                notification_id_type = chr(notification_id[0])
+                # assert notification_id_type in ('p', 'n'), 'Type should be [p]ersistent or [n]on-persistent'
+
+                shown_by_browser = False
+                if notification_id_type == 'p':
+                    if chr(notification_id[1]) == 'b':
+                        shown_by_browser = True
+                        notification_id_remainder = notification_id[3:]
+                    elif chr(notification_id[1]) == '#':
+                        notification_id_remainder = notification_id[2:]
+                    else:
+                        raise ValueError(f'Unknown value in notification id {notification_id}')
+
+                    notification_id_origin, notification_id_remainder = notification_id_remainder.split(b'#',1)
+                    id_unique = notification_id_remainder[1:]
+                    id_unique_type = int(chr(notification_id_remainder[0]))
+                    # print(id_unique)
+
+                output_status = None
+
+                if item['key'].startswith(b'DATA'):
+                    raw_proto = item['value']
+
+                else:
+                    # continue
+                    raw_proto = None
+
+                # Deleted records won't have a value
+                if raw_proto:
+                    # NotificationDatabaseDataProto built from content/browser/notifications/notification_database_data.proto
+                    parsed_proto = NotificationDatabaseDataProto.FromString(raw_proto)
+                    time_shown = parsed_proto.notification_data.timestamp
+                    output_status = parsed_proto.notification_data.title
+                else:
+                    parsed_proto = ''
+                    time_shown = 0
+                    output_status = f"{id_unique} {('notification id', 'developer_tag') [id_unique_type]}"
+
+                pn_record = Chrome.SiteSetting(
+                    self.profile_path, url=str(key_origin), timestamp=utils.to_datetime(time_shown, self.timezone),
+                    #key=f'Status: {item["state"]}',
+                    key=output_status, value=str(parsed_proto), interpretation='')
+                pn_record.row_type += ' (notification)'
+                result_list.append(pn_record)
+
+            except (AssertionError, ValueError) as e:
+                log.exception(f' - Exception while parsing {item}: {e}')
+
+
+        log.info(f' - Parsed {len(result_list)} items')
+        self.artifacts_counts['Platform Notifications'] = len(result_list)
+        self.parsed_artifacts.extend(result_list)
+
     def build_hsts_domain_hashes(self):
         domains = set()
         for artifact in self.parsed_artifacts:
@@ -2459,6 +2544,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['Site Characteristics'],
                 self.artifacts_counts.get('Site Characteristics', '0')))
+
+        if 'Platform Notifications' in input_listing:
+            self.get_platform_notifications(self.profile_path, 'Platform Notifications')
+            self.artifacts_display['Platform Notifications'] = "Platform Notification records"
+            print(self.format_processing_output(
+                self.artifacts_display['Platform Notifications'],
+                self.artifacts_counts.get('Platform Notifications', '0')))
 
         if 'TransportSecurity' in input_listing:
             self.get_transport_security(self.profile_path, 'TransportSecurity')
