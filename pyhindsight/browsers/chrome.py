@@ -853,6 +853,59 @@ class Chrome(WebBrowser):
                 self.artifacts_counts['Autofill'] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}: {e}')
 
+    def get_dips(self, path, database, version):
+        # Set up empty return array
+        results = []
+
+        log.info(f'DIPS items from {database}:')
+
+        # Queries for different versions
+        query = {110: '''SELECT site, first_site_storage_time, last_site_storage_time, first_user_interaction_time,
+                        last_user_interaction_time, first_stateful_bounce_time, last_stateful_bounce_time, 
+                        first_stateless_bounce_time,last_stateless_bounce_time FROM bounces'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version != 0:
+            log.info(f' - Using SQL query for DIPS items for Chrome v{compatible_version}')
+            try:
+                # Copy and connect to copy of 'DIPS' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts['DIPS'] = 'Failed'
+                    return
+                cursor = conn.cursor()
+
+                columns = ['first_site_storage_time', 'last_site_storage_time', 'first_user_interaction_time',
+                           'last_user_interaction_time', 'first_stateful_bounce_time', 'last_stateful_bounce_time',
+                           'first_stateless_bounce_time', 'last_stateless_bounce_time']
+
+                # Use the highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
+
+                for row in cursor:
+                    for column in columns:
+                        if not row.get(column):
+                            continue
+
+                        dips_record = Chrome.SiteSetting(
+                            self.profile_path, row['site'], utils.to_datetime(row.get(column), self.timezone),
+                            column, '', None)
+                        dips_record.row_type = 'site setting (dips)'
+                        results.append(dips_record)
+
+                conn.close()
+                self.artifacts_counts['DIPS'] = len(results)
+                log.info(f' - Parsed {len(results)} items')
+                self.parsed_artifacts.extend(results)
+
+            except Exception as e:
+                self.artifacts_counts['DIPS'] = 'Failed'
+                log.error(f' - Could not open {os.path.join(path, database)}: {e}')
+
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
         results = []
@@ -2476,6 +2529,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['File System'],
                 self.artifacts_counts.get('File System', '0')))
+
+        if 'DIPS' in input_listing:
+            self.get_dips(self.profile_path, 'DIPS', self.version)
+            self.artifacts_display['DIPS'] = 'DIPS Items'
+            print(self.format_processing_output(
+                self.artifacts_display['DIPS'],
+                self.artifacts_counts.get('DIPS', '0')))
 
         if network_listing:
             if 'Cookies' in network_listing:
