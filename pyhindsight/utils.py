@@ -52,6 +52,9 @@ def open_sqlite_db(chrome, database_path, database_name):
         db_conn.row_factory = dict_factory
         db_conn.text_factory = text_factory
 
+        # Execute a test query to make sure the database is not corrupted
+        db_conn.execute("SELECT name FROM sqlite_schema WHERE type='table'")
+
     except Exception as e:
         log.error(f' - Error opening {database_name}: {e}')
         return None
