@@ -29,10 +29,10 @@ import pathlib
 import dataclasses
 import typing
 
-import ccl_leveldb
-import ccl_protobuff as pb
-import ccl_v8_value_deserializer
-import ccl_blink_value_deserializer
+from . import ccl_leveldb
+from . import ccl_protobuff as pb
+from . import ccl_v8_value_deserializer
+from . import ccl_blink_value_deserializer
 
 __version__ = "0.1.1"
 __description__ = "Library for reading Chrome/Chromium notifications (Platform Notifications)"
