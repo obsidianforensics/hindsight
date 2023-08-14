@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from pyhindsight.lib.ccl_chrome_indexeddb import ccl_v8_value_deserializer
 
 # See: https://chromium.googlesource.com/chromium/src/third_party/+/master/blink/renderer/bindings/core/v8/serialization
+#      https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/bindings/modules/v8/serialization/v8_script_value_serializer_for_modules.cc
+
 
 # WebCoreStrings are read as (length:uint32_t, string:UTF8[length]).
 # RawStrings are read as (length:uint32_t, string:UTF8[length]).
@@ -48,11 +50,11 @@ from pyhindsight.lib.ccl_chrome_indexeddb import ccl_v8_value_deserializer
 # GenerateFreshObjectTag/GenerateFreshArrayTag); these reference IDs are then
 # used with ObjectReferenceTag to tie the recursive knot.
 
-__version__ = "0.1"
+__version__ = "0.2"
 __description__ = "Partial reimplementation of the Blink Javascript Object Serialization"
 __contact__ = "Alex Caithness"
 
-__DEBUG = True
+__DEBUG = False
 
 
 def log(msg, debug_only=True):
@@ -71,6 +73,19 @@ class BlobIndexType(enum.Enum):
 class BlobIndex:
     index_type: BlobIndexType
     index_id: int
+
+
+@dataclass(frozen=True)
+class CryptoKey:
+    sub_type: "V8CryptoKeySubType"
+    algorithm_type: typing.Optional["V8CryptoKeyAlgorithm"]
+    hash_type: typing.Optional["V8CryptoKeyAlgorithm"]
+    asymmetric_key_type: typing.Optional["V8AsymmetricCryptoKeyType"]
+    byte_length: typing.Optional[int]
+    public_exponent: typing.Optional[bytes]
+    named_curve_type: typing.Optional["V8CryptoNamedCurve"]
+    key_usage: "V8CryptoKeyUsage"
+    key_data: bytes
 
 
 class Constants:
@@ -148,19 +163,178 @@ class Constants:
 
     tag_kDOMExceptionTag = b"x"  # name:String,message:String,stack:String
     tag_kVersionTag = b"\xff"  # version:uint32_t -> Uses this as the file version.
+    tag_kTrailerOffsetTag = b"\xfe" # offset:uint64_t (fixed width, network order) from buffer, start size:uint32_t (fixed width, network order)
+    tag_kTrailerRequiresInterfacesTag = b"\xA0"
+
+
+class V8CryptoKeySubType(enum.IntEnum):
+    """
+    See: third_party/blink/renderer/bindings/modules/v8/serialization/web_crypto_sub_tags.h
+    Used by the kCryptoKeyTag type
+    """
+    AesKey = 1
+    HmacKey = 2
+    # ID 3 was used by RsaKeyTag, while still behind experimental flag.
+    RsaHashedKey = 4
+    EcKey = 5
+    NoParamsKey = 6
+
+
+class V8CryptoKeyAlgorithm(enum.IntEnum):
+    """
+    See: third_party/blink/renderer/bindings/modules/v8/serialization/web_crypto_sub_tags.h
+    Used by the kCryptoKeyTag type
+    """
+    AesCbcTag = 1
+    HmacTag = 2
+    RsaSsaPkcs1v1_5Tag = 3
+    # ID 4 was used by RsaEs, while still behind experimental flag.
+    Sha1Tag = 5
+    Sha256Tag = 6
+    Sha384Tag = 7
+    Sha512Tag = 8
+    AesGcmTag = 9
+    RsaOaepTag = 10
+    AesCtrTag = 11
+    AesKwTag = 12
+    RsaPssTag = 13
+    EcdsaTag = 14
+    EcdhTag = 15
+    HkdfTag = 16
+    Pbkdf2Tag = 17
+
+
+class V8AsymmetricCryptoKeyType(enum.IntEnum):
+    Public = 1
+    Private = 2
+
+
+class V8CryptoNamedCurve(enum.IntEnum):
+    """
+    See: third_party/blink/renderer/bindings/modules/v8/serialization/web_crypto_sub_tags.h
+    Used by the kCryptoKeyTag type
+    """
+    P256 = 1
+    P384 = 2
+    P521 = 3
+
+
+class V8CryptoKeyUsage(enum.IntFlag):
+    """
+    See: third_party/blink/renderer/bindings/modules/v8/serialization/web_crypto_sub_tags.h
+    Used by the kCryptoKeyTag type
+    """
+    kExtractableUsage = 1 << 0
+    kEncryptUsage = 1 << 1
+    kDecryptUsage = 1 << 2
+    kSignUsage = 1 << 3
+    kVerifyUsage = 1 << 4
+    kDeriveKeyUsage = 1 << 5
+    kWrapKeyUsage = 1 << 6
+    kUnwrapKeyUsage = 1 << 7
+    kDeriveBitsUsage = 1 << 8
 
 
 class BlinkV8Deserializer:
     def _read_varint(self, stream) -> int:
         return ccl_v8_value_deserializer.read_le_varint(stream)[0]
 
+    def _read_varint32(self, stream) -> int:
+        return ccl_v8_value_deserializer.read_le_varint(stream, is_32bit=True)[0]
+
+    # def _read_uint32(self, stream: typing.BinaryIO) -> int:
+    #     raw = stream.read(4)
+    #     if len(raw) < 4:
+    #         raise ValueError("Could not read enough data when reading int32")
+    #     return struct.unpack("<I", raw)[0]
+
     def _read_file_index(self, stream: typing.BinaryIO) -> BlobIndex:
         return BlobIndex(BlobIndexType.File, self._read_varint(stream))
+
+    def _read_blob_index(self, stream: typing.BinaryIO) -> BlobIndex:
+        return BlobIndex(BlobIndexType.Blob, self._read_varint(stream))
 
     def _read_file_list_index(self, stream: typing.BinaryIO) -> typing.Iterable[BlobIndex]:
         length = self._read_varint(stream)
         result = [self._read_file_index(stream) for _ in range(length)]
         return result
+
+    def _read_crypto_key(self, stream: typing.BinaryIO):
+        sub_type = V8CryptoKeySubType(stream.read(1)[0])
+
+        if sub_type == V8CryptoKeySubType.AesKey:
+            algorithm_id = V8CryptoKeyAlgorithm(self._read_varint32(stream))
+            byte_length = self._read_varint32(stream)
+            params = {
+                "algorithm_type": algorithm_id,
+                "byte_length": byte_length,
+                "hash_type": None,
+                "named_curve_type": None,
+                "asymmetric_key_type": None,
+                "public_exponent": None
+            }
+        elif sub_type == V8CryptoKeySubType.HmacKey:
+            byte_length = self._read_varint32(stream)
+            hash_id = V8CryptoKeyAlgorithm(self._read_varint32(stream))
+            params = {
+                "byte_length": byte_length,
+                "hash_type": hash_id,
+                "algorithm_type": None,
+                "named_curve_type": None,
+                "asymmetric_key_type": None,
+                "public_exponent": None
+            }
+        elif sub_type == V8CryptoKeySubType.RsaHashedKey:
+            algorithm_id = V8CryptoKeyAlgorithm(self._read_varint32(stream))
+            asymmetric_key_type = V8AsymmetricCryptoKeyType(stream.read(1)[0])
+            length_bytes = self._read_varint32(stream)
+            public_exponent_length = self._read_varint32(stream)
+            public_exponent = stream.read(public_exponent_length)
+            if len(public_exponent) != public_exponent_length:
+                raise ValueError(f"Could not read all of public exponent data")
+            hash_id = V8CryptoKeyAlgorithm(self._read_varint32(stream))
+            params = {
+                "algorithm_type": algorithm_id,
+                "asymmetric_key_type": asymmetric_key_type,
+                "byte_length": length_bytes,
+                "public_exponent": public_exponent,
+                "hash_type": hash_id,
+                "named_curve_type": None
+            }
+
+        elif sub_type == V8CryptoKeySubType.EcKey:
+            algorithm_id = V8CryptoKeyAlgorithm(self._read_varint32(stream))
+            asymmetric_key_type = V8AsymmetricCryptoKeyType(stream.read(1)[0])
+            named_curve = V8CryptoNamedCurve(self._read_varint32(stream))
+            params = {
+                "algorithm_type": algorithm_id,
+                "asymmetric_key_type": asymmetric_key_type,
+                "named_curve_type": named_curve,
+                "hash_type": None,
+                "byte_length": None,
+                "public_exponent": None
+            }
+        elif sub_type == V8CryptoKeySubType.NoParamsKey:
+            algorithm_id = V8CryptoKeyAlgorithm(self._read_varint32(stream))
+            params = {
+                "algorithm_type": algorithm_id,
+                "hash_type": None,
+                "asymmetric_key_type": None,
+                "byte_length": None,
+                "named_curve_type": None,
+                "public_exponent": None
+            }
+        else:
+            raise ValueError(f"Unknown V8CryptoKeySubType {sub_type}")
+
+        params["key_usage"] = V8CryptoKeyUsage(self._read_varint32(stream))
+        key_length = self._read_varint32(stream)
+        key_data = stream.read(key_length)
+        if len(key_data) < key_length:
+            raise ValueError("Could not read all key data")
+
+        params["key_data"] = key_data
+        return CryptoKey(sub_type, **params)
 
     def _not_implemented(self, stream):
         raise NotImplementedError()
@@ -172,7 +346,7 @@ class BlinkV8Deserializer:
             Constants.tag_kMessagePortTag: lambda x: self._not_implemented(x),
             Constants.tag_kMojoHandleTag: lambda x: self._not_implemented(x),
             Constants.tag_kBlobTag: lambda x: self._not_implemented(x),
-            Constants.tag_kBlobIndexTag: lambda x: self._not_implemented(x),
+            Constants.tag_kBlobIndexTag: lambda x: self._read_blob_index(x),
             Constants.tag_kFileTag: lambda x: self._not_implemented(x),
             Constants.tag_kFileIndexTag: lambda x: self._read_file_index(x),
             Constants.tag_kDOMFileSystemTag: lambda x: self._not_implemented(x),
@@ -196,7 +370,7 @@ class BlinkV8Deserializer:
             Constants.tag_kDOMMatrixReadOnlyTag: lambda x: self._not_implemented(x),
             Constants.tag_kDOMMatrix2DTag: lambda x: self._not_implemented(x),
             Constants.tag_kDOMMatrix2DReadOnlyTag: lambda x: self._not_implemented(x),
-            Constants.tag_kCryptoKeyTag: lambda x: self._not_implemented(x),
+            Constants.tag_kCryptoKeyTag: lambda x: self._read_crypto_key(x),
             Constants.tag_kRTCCertificateTag: lambda x: self._not_implemented(x),
             Constants.tag_kRTCEncodedAudioFrameTag: lambda x: self._not_implemented(x),
             Constants.tag_kRTCEncodedVideoFrameTag: lambda x: self._not_implemented(x),

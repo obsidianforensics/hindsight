@@ -1194,6 +1194,22 @@ class Chrome(WebBrowser):
                         ]}
         self.installed_extensions = {'data': results, 'presentation': presentation}
 
+    def get_platform_notifications(self, path, dir_name):
+        import pathlib
+        from pyhindsight.lib.ccl_chrome_indexeddb import ccl_chromium_notifications
+        pn_ldb_records = None
+
+        with ccl_chromium_notifications.NotificationReader(pathlib.Path(os.path.join(path, dir_name))) as reader:
+            for notification in reader.read_notifications():
+                print(
+                        notification.level_db_info.seq_no,
+                        notification.origin,
+                        json.dumps(notification.title),
+                        json.dumps(notification.body),
+                        json.dumps(notification.data),
+                        notification.timestamp
+                    )
+
     def get_preferences(self, path, preferences_file):
         def check_and_append_pref(parent, pref, value=None, description=None):
             try:
@@ -2536,6 +2552,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['DIPS'],
                 self.artifacts_counts.get('DIPS', '0')))
+
+        if 'Platform Notifications' in input_listing:
+            self.get_platform_notifications(self.profile_path, 'Platform Notifications')
+            self.artifacts_display['Platform Notifications'] = "Platform Notification records"
+            print(self.format_processing_output(
+                self.artifacts_display['Platform Notifications'],
+                self.artifacts_counts.get('Platform Notifications', '0')))
 
         if network_listing:
             if 'Cookies' in network_listing:
