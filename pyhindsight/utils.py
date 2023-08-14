@@ -89,12 +89,12 @@ class MyEncoder(json.JSONEncoder):
             return obj.__dict__
 
 
-def to_datetime(timestamp, timezone=None):
+def to_datetime(timestamp, timezone=datetime.timezone.utc):
     """Convert a variety of timestamp formats to a datetime object."""
 
     try:
         if isinstance(timestamp, datetime.datetime):
-            return timestamp
+            return timestamp.replace(tzinfo=timezone)
         try:
             timestamp = float(timestamp)
         except Exception as e:

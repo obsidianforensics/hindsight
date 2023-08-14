@@ -1195,20 +1195,26 @@ class Chrome(WebBrowser):
         self.installed_extensions = {'data': results, 'presentation': presentation}
 
     def get_platform_notifications(self, path, dir_name):
+        result_list = []
+
         import pathlib
         from pyhindsight.lib.ccl_chrome_indexeddb import ccl_chromium_notifications
-        pn_ldb_records = None
 
         with ccl_chromium_notifications.NotificationReader(pathlib.Path(os.path.join(path, dir_name))) as reader:
-            for notification in reader.read_notifications():
-                print(
-                        notification.level_db_info.seq_no,
-                        notification.origin,
-                        json.dumps(notification.title),
-                        json.dumps(notification.body),
-                        json.dumps(notification.data),
-                        notification.timestamp
-                    )
+            try:
+                for notification in reader.read_notifications():
+
+                    pn_record = Chrome.SiteSetting(
+                        self.profile_path, url=str(notification.origin), timestamp=utils.to_datetime(notification.timestamp, self.timezone),
+                        key=json.dumps(notification.title), value=json.dumps(notification.body), interpretation=json.dumps(notification.data))
+                    pn_record.row_type += ' (notification)'
+                    result_list.append(pn_record)
+            except Exception as e:
+                print(f'boom!! {e}')
+
+        self.artifacts_counts[dir_name] = len(result_list)
+        log.info(f' - Parsed {len(result_list)} items')
+        self.parsed_artifacts.extend(result_list)
 
     def get_preferences(self, path, preferences_file):
         def check_and_append_pref(parent, pref, value=None, description=None):
