@@ -82,7 +82,7 @@ class HindsightEncoder(json.JSONEncoder):
 
             if item.get('source_title'):
                 item['message'] = f"Watched{item['watch_time']} on {item['source_title']} "\
-                                  f"(ending at {item['position']}/{item.get('media_duration')}) " \
+                                  f"(ending at {item.get('position')}/{item.get('media_duration')}) " \
                                   f"[has_video: {item['has_video']}; has_audio: {item['has_audio']}]"
             else:
                 item['message'] = f"Watched{item['watch_time']} on {item['url']} " \

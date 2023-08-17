@@ -2214,15 +2214,13 @@ class Chrome(WebBrowser):
                     output_status = f"{id_unique} {('notification id', 'developer_tag') [id_unique_type]}"
 
                 pn_record = Chrome.SiteSetting(
-                    self.profile_path, url=str(key_origin), timestamp=utils.to_datetime(time_shown, self.timezone),
-                    #key=f'Status: {item["state"]}',
+                    self.profile_path, url=key_origin.decode('utf-8'), timestamp=utils.to_datetime(time_shown, self.timezone),
                     key=output_status, value=str(parsed_proto), interpretation='')
                 pn_record.row_type += ' (notification)'
                 result_list.append(pn_record)
 
             except (AssertionError, ValueError) as e:
                 log.exception(f' - Exception while parsing {item}: {e}')
-
 
         log.info(f' - Parsed {len(result_list)} items')
         self.artifacts_counts['Platform Notifications'] = len(result_list)
