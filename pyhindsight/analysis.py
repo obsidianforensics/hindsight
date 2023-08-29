@@ -691,10 +691,9 @@ class AnalysisSession(object):
 
         # Title bar
         w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
-        w.merge_range('I1:M1', 'URL Specific', center_header_format)
-        w.merge_range('N1:P1', 'Download Specific', center_header_format)
-        w.merge_range('Q1:R1', '', center_header_format)
-        w.merge_range('S1:U1', 'Cache Specific', center_header_format)
+        w.merge_range('I1:O1', 'URL Specific', center_header_format)
+        w.merge_range('P1:R1', 'Download Specific', center_header_format)
+        w.merge_range('S1:W1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, 'Type', header_format)
@@ -705,19 +704,21 @@ class AnalysisSession(object):
         w.write(1, 5, 'Interpretation', header_format)
         w.write(1, 6, 'Profile', header_format)
         w.write(1, 7, 'Source', header_format)
-        w.write(1, 8, 'Duration', header_format)
-        w.write(1, 9, 'Visit Count', header_format)
-        w.write(1, 10, 'Typed Count', header_format)
-        w.write(1, 11, 'URL Hidden', header_format)
-        w.write(1, 12, 'Transition', header_format)
-        w.write(1, 13, 'Interrupt Reason', header_format)
-        w.write(1, 14, 'Danger Type', header_format)
-        w.write(1, 15, 'Opened?', header_format)
-        w.write(1, 16, 'ETag', header_format)
-        w.write(1, 17, 'Last Modified', header_format)
-        w.write(1, 18, 'Server Name', header_format)
-        w.write(1, 19, 'Data Location [Offset]', header_format)
-        w.write(1, 20, 'All HTTP Headers', header_format)
+        w.write(1, 8, 'Visit ID', header_format)
+        w.write(1, 9, 'From Visit', header_format)
+        w.write(1, 10, 'Visit Duration', header_format)
+        w.write(1, 11, 'Visit Count', header_format)
+        w.write(1, 12, 'Typed Count', header_format)
+        w.write(1, 13, 'URL Hidden', header_format)
+        w.write(1, 14, 'Transition', header_format)
+        w.write(1, 15, 'Interrupt Reason', header_format)
+        w.write(1, 16, 'Danger Type', header_format)
+        w.write(1, 17, 'Opened?', header_format)
+        w.write(1, 18, 'ETag', header_format)
+        w.write(1, 19, 'Last Modified', header_format)
+        w.write(1, 20, 'Server Name', header_format)
+        w.write(1, 21, 'Data Location [Offset]', header_format)
+        w.write(1, 22, 'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -730,23 +731,23 @@ class AnalysisSession(object):
         w.set_column('H:H', 10)  # Source
 
         # URL Specific
-        w.set_column('I:I', 14)  # Visit Duration
-        w.set_column('J:L', 6)   # Visit Count, Typed Count, Hidden
-        w.set_column('M:M', 12)  # Transition
+        w.set_column('K:K', 14)  # Visit Duration
+        w.set_column('L:N', 6)   # Visit Count, Typed Count, Hidden
+        w.set_column('O:O', 12)  # Transition
 
         # Download Specific
-        w.set_column('N:N', 12)  # Interrupt Reason
-        w.set_column('O:O', 24)  # Danger Type
-        w.set_column('P:P', 12)  # Opened
+        w.set_column('P:P', 12)  # Interrupt Reason
+        w.set_column('Q:Q', 24)  # Danger Type
+        w.set_column('R:R', 12)  # Opened
 
         # Common between Downloads and Cache
-        w.set_column('Q:Q', 12)  # ETag
-        w.set_column('R:R', 27)  # Last Modified
+        w.set_column('S:S', 12)  # ETag
+        w.set_column('T:T', 27)  # Last Modified
 
         # Cache Specific
-        w.set_column('S:S', 18)  # Server Name
-        w.set_column('T:T', 27)  # Data Location
-        w.set_column('U:U', 27)  # HTTP Headers
+        w.set_column('U:U', 18)  # Server Name
+        w.set_column('V:V', 27)  # Data Location
+        w.set_column('W:W', 27)  # HTTP Headers
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -760,12 +761,14 @@ class AnalysisSession(object):
                     w.write(row_number, 4, "", black_value_format)  # Indexed Content
                     w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
                     w.write(row_number, 6, item.profile, black_type_format)  # Profile
-                    w.write(row_number, 7, item.visit_source, black_type_format)  # Source
-                    w.write(row_number, 8, item.visit_duration, black_flag_format)  # Duration
-                    w.write(row_number, 9, item.visit_count, black_flag_format)  # Visit Count
-                    w.write(row_number, 10, item.typed_count, black_flag_format)  # Typed Count
-                    w.write(row_number, 11, item.hidden, black_flag_format)  # Hidden
-                    w.write(row_number, 12, item.transition_friendly, black_trans_format)  # Transition
+                    w.write(row_number, 7, item.visit_source, black_type_format)
+                    w.write(row_number, 8, item.visit_id, black_flag_format)
+                    w.write(row_number, 9, item.from_visit, black_flag_format)
+                    w.write(row_number, 10, item.visit_duration, black_flag_format)
+                    w.write(row_number, 11, item.visit_count, black_flag_format)
+                    w.write(row_number, 12, item.typed_count, black_flag_format)
+                    w.write(row_number, 13, item.hidden, black_flag_format)
+                    w.write(row_number, 14, item.transition_friendly, black_trans_format)
 
                 elif item.row_type.startswith("media"):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
@@ -798,16 +801,16 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, green_value_format)  # download path
                     w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
                     w.write(row_number, 6, item.profile, green_type_format)  # Profile
-                    w.write(row_number, 13, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
-                    w.write(row_number, 14, item.danger_type_friendly, green_value_format)  # danger type
+                    w.write(row_number, 15, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
+                    w.write(row_number, 16, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
                         open_friendly = 'Yes'
                     elif item.opened == 0:
                         open_friendly = 'No'
-                    w.write_string(row_number, 15, open_friendly, green_value_format)  # opened
-                    w.write(row_number, 16, item.etag, green_value_format)  # ETag
-                    w.write(row_number, 17, item.last_modified, green_value_format)  # Last Modified
+                    w.write_string(row_number, 17, open_friendly, green_value_format)  # opened
+                    w.write(row_number, 18, item.etag, green_value_format)  # ETag
+                    w.write(row_number, 19, item.last_modified, green_value_format)  # Last Modified
 
                 elif item.row_type.startswith("bookmark folder"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -844,11 +847,11 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, gray_value_format)  # type (size) // image/jpeg (35 bytes)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
-                    w.write(row_number, 16, item.etag, gray_value_format)  # ETag
-                    w.write(row_number, 17, item.last_modified, gray_value_format)  # Last Modified
-                    w.write(row_number, 18, item.server_name, gray_value_format)  # Server name
-                    w.write(row_number, 19, item.location, gray_value_format)  # data location // data_2 [1542523]
-                    w.write(row_number, 20, item.http_headers_str, gray_value_format)  # headers
+                    w.write(row_number, 18, item.etag, gray_value_format)  # ETag
+                    w.write(row_number, 19, item.last_modified, gray_value_format)  # Last Modified
+                    w.write(row_number, 20, item.server_name, gray_value_format)  # Server name
+                    w.write(row_number, 21, item.location, gray_value_format)  # data location // data_2 [1542523]
+                    w.write(row_number, 22, item.http_headers_str, gray_value_format)  # headers
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1049,7 +1052,7 @@ class AnalysisSession(object):
             c = output_db.cursor()
             c.execute(
                 'CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, '
-                'interpretation TEXT, profile TEXT, source TEXT, visit_duration TEXT, visit_count INT, '
+                'interpretation TEXT, profile TEXT, source TEXT, visit_id INT, from_visit INT, visit_duration TEXT, visit_count INT, '
                 'typed_count INT, url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, '
                 'opened INT, etag TEXT, last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)')
 
@@ -1066,10 +1069,10 @@ class AnalysisSession(object):
                 if item.row_type.startswith('url'):
                     c.execute(
                         'INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source, '
-                        'visit_duration, visit_count, typed_count, url_hidden, transition) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                        'visit_id', 'from_visit', 'visit_duration, visit_count, typed_count, url_hidden, transition) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, 
-                         item.profile, item.visit_source, item.visit_duration, item.visit_count, item.typed_count, 
+                         item.profile, item.visit_source, item.visit_duration, item.visit_id, item.from_visit, item.visit_count, item.typed_count,
                          item.hidden, item.transition_friendly))
 
                 elif item.row_type.startswith('media'):
