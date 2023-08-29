@@ -278,31 +278,32 @@ class Chrome(WebBrowser):
         # Queries for different versions
         query = {59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
-                            visits.transition, visit_source.source
+                            visits.transition, visit_source.source, visits.id as visit_id
                         FROM urls JOIN visits 
                         ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                            visits.transition, visit_source.source
+                            visits.transition, visit_source.source, visits.id as visit_id
                         FROM urls JOIN visits 
                         ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  29: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                            visits.transition, visit_source.source, visits.is_indexed
+                            visits.transition, visit_source.source, visits.is_indexed, visits.id as visit_id
                         FROM urls JOIN visits 
                         ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  20: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
-                            visits.transition, visit_source.source, visits.is_indexed
+                            visits.transition, visit_source.source, visits.is_indexed, visits.id as visit_id
                         FROM urls JOIN visits 
                         ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  7:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
-                            visit_source.source
+                            visit_source.source, visits.id as visit_id
                         FROM urls JOIN visits 
                         ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  1:  '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition
+                            urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.transition,
+                            visits.id as visit_id
                         FROM urls, visits WHERE urls.id = visits.url'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
@@ -320,7 +321,7 @@ class Chrome(WebBrowser):
                     return
                 cursor = conn.cursor()
 
-                # Use highest compatible version SQL to select download data
+                # Use the highest compatible version SQL to select data
                 try:
                     cursor.execute(query[compatible_version])
                 except Exception as e:
@@ -334,7 +335,7 @@ class Chrome(WebBrowser):
                         duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
                     new_row = Chrome.URLItem(
-                        self.profile_path, row.get('id'), row.get('url'), row.get('title'),
+                        self.profile_path, row.get('visit_id'), row.get('url'), row.get('title'),
                         utils.to_datetime(row.get('visit_time'), self.timezone),
                         utils.to_datetime(row.get('last_visit_time'), self.timezone),
                         row.get('visit_count'), row.get('typed_count'), row.get('from_visit'),
@@ -2569,11 +2570,11 @@ class Chrome(WebBrowser):
 
     class URLItem(WebBrowser.URLItem):
         def __init__(
-                self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
+                self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                 transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                 transition_friendly=None):
             WebBrowser.URLItem.__init__(
-                self, profile=profile, url_id=url_id, url=url, title=title, visit_time=visit_time,
+                self, profile=profile, visit_id=visit_id, url=url, title=title, visit_time=visit_time,
                 last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
                 from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
                 indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,

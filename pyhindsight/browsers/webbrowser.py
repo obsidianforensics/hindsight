@@ -1,3 +1,4 @@
+import abc
 import hashlib
 import logging
 import sqlite3
@@ -136,23 +137,23 @@ class WebBrowser(object):
 
     class URLItem(HistoryItem):
         def __init__(
-                self, profile, url_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
+                self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                 transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                 transition_friendly=None):
             super(WebBrowser.URLItem, self).__init__('url', timestamp=visit_time, profile=profile, url=url, name=title)
             self.profile = profile
-            self.url_id = url_id
             self.url = url
             self.title = title
             self.visit_time = visit_time
             self.last_visit_time = last_visit_time
             self.visit_count = visit_count
             self.typed_count = typed_count
-            self.from_visit = from_visit
             self.transition = transition
             self.hidden = hidden
             self.favicon_id = favicon_id
             self.indexed = indexed
+            self.visit_id = visit_id
+            self.from_visit = from_visit
             self.visit_duration = visit_duration
             self.visit_source = visit_source
             self.transition_friendly = transition_friendly
