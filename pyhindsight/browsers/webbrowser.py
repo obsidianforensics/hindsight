@@ -114,7 +114,11 @@ class WebBrowser(object):
     def build_md5_hash_list_of_origins(self):
         for artifact in self.parsed_artifacts:
             if isinstance(artifact, self.HistoryItem):
-                domain = urllib.parse.urlparse(artifact.url).hostname
+                try:
+                    domain = urllib.parse.urlparse(artifact.url).hostname
+                except ValueError as e:
+                    log.warning(f'Error when parsing domain from {artifact.url}; {e}')
+                    continue
                 # Some URLs don't have a domain, like local PDF files
                 if domain:
                     self.origin_hashes[hashlib.md5(domain.encode()).hexdigest()] = domain

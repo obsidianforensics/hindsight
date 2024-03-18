@@ -2203,21 +2203,37 @@ class Chrome(WebBrowser):
     def build_hsts_domain_hashes(self):
         domains = set()
         for artifact in self.parsed_artifacts:
-            if isinstance(artifact, self.HistoryItem):
-                artifact_url = artifact.url
+            if not isinstance(artifact, self.HistoryItem):
+                continue
 
-                if not artifact_url:
-                    continue
+            if not artifact.url:
+                continue
 
-                # Cookie artifact's "URLs" will be in the form ".example.com",
-                # which won't parse, so modify it so it will
-                if artifact_url and artifact_url.startswith('.'):
-                    artifact_url = 'http://' + artifact_url[1:]
+            artifact_url = artifact.url
 
+            # Some artifact "URLs" will be in invalid forms, which urllib (rightly)
+            # won't parse. Modify these URLs so they will parse properly.
+            # Examples:
+            #   Cookie: ".example.com",
+            #   Preferences (cookie_controls_metadata): "https://[*.]example.com"
+            prefixes = ('.', 'https://[*.]', 'http://[*.]')
+
+            for prefix in prefixes:
+                if artifact_url.startswith(prefix):
+                    artifact_url = 'http://' + artifact_url[len(prefix):]
+
+            if artifact_url.endswith(',*'):
+                artifact_url = artifact_url[:-2]
+
+            try:
                 domain = urllib.parse.urlparse(artifact_url).hostname
-                # Some URLs don't have a domain, like local PDF files
-                if domain:
-                    domains.add(domain)
+            except ValueError as e:
+                log.warning(f'Error when parsing domain from {artifact_url}; {e}')
+                continue
+
+            # Some URLs don't have a domain, like local PDF files
+            if domain:
+                domains.add(domain)
 
         for domain in domains:
 
