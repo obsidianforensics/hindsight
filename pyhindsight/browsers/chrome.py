@@ -115,7 +115,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 112))
+        possible_versions = list(range(1, 123))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -159,6 +159,10 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('incremented_omnibox_typed_score', self.structure['History']['visits'], 68)
                 trim_lesser_versions_if('originator_from_visit', self.structure['History']['visits'], 106)
                 trim_lesser_versions_if('is_known_to_sync', self.structure['History']['visits'], 107)
+                trim_lesser_versions_if('consider_for_ntp_most_visited', self.structure['History']['visits'], 114)
+                trim_lesser_versions_if('external_referrer_url', self.structure['History']['visits'], 117)
+                trim_lesser_versions_if('visited_link_id', self.structure['History']['visits'], 119)
+                trim_lesser_versions_if('app_id', self.structure['History']['visits'], 122)
             if 'visit_source' in list(self.structure['History'].keys()):
                 trim_lesser_versions_if('source', self.structure['History']['visit_source'], 7)
             if 'downloads' in list(self.structure['History'].keys()):
@@ -167,6 +171,7 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('etag', self.structure['History']['downloads'], 30)
                 trim_lesser_versions_if('original_mime_type', self.structure['History']['downloads'], 37)
                 trim_lesser_versions_if('last_access_time', self.structure['History']['downloads'], 59)
+                trim_lesser_versions_if('by_web_app_id', self.structure['History']['downloads'], 115)
             if 'downloads_slices' in list(self.structure['History'].keys()):
                 trim_lesser_versions(58)
             if 'content_annotations' in list(self.structure['History'].keys()):
@@ -195,7 +200,7 @@ class Chrome(WebBrowser):
             log.debug("Analyzing 'Cookies' structure")
             log.debug(f' - Starting possible versions:  {possible_versions}')
             if 'cookies' in list(self.structure['Cookies'].keys()):
-                trim_lesser_versions_if('is_same_party', self.structure['Cookies']['cookies'], 88)
+                trim_lesser_versions_if('source_port', self.structure['Cookies']['cookies'], 88)
                 trim_lesser_versions_if('source_scheme', self.structure['Cookies']['cookies'], 80)
                 trim_lesser_versions_if('samesite', self.structure['Cookies']['cookies'], 76)
                 trim_lesser_versions_if('is_persistent', self.structure['Cookies']['cookies'], 66)
