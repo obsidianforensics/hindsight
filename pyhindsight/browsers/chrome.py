@@ -2,6 +2,7 @@
 import hashlib
 import math
 import os
+import sqlite3
 import sys
 import errno
 import datetime
@@ -484,8 +485,13 @@ class Chrome(WebBrowser):
                     return
                 cursor = conn.cursor()
 
-                # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                # Use the highest compatible version SQL to select download data
+                try:
+                    cursor.execute(query[compatible_version])
+                except sqlite3.OperationalError as e:
+                    log.warning(f' - Exception while executing query; {e}')
+                    self.artifacts_counts[database + '_downloads'] = 'Failed'
+                    return
 
                 for row in cursor:
                     try:
