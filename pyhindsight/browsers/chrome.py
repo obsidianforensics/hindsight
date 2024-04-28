@@ -538,6 +538,10 @@ class Chrome(WebBrowser):
                 self.artifacts_counts[database + '_downloads'] = 'Failed'
                 log.error(f' - Couldn\'t open {os.path.join(path, database)}')
 
+            except sqlite3.OperationalError as e:
+                self.artifacts_counts[database + '_downloads'] = 'Failed'
+                log.error(f' - Couldn\'t read "downloads" from {os.path.join(path, database)}; {e}')
+
     def decrypt_cookie(self, encrypted_value):
         """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
          - Mac/Linux: http://n8henrie.com/2014/05/decrypt-chrome-cookies-with-python/
@@ -1102,24 +1106,29 @@ class Chrome(WebBrowser):
             selected_version = None
             decoded_manifest = None
 
-            # Connect to manifest.json in the latest version directory
-            for version in sorted(ext_vers, reverse=True, key=lambda x: int(x.split('.', maxsplit=1)[0])):
-                manifest_path = os.path.join(ext_vers_listing, version, 'manifest.json')
-                try:
-                    with open(manifest_path, encoding='utf-8', errors='replace') as f:
-                        decoded_manifest = json.loads(f.read())
-                    selected_version = version
-                    break
-                except (IOError, json.JSONDecodeError) as e:
-                    log.error(f' - Error opening {manifest_path} for extension {app_id}; {e}')
+            try:
+                # Connect to manifest.json in the latest version directory
+                for version in sorted(ext_vers, reverse=True, key=lambda x: int(x.split('.', maxsplit=1)[0])):
+                    manifest_path = os.path.join(ext_vers_listing, version, 'manifest.json')
+                    try:
+                        with open(manifest_path, encoding='utf-8', errors='replace') as f:
+                            decoded_manifest = json.loads(f.read())
+                        selected_version = version
+                        break
+                    except (IOError, json.JSONDecodeError) as e:
+                        log.error(f' - Error opening {manifest_path} for extension {app_id}; {e}')
+                        continue
+
+                if not decoded_manifest:
+                    log.error(f' - Error opening manifest info for extension {app_id}')
                     continue
 
-            if not decoded_manifest:
-                log.error(f' - Error opening manifest info for extension {app_id}')
-                continue
+                name = None
+                description = None
 
-            name = None
-            description = None
+            except Exception as e:
+                log.error(f' - Error reading manifest info for extension {app_id}; {e}')
+                continue
 
             try:
                 if decoded_manifest['name'].startswith('__'):
