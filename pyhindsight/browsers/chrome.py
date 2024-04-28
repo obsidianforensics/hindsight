@@ -116,7 +116,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 123))
+        possible_versions = list(range(1, 125))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -234,6 +234,10 @@ class Chrome(WebBrowser):
             if 'credit_cards' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions_if('billing_address_id', self.structure['Web Data']['credit_cards'], 53)
                 trim_lesser_versions_if('nickname', self.structure['Web Data']['credit_cards'], 85)
+            if 'masked_bank_accounts' in list(self.structure['Web Data'].keys()):
+                trim_lesser_versions(123)
+            if 'plus_addresses' in list(self.structure['Web Data'].keys()):
+                trim_lesser_versions(124)
             log.debug(f' - Finishing possible versions: {possible_versions}')
 
         possible_versions, previous_possible_versions = \
@@ -876,9 +880,15 @@ class Chrome(WebBrowser):
         log.info(f'DIPS items from {database}:')
 
         # Queries for different versions
-        query = {110: '''SELECT site, first_site_storage_time, last_site_storage_time, first_user_interaction_time,
-                        last_user_interaction_time, first_stateful_bounce_time, last_stateful_bounce_time, 
-                        first_stateless_bounce_time,last_stateless_bounce_time FROM bounces'''}
+        query = {114: '''SELECT site, first_bounce_time, first_site_storage_time, first_stateful_bounce_time, 
+                           first_user_interaction_time, last_bounce_time, last_site_storage_time, 
+                           last_stateful_bounce_time, last_user_interaction_time
+                         FROM bounces''',
+                 117: '''SELECT site, first_bounce_time, first_site_storage_time, first_stateful_bounce_time, 
+                           first_user_interaction_time, first_web_authn_assertion_time, last_bounce_time, 
+                           last_site_storage_time, last_stateful_bounce_time, last_user_interaction_time,
+                           last_web_authn_assertion_time
+                        FROM bounces'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -895,9 +905,10 @@ class Chrome(WebBrowser):
                     return
                 cursor = conn.cursor()
 
-                columns = ['first_site_storage_time', 'last_site_storage_time', 'first_user_interaction_time',
-                           'last_user_interaction_time', 'first_stateful_bounce_time', 'last_stateful_bounce_time',
-                           'first_stateless_bounce_time', 'last_stateless_bounce_time']
+                columns = ['first_bounce_time', 'first_site_storage_time', 'first_stateful_bounce_time',
+                           'first_user_interaction_time', 'last_bounce_time', 'last_site_storage_time',
+                           'last_stateful_bounce_time', 'last_user_interaction_time', 'first_web_authn_assertion_time',
+                           'last_web_authn_assertion_time']
 
                 # Use the highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
@@ -909,7 +920,7 @@ class Chrome(WebBrowser):
 
                         dips_record = Chrome.SiteSetting(
                             self.profile_path, row['site'], utils.to_datetime(row.get(column), self.timezone),
-                            column, '', None)
+                            column, '', '')
                         dips_record.row_type = 'site setting (dips)'
                         results.append(dips_record)
 
@@ -921,7 +932,49 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts['DIPS'] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}: {e}')
+    def get_dips_popups(self, path, database, version):
+        # Set up empty return array
+        results = []
 
+        log.info(f'DIPS Popups items from {database}:')
+
+        # Queries for different versions
+        query = {117: '''SELECT opener_site, popup_site, last_popup_time FROM popups'''}
+
+        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        compatible_version = version[0]
+        while compatible_version not in list(query.keys()) and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version != 0:
+            log.info(f' - Using SQL query for DIPS items for Chrome v{compatible_version}')
+            try:
+                # Copy and connect to copy of 'DIPS' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts['DIPS Popups'] = 'Failed'
+                    return
+                cursor = conn.cursor()
+
+                # Use the highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
+
+                for row in cursor:
+                    dips_popup_record = Chrome.SiteSetting(
+                        self.profile_path, row['opener_site'],
+                        utils.to_datetime(row.get('last_popup_time'), self.timezone),
+                        'Opened a popup on:', row['popup_site'], '')
+                    dips_popup_record.row_type = 'site setting (dips)'
+                    results.append(dips_popup_record)
+
+                conn.close()
+                self.artifacts_counts['DIPS Popups'] = len(results)
+                log.info(f' - Parsed {len(results)} items')
+                self.parsed_artifacts.extend(results)
+
+            except Exception as e:
+                self.artifacts_counts['DIPS Popups'] = 'Failed'
+                log.error(f' - Could not open {os.path.join(path, database)}: {e}')
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
         results = []
@@ -2568,6 +2621,12 @@ class Chrome(WebBrowser):
                 self.artifacts_counts.get('File System', '0')))
 
         if 'DIPS' in input_listing:
+            self.get_dips_popups(self.profile_path, 'DIPS', self.version)
+            self.artifacts_display['DIPS Popups'] = 'DIPS Popup Items'
+            print(self.format_processing_output(
+                self.artifacts_display['DIPS Popups'],
+                self.artifacts_counts.get('DIPS Popups', '0')))
+
             self.get_dips(self.profile_path, 'DIPS', self.version)
             self.artifacts_display['DIPS'] = 'DIPS Items'
             print(self.format_processing_output(
