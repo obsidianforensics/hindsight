@@ -134,6 +134,13 @@ class WebBrowser(object):
             self.interpretation = interpretation
 
         def __lt__(self, other):
+            if not self.timestamp.tzinfo and other.timestamp.tzinfo:
+                log.warning(f'{self} missing tzinfo; using tzinfo from {other} during sort')
+                self.timestamp = self.timestamp.replace(tzinfo=other.timestamp.tzinfo)
+            elif self.timestamp.tzinfo and not other.timestamp.tzinfo:
+                log.warning(f'{other} missing tzinfo; using tzinfo from {self} during sort')
+                other.timestamp = other.timestamp.replace(tzinfo=self.timestamp.tzinfo)
+
             return self.timestamp < other.timestamp
 
         def __iter__(self):
