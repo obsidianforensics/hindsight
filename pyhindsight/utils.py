@@ -29,6 +29,10 @@ def text_factory(row_data):
 def open_sqlite_db(chrome, database_path, database_name):
     log.info(f' - Reading from {database_name} in {database_path}')
 
+    if not os.path.exists(os.path.join(database_path, database_name)):
+        log.info(f'   - Failed; {database_name} does not exist in {database_path}')
+        return False
+
     if chrome.no_copy:
         db_path_to_open = os.path.join(database_path, database_name)
 
