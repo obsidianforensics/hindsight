@@ -905,8 +905,8 @@ class AnalysisSession(object):
         s = workbook.add_worksheet('Storage')
         # Title bar
         s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
-        s.merge_range('H1:J1', 'Backing Database Specific', center_header_format)
-        s.merge_range('K1:M1', 'FileSystem Specific', center_header_format)
+        s.merge_range('H1:K1', 'Backing Database Specific', center_header_format)
+        s.merge_range('L1:N1', 'FileSystem Specific', center_header_format)
 
         # Write column headers
         s.write(1, 0, 'Type', header_format)
@@ -917,11 +917,12 @@ class AnalysisSession(object):
         s.write(1, 5, 'Interpretation', header_format)
         s.write(1, 6, 'Profile', header_format)
         s.write(1, 7, 'Source Path', header_format)
-        s.write(1, 8, 'Sequence', header_format)
-        s.write(1, 9, 'State', header_format)
-        s.write(1, 10, 'File Exists?', header_format)
-        s.write(1, 11, 'File Size (bytes)', header_format)
-        s.write(1, 12, 'File Type (Confidence %)', header_format)
+        s.write(1, 8, 'Database', header_format)
+        s.write(1, 9, 'Sequence', header_format)
+        s.write(1, 10, 'State', header_format)
+        s.write(1, 11, 'File Exists?', header_format)
+        s.write(1, 12, 'File Size (bytes)', header_format)
+        s.write(1, 13, 'File Type (Confidence %)', header_format)
 
         # Set column widths
         s.set_column('A:A', 16)  # Type
@@ -932,11 +933,12 @@ class AnalysisSession(object):
         s.set_column('F:F', 50)  # Interpretation
         s.set_column('G:G', 50)  # Profile
         s.set_column('H:H', 50)  # Source Path
-        s.set_column('I:I', 8)  # Seq
-        s.set_column('J:J', 8)  # State
-        s.set_column('K:K', 8)  # Exists
-        s.set_column('L:L', 16)  # Size
-        s.set_column('M:M', 25)  # Type
+        s.set_column('I:I', 16) # Database
+        s.set_column('J:J', 8)  # Seq
+        s.set_column('K:K', 8)  # State
+        s.set_column('L:L', 8)  # Exists
+        s.set_column('M:M', 16)  # Size
+        s.set_column('N:N', 25)  # Type
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -951,11 +953,11 @@ class AnalysisSession(object):
                     s.write(row_number, 5, item.interpretation, black_value_format)
                     s.write(row_number, 6, item.profile, black_value_format)
                     s.write(row_number, 7, item.source_path, black_value_format)
-                    s.write_number(row_number, 8, item.seq, black_value_format)
-                    s.write_string(row_number, 9, item.state, black_value_format)
-                    s.write(row_number, 10, item.file_exists, black_value_format)
-                    s.write(row_number, 11, item.file_size, black_value_format)
-                    s.write(row_number, 12, item.magic_results, black_value_format)
+                    s.write_number(row_number, 9, item.seq, black_value_format)
+                    s.write_string(row_number, 10, item.state, black_value_format)
+                    s.write(row_number, 11, item.file_exists, black_value_format)
+                    s.write(row_number, 12, item.file_size, black_value_format)
+                    s.write(row_number, 13, item.magic_results, black_value_format)
 
                 elif item.row_type.startswith(("local storage", "session storage")):
                     s.write_string(row_number, 0, item.row_type, black_type_format)
@@ -966,9 +968,19 @@ class AnalysisSession(object):
                     s.write(row_number, 5, item.interpretation, black_value_format)
                     s.write(row_number, 6, item.profile, black_value_format)
                     s.write(row_number, 7, item.source_path, black_value_format)
-                    s.write_number(row_number, 8, item.seq, black_value_format)
-                    s.write_string(row_number, 9, item.state, black_value_format)
+                    s.write_number(row_number, 9, item.seq, black_value_format)
+                    s.write_string(row_number, 10, item.state, black_value_format)
 
+                elif item.row_type.startswith("indexeddb"):
+                    s.write_string(row_number, 0, item.row_type, black_type_format)
+                    s.write_string(row_number, 1, item.origin, black_url_format)
+                    s.write_string(row_number, 2, item.key, black_field_format)
+                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 5, item.interpretation, black_value_format)
+                    s.write(row_number, 6, item.profile, black_value_format)
+                    s.write(row_number, 7, item.source_path, black_value_format)
+                    s.write(row_number, 8, item.database, black_value_format)
+                    s.write_number(row_number, 9, item.seq, black_value_format)
             except Exception as e:
                 log.error(f'Failed to write row to XLSX: {e}')
 

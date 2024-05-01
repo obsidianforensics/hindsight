@@ -15,7 +15,7 @@ import puremagic
 import urllib
 import base64
 
-import pyhindsight.lib.ccl_chrome_indexeddb.ccl_blink_value_deserializer
+from pyhindsight.lib.ccl_chrome_indexeddb import ccl_chromium_indexeddb
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
 
@@ -1105,7 +1105,7 @@ class Chrome(WebBrowser):
         try:
             ss_ldb_records = ccl_chromium_sessionstorage.SessionStoreDb(pathlib.Path(ss_path))
         except ValueError as e:
-            log.warning(f' - Error reading records; possible LevelDB corruption')
+            log.warning(f' - Error reading records ({e}); possible LevelDB corruption')
             self.artifacts_counts['Session Storage'] = 'Failed'
 
         if ss_ldb_records:
@@ -1127,6 +1127,63 @@ class Chrome(WebBrowser):
             self.artifacts_counts['Session Storage'] = len(results)
 
         log.info(f' - Parsed {len(results)} Session Storage items')
+        self.parsed_storage.extend(results)
+    def get_indexeddb(self, path, dir_name):
+        results = []
+
+        # Grab file list of 'IndexedDB' directory
+        idb_path = os.path.join(path, dir_name)
+        log.info('IndexedDB:')
+        log.info(f' - Reading from {idb_path}')
+
+        idb_storage_listing = os.listdir(idb_path)
+        log.debug(f' - {len(idb_storage_listing)} files in IndexedDB directory')
+
+        for storage_directory in idb_storage_listing:
+            if not storage_directory.endswith('.leveldb'):
+                continue
+
+            # The Ghostery extension has 1M+ records in it; skip for now.
+            if storage_directory == 'chrome-extension_mlomiejdfkolichcflejclcbmpeaniij_0.indexeddb.leveldb':
+                continue
+
+            origin = storage_directory.split('.indexeddb')[0]
+            blob_directory = None
+            blob_path = os.path.join(idb_path, f'{origin}.indexeddb.blob')
+            if os.path.exists(blob_path):
+                blob_directory = blob_path
+
+            try:
+                origin_idb = ccl_chromium_indexeddb.WrappedIndexDB(
+                    leveldb_dir=os.path.join(idb_path, f'{origin}.indexeddb.leveldb'), leveldb_blob_dir=blob_directory)
+            except ValueError as e:
+                log.error(f' - {e} when processing {storage_directory}')
+                continue
+
+            except Exception as e:
+                log.error(f' - Unexpected Exception ({e}) when processing {storage_directory}')
+                continue
+
+            for database_id in origin_idb.database_ids:
+                database = origin_idb[database_id.dbid_no]
+                for obj_store_name in database.object_store_names:
+                    obj_store = database.get_object_store_by_name(obj_store_name)
+                    try:
+                        for record in obj_store.iterate_records():
+                                results.append(Chrome.IndexedDBItem(
+                                    self.profile_path, origin, str(record.key.value), str(record.value),
+                                    int(record.sequence_number), str(database.name), storage_directory))
+                    except FileNotFoundError as e:
+                        log.error(f' - File ({e}) not found while processing {database}')
+
+                    except ValueError as e:
+                        log.error(f' - ValueError ({e}) when processing {database}')
+
+                    except Exception as e:
+                        log.error(f' - Unexpected Exception: {e}')
+
+        self.artifacts_counts['IndexedDB'] = len(results)
+        log.info(f' - Parsed {len(results)} items from {len(idb_storage_listing)} files')
         self.parsed_storage.extend(results)
 
     def get_extensions(self, path, dir_name):
@@ -1575,7 +1632,7 @@ class Chrome(WebBrowser):
         if prefs.get('password_manager'):
             if prefs['password_manager'].get('profile_store_date_last_used_for_filling'):
                 timestamped_preference_item = Chrome.SiteSetting(
-                    self.profile_path, url=None,
+                    self.profile_path, url='',
                     timestamp=utils.to_datetime(
                         prefs['password_manager']['profile_store_date_last_used_for_filling'], self.timezone),
                     key=f'profile_store_date_last_used_for_filling [in {preferences_file}.password_manager]',
@@ -2481,6 +2538,13 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['Archived History'],
                 self.artifacts_counts.get('Archived History', '0')))
+
+        if 'IndexedDB' in input_listing:
+            self.get_indexeddb(self.profile_path, 'IndexedDB')
+            self.artifacts_display['IndexedDB'] = 'IndexedDB records'
+            print(self.format_processing_output(
+                self.artifacts_display['IndexedDB'],
+                self.artifacts_counts.get('IndexedDB', '0')))
 
         if 'Media History' in input_listing:
             self.get_media_history(self.profile_path, 'Media History', self.version, 'media (playback end)')
