@@ -70,7 +70,8 @@ def read_le_varint(stream: typing.BinaryIO, *, is_google_32bit=False) -> typing.
         return x[0]
 
 
-def read_length_prefixed_blob(stream: typing.BinaryIO):
+def read_length_prefixed_blob(stream: typing.BinaryIO) -> bytes:
+    """Reads a blob of data which is prefixed with a varint length"""
     length = read_le_varint(stream)
     data = stream.read(length)
     if len(data) != length:
@@ -86,11 +87,11 @@ class BlockHandle:
     length: int
 
     @classmethod
-    def from_stream(cls, stream: typing.BinaryIO):
+    def from_stream(cls, stream: typing.BinaryIO) -> "BlockHandle":
         return cls(read_le_varint(stream), read_le_varint(stream))
 
     @classmethod
-    def from_bytes(cls, data: bytes):
+    def from_bytes(cls, data: bytes) -> "BlockHandle":
         with io.BytesIO(data) as stream:
             return BlockHandle.from_stream(stream)
 
@@ -129,7 +130,8 @@ class Record:
     was_compressed: bool
 
     @property
-    def user_key(self):
+    def user_key(self) -> bytes:
+        """Returns the "userkey" which omits the metadata bytes which may reside at the end of the raw key"""
         if self.file_type == FileType.Ldb:
             if len(self.key) < 8:
                 return self.key
@@ -138,10 +140,9 @@ class Record:
         else:
             return self.key
 
-
     @classmethod
     def ldb_record(cls, key: bytes, value: bytes, origin_file: os.PathLike,
-                   offset: int, was_compressed: bool):
+                   offset: int, was_compressed: bool) -> "Record":
         seq = (struct.unpack("<Q", key[-8:])[0]) >> 8
         if len(key) > 8:
             state = KeyState.Deleted if key[-8] == 0 else KeyState.Live
@@ -151,7 +152,7 @@ class Record:
 
     @classmethod
     def log_record(cls, key: bytes, value: bytes, seq: int, state: KeyState,
-                   origin_file: os.PathLike, offset: int):
+                   origin_file: os.PathLike, offset: int) -> "Record":
         return cls(key, value, seq, state, FileType.Log, origin_file, offset, False)
 
 
@@ -223,7 +224,7 @@ class LdbFile:
 
         self._index = self._read_index()
 
-    def _read_block(self, handle: BlockHandle):
+    def _read_block(self, handle: BlockHandle) -> Block:
         # block is the size in the blockhandle plus the trailer
         # the trailer is 5 bytes long.
         # idx  size  meaning

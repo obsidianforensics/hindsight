@@ -10,11 +10,11 @@
 # Config
 friendlyName = "Generic Timestamp Decoder"
 description = "Attempts to detect and decode potential epoch second, epoch millisecond, and Webkit timestamps"
-artifactTypes = ("cookie (created)", "cookie (accessed)", "local storage")
+artifactTypes = ("cookie (created)", "cookie (accessed)", "local storage", "indexeddb")
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20160907"
+version = "20240428"
 parsedItems = 0
 
 

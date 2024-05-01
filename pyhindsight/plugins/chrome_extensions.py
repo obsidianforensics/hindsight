@@ -12,11 +12,11 @@ import re
 # Config
 friendlyName = "Chrome Extension Names"
 description = "Adds the name and description of each Chrome extension found to the Interpretation field"
-artifactTypes = ("url", "local storage")
+artifactTypes = ("url", "local storage", "indexeddb")
 remoteLookups = 0
 browser = "Chrome"
 browserVersion = 1
-version = "20210424"
+version = "20240428"
 parsedItems = 0
 
 

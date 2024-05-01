@@ -27,7 +27,7 @@ import types
 import typing
 import re
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 __description__ = "Partial reimplementation of the V8 Javascript Object Serialization"
 __contact__ = "Alex Caithness"
 
@@ -46,12 +46,13 @@ def log(msg, debug_only=True):
         print(f"{caller_name} ({caller_line}):\t{msg}")
 
 
-def read_le_varint(stream: typing.BinaryIO) -> typing.Optional[typing.Tuple[int, bytes]]:
+def read_le_varint(stream: typing.BinaryIO, is_32bit=False) -> typing.Optional[typing.Tuple[int, bytes]]:
     # this only outputs unsigned
+    limit = 5 if is_32bit else 10
     i = 0
     result = 0
     underlying_bytes = []
-    while i < 10:  # 64 bit max possible?
+    while i < limit:  # 64 bit max possible?
         raw = stream.read(1)
         if len(raw) < 1:
             return None
@@ -80,9 +81,20 @@ class _Undefined:
         return "<Undefined>"
 
 
+class SharedObject:
+    def __init__(self, object_id: int):
+        self.id = object_id
+
+    def __repr__(self):
+        return f"<SharedObject; id: {self.id}>"
+
+    def __str__(self):
+        return f"<SharedObject; id: {self.id}>"
+
+
 class Constants:
     # Constants
-    kLatestVersion = 13
+    kLatestVersion = 15
 
     # version:uint32_t (if at beginning of data, sets version > 0)
     token_kVersion = b"\xFF"
@@ -163,6 +175,8 @@ class Constants:
     token_kArrayBufferView = b"V"
     # Shared array buffer. transferID:uint32_t
     token_kSharedArrayBuffer = b"u"
+    # A HeapObject shared across Isolates.sharedValueID: uint32_t
+    token_kSharedObject = 'p'
     # A wasm module object transfer. next value is its index.
     token_kWasmModuleTransfer = b"w"
     # The delegate is responsible for processing all following data.
@@ -283,6 +297,9 @@ class Deserializer:
             return -(unsigned >> 1)
         else:
             return unsigned >> 1
+
+    def _read_unit32(self) -> int:
+        return self._read_le_varint()[0]
 
     def _read_double(self) -> float:
         return struct.unpack(f"{self._endian}d", self._read_raw(8))[0]
@@ -512,6 +529,10 @@ class Deserializer:
         if byte_offset + byte_length > len(raw):
             raise ValueError("Not enough data in the raw data to hold the defined data")
 
+        # See: https://github.com/v8/v8/blob/4d34ea98bb655295ab1f9003f6783bd509b7ccb3/src/objects/value-serializer.cc#L1967
+        if self.version >= 14:
+            flags = self._read_le_varint()[0]
+
         log(f"ArrayBufferView: tag: {tag}; byte_offset: {byte_offset}; byte_length: {byte_length}")
 
         fmt = ArrayBufferViewTag.STRUCT_LOOKUP[tag]
@@ -529,6 +550,10 @@ class Deserializer:
         self._objects.append(result)
         return result
 
+    def _read_shared_object(self) -> SharedObject:
+        shobj_id = self._read_le_varint()[0]
+        return SharedObject(shobj_id)
+
     def _not_implemented(self):
         raise NotImplementedError("Todo")
 
@@ -544,7 +569,7 @@ class Deserializer:
             Constants.token_kTrueObject: lambda: Deserializer.__ODDBALLS[Constants.token_kTrue],
             Constants.token_kFalseObject: lambda: Deserializer.__ODDBALLS[Constants.token_kFalse],
             Constants.token_kNumberObject: self._read_double,
-            Constants.token_kUint32: self._read_le_varint,
+            Constants.token_kUint32: self._read_unit32,
             Constants.token_kInt32: self._read_zigzag,
             Constants.token_kDouble: self._read_double,
             Constants.token_kDate: self._read_date,
@@ -557,6 +582,7 @@ class Deserializer:
             Constants.token_kRegExp: self._read_js_regex,
             Constants.token_kObjectReference: self._read_object_by_reference,
             Constants.token_kBeginJSObject: self._read_js_object,
+            Constants.token_kSharedObject: self._read_shared_object,
             Constants.token_kBeginSparseJSArray: self._read_js_sparse_array,
             Constants.token_kBeginDenseJSArray: self._read_js_dense_array,
             Constants.token_kBeginJSMap: self._read_js_map,
