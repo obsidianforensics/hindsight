@@ -1081,9 +1081,9 @@ class AnalysisSession(object):
                 if item.row_type.startswith('url'):
                     c.execute(
                         'INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source, '
-                        'visit_id', 'from_visit', 'visit_duration, visit_count, typed_count, url_hidden, transition) '
+                        'visit_id, from_visit, visit_duration, visit_count, typed_count, url_hidden, transition) '
                         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation, 
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
                          item.profile, item.visit_source, item.visit_duration, item.visit_id, item.from_visit, item.visit_count, item.typed_count,
                          item.hidden, item.transition_friendly))
 
