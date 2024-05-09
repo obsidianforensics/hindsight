@@ -21,10 +21,9 @@
   },
   "homepage": "https://github.com/obsidianforensics/hindsight#readme",
   "dependencies": {
-    "sqlite-view": "^0.1.8"
+    "sqlite-view": "^v0.2.0"
   },
   "devDependencies": {
-    "esinstall": "^0.5.2",
-    "terser": "^5.14.2"
+    "vite": "^5.2.11"
   }
 }
