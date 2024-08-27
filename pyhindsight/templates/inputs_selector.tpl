@@ -106,11 +106,13 @@
                                     <b>Default Locations:</b>
                                     <table>
                                         <tr><td class="input-option">Windows XP:</td><td> \[userdir]\Local Settings\Application Data\Google\Chrome\User Data</td></tr>
+                                        <tr><td class="input-option">Windows 11:</td><td> \[userdir]\AppData\Local\Google\Chrome\User Data\Default</td></tr>
                                         <tr><td class="input-option">Vista/7/8/10/11:</td><td> \[userdir]\AppData\Local\Google\Chrome\User Data</td></tr>
                                         <tr><td class="input-option">Linux:</td><td> \[userdir]/.config/google-chrome</td></tr>
                                         <tr><td class="input-option">OSX/macOS:</td><td> \[userdir]/Library/Application Support/Google/Chrome/Default</td></tr>
                                         <tr><td class="input-option">iOS:</td><td> \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome</td></tr>
                                         <tr><td class="input-option">Android:</td><td> /userdata/data/com.android.chrome/app_chrome</td></tr>
+                                        <tr><td class="input-option">Or in Chrome:</td><td> Go to chrome://version/</td></tr>
                                     </table>
                                 </td>
                             </tr>
