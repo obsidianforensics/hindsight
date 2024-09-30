@@ -73,7 +73,8 @@
                                     <table>
                                         <tr><td>
                                             <b>Description:</b> Chrome is a free web browser from Google that runs on Windows, macOS, Linux, ChromeOS, iOS, and Android.
-                                            Each user's web history and configuration information is stored under their user directory, so there may be multiple sets of browser data on the system.
+                                            Each user's web history and configuration information is stored under their user directory in a <i>profile</i>. Each user can have one or more profiles,
+                                            so there may be multiple sets of browser data on the system.
                                             <br /><br />
                                         </td>
                                         <td>
@@ -103,14 +104,14 @@
                                         </tr>
                                     </table>
                                     <br />
-                                    <b>Default Locations:</b>
+                                    <b>Default Profile Locations:</b>
                                     <table>
-                                        <tr><td class="input-option">Windows XP:</td><td> \[userdir]\Local Settings\Application Data\Google\Chrome\User Data</td></tr>
-                                        <tr><td class="input-option">Vista/7/8/10/11:</td><td> \[userdir]\AppData\Local\Google\Chrome\User Data</td></tr>
-                                        <tr><td class="input-option">Linux:</td><td> \[userdir]/.config/google-chrome</td></tr>
+                                        <tr><td class="input-option">Windows (Vista - 11):</td><td> \[userdir]\AppData\Local\Google\Chrome\User Data\Default</td></tr>
+                                        <tr><td class="input-option">Linux:</td><td> \[userdir]/.config/google-chrome/Default</td></tr>
                                         <tr><td class="input-option">OSX/macOS:</td><td> \[userdir]/Library/Application Support/Google/Chrome/Default</td></tr>
                                         <tr><td class="input-option">iOS:</td><td> \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome</td></tr>
                                         <tr><td class="input-option">Android:</td><td> /userdata/data/com.android.chrome/app_chrome</td></tr>
+                                        <tr><td class="input-option" colspan=2>In a running Chrome browser, go to chrome://version/ to see the Profile Path information</td></tr>
                                     </table>
                                 </td>
                             </tr>
