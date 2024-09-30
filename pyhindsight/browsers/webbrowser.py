@@ -169,6 +169,39 @@ class WebBrowser(object):
             self.visit_source = visit_source
             self.transition_friendly = transition_friendly
 
+    class CacheItem(HistoryItem):
+        def __init__(
+                self, profile, url, title, request_time, locations, key, metadata, data):
+            super(WebBrowser.CacheItem, self).__init__('cache', timestamp=request_time, profile=profile, url=url, name=title)
+            self.profile = profile
+            self.url = url
+            self.title = title
+            self.locations = locations
+            self.key = key
+            self.metadata = metadata
+            self.data = data
+            self.data_summary = None
+            self.http_headers_str = None
+            self.etag = None
+            self.last_modified = None
+            self.locations_str = None
+
+        def create_data_summary(self):
+            if not self.data:
+                return "<no data>"
+
+            if not self.metadata:
+                return f"{len(self.data)} bytes"
+
+            return f"{(self.metadata.get_attribute("content-type") or ["not specified"])[0]} ({len(self.data)} bytes)"
+
+        def stringify_http_headers(self):
+            headers = {}
+            for attribute, value in self.metadata.http_header_attributes:
+                headers[attribute] = value
+
+            self.http_headers_str = str(headers)
+
     class DownloadItem(HistoryItem):
         def __init__(
                 self, profile, download_id, url, received_bytes, total_bytes, state, full_path=None, start_time=None,
