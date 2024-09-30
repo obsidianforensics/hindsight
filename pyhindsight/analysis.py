@@ -10,7 +10,6 @@ import time
 
 from pyhindsight import __version__
 from pyhindsight.browsers.chrome import Chrome
-from pyhindsight.browsers.chrome import CacheEntry
 from pyhindsight.browsers.brave import Brave
 from pyhindsight.utils import friendly_date, format_plugin_output
 import pyhindsight.plugins
@@ -693,7 +692,7 @@ class AnalysisSession(object):
         w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
         w.merge_range('I1:O1', 'URL Specific', center_header_format)
         w.merge_range('P1:R1', 'Download Specific', center_header_format)
-        w.merge_range('S1:W1', 'Cache Specific', center_header_format)
+        w.merge_range('S1:U1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, 'Type', header_format)
@@ -716,9 +715,7 @@ class AnalysisSession(object):
         w.write(1, 17, 'Opened?', header_format)
         w.write(1, 18, 'ETag', header_format)
         w.write(1, 19, 'Last Modified', header_format)
-        w.write(1, 20, 'Server Name', header_format)
-        w.write(1, 21, 'Data Location [Offset]', header_format)
-        w.write(1, 22, 'All HTTP Headers', header_format)
+        w.write(1, 20, 'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -745,9 +742,7 @@ class AnalysisSession(object):
         w.set_column('T:T', 27)  # Last Modified
 
         # Cache Specific
-        w.set_column('U:U', 18)  # Server Name
-        w.set_column('V:V', 27)  # Data Location
-        w.set_column('W:W', 27)  # HTTP Headers
+        w.set_column('U:U', 30)  # HTTP Headers
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -843,15 +838,13 @@ class AnalysisSession(object):
                         w.write_string(row_number, 2, item.url, gray_url_format)  # URL
                     except Exception as e:
                         print(e, item.url, item.location)
-                    w.write_string(row_number, 3, str(item.name), gray_field_format)  # status // Normal (data cached)
-                    w.write_string(row_number, 4, item.value, gray_value_format)  # type (size) // image/jpeg (35 bytes)
+                    w.write_string(row_number, 3, item.data_summary, gray_field_format)   # type (size) // image/jpeg (35 bytes)
+                    w.write_string(row_number, 4, item.locations, gray_value_format)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
                     w.write(row_number, 18, item.etag, gray_value_format)  # ETag
                     w.write(row_number, 19, item.last_modified, gray_value_format)  # Last Modified
-                    w.write(row_number, 20, item.server_name, gray_value_format)  # Server name
-                    w.write(row_number, 21, item.location, gray_value_format)  # data location // data_2 [1542523]
-                    w.write(row_number, 22, item.http_headers_str, gray_value_format)  # headers
+                    w.write(row_number, 20, item.http_headers_str, gray_value_format)  # headers
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -899,7 +892,7 @@ class AnalysisSession(object):
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
-        w.autofilter(1, 0, row_number, 19)  # Add autofilter
+        w.autofilter(1, 0, row_number, 20)  # Add autofilter
         w.filter_column('B', 'Timestamp > 1970-01-02')
 
         s = workbook.add_worksheet('Storage')
@@ -933,10 +926,10 @@ class AnalysisSession(object):
         s.set_column('F:F', 50)  # Interpretation
         s.set_column('G:G', 50)  # Profile
         s.set_column('H:H', 50)  # Source Path
-        s.set_column('I:I', 16) # Database
-        s.set_column('J:J', 8)  # Seq
-        s.set_column('K:K', 8)  # State
-        s.set_column('L:L', 8)  # Exists
+        s.set_column('I:I', 16)  # Database
+        s.set_column('J:J', 8)   # Seq
+        s.set_column('K:K', 8)   # State
+        s.set_column('L:L', 8)   # Exists
         s.set_column('M:M', 16)  # Size
         s.set_column('N:N', 25)  # Type
 
@@ -1064,9 +1057,9 @@ class AnalysisSession(object):
             c = output_db.cursor()
             c.execute(
                 'CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, '
-                'interpretation TEXT, profile TEXT, source TEXT, visit_id INT, from_visit INT, visit_duration TEXT, visit_count INT, '
-                'typed_count INT, url_hidden INT, transition TEXT, interrupt_reason TEXT, danger_type TEXT, '
-                'opened INT, etag TEXT, last_modified TEXT, server_name TEXT, data_location TEXT, http_headers TEXT)')
+                'interpretation TEXT, profile TEXT, source TEXT, visit_id INT, from_visit INT, visit_duration TEXT, '
+                'visit_count INT, typed_count INT, url_hidden INT, transition TEXT, interrupt_reason TEXT, '
+                'danger_type TEXT, opened INT, etag TEXT, last_modified TEXT, http_headers TEXT)')
 
             c.execute(
                 'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, seq INT, state TEXT, '
@@ -1148,11 +1141,11 @@ class AnalysisSession(object):
                 elif item.row_type.startswith('cache'):
                     c.execute(
                         'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, '
-                        'etag, last_modified, server_name, data_location)'
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (item.row_type, friendly_date(item.timestamp), item.url, str(item.name), item.value,
-                         item.interpretation, item.profile, item.etag, item.last_modified, item.server_name,
-                         item.location))
+                        'etag, last_modified, http_headers)'
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, friendly_date(item.timestamp), item.url, item.data_summary,
+                         item.locations, item.interpretation, item.profile, item.etag, item.last_modified,
+                         item.http_headers_str))
 
                 elif item.row_type.startswith('login'):
                     c.execute(
