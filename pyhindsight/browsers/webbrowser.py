@@ -193,7 +193,7 @@ class WebBrowser(object):
             if not self.metadata:
                 return f"{len(self.data)} bytes"
 
-            return f"{(self.metadata.get_attribute("content-type") or ["not specified"])[0]} ({len(self.data)} bytes)"
+            return f"{(self.metadata.get_attribute('content-type') or ['not specified'])[0]} ({len(self.data)} bytes)"
 
         def stringify_http_headers(self):
             headers = {}
