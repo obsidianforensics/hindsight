@@ -2,7 +2,6 @@ import datetime
 import json
 import logging
 import os
-import pytz
 import shutil
 import sqlite3
 import struct
@@ -38,7 +37,7 @@ def open_sqlite_db(chrome, database_path, database_name):
 
     else:
         try:
-            # Create 'temp' directory if doesn't exists
+            # Create 'temp' directory if it doesn't exist
             Path(chrome.temp_dir).mkdir(parents=True, exist_ok=True)
 
             # Copy database to temp directory
@@ -70,9 +69,7 @@ def format_plugin_output(name, version, items):
     width = 80
     left_side = width * 0.55
     full_plugin_name = "{} (v{})".format(name, version)
-    pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
-        .format(name=full_plugin_name, left_width=int(left_side), version=version, count=' '.join(['-', items, '-']),
-                right_width=(width - int(left_side) - 2))
+    pretty_name = f"{full_plugin_name:>{int(left_side)}}:{' '.join(['-', items, '-']):^{(width - int(left_side) - 2)}}"
     return pretty_name
 
 
@@ -103,53 +100,53 @@ def to_datetime(timestamp, timezone=None):
             timestamp = float(timestamp)
         except Exception as e:
             log.warning(f'Exception parsing {timestamp} to datetime: {e}')
-            return datetime.datetime.fromtimestamp(0)
+            return datetime.datetime.fromtimestamp(0, datetime.UTC)
 
-        # Really big Webkit microseconds (18 digits), most often cookie expiry dates.
+        # Very big Webkit microseconds (18 digits), most often cookie expiry dates.
         if timestamp >= 253402300800000000:
             new_timestamp = datetime.datetime.max
             log.warning(f'Timestamp value {timestamp} is too large to convert; replaced with {datetime.datetime.max}')
 
-        # Microsecond timestamps past 2038 can be problematic with datetime.utcfromtimestamp(timestamp).
+        # Microsecond timestamps past 2038 can be problematic with datetime.fromtimestamp(timestamp).
         elif timestamp > 13700000000000000:
-            new_timestamp = datetime.datetime.fromtimestamp(0) \
+            new_timestamp = datetime.datetime.fromtimestamp(0, datetime.UTC) \
                             + datetime.timedelta(seconds=(timestamp / 1000000) - 11644473600)
 
         # Webkit microseconds (17 digits)
         elif timestamp > 12000000000000000:  # ts > 1981
-            new_timestamp = datetime.datetime.utcfromtimestamp((timestamp / 1000000) - 11644473600)
+            new_timestamp = datetime.datetime.fromtimestamp((timestamp / 1000000) - 11644473600, datetime.UTC)
 
         # Epoch microseconds (16 digits)
         elif 2500000000000000 > timestamp > 1280000000000000:  # 2049 > ts > 2010
-            new_timestamp = datetime.datetime.utcfromtimestamp(timestamp / 1000000)
+            new_timestamp = datetime.datetime.fromtimestamp(timestamp / 1000000, datetime.UTC)
 
         # Epoch milliseconds (13 digits)
         elif 2500000000000 > timestamp > 1280000000000:  # 2049 > ts > 2010
-            new_timestamp = datetime.datetime.utcfromtimestamp(timestamp / 1000)
+            new_timestamp = datetime.datetime.fromtimestamp(timestamp / 1000, datetime.UTC)
 
         # Webkit seconds (11 digits)
         elif 15000000000 > timestamp >= 12900000000:  # 2076 > ts > 2009
-            new_timestamp = datetime.datetime.utcfromtimestamp(timestamp - 11644473600)
+            new_timestamp = datetime.datetime.fromtimestamp(timestamp - 11644473600, datetime.UTC)
 
         # Epoch seconds (10 digits typically, but could be less)
         else:
             try:
-                new_timestamp = datetime.datetime.utcfromtimestamp(timestamp)
+                new_timestamp = datetime.datetime.fromtimestamp(timestamp, datetime.UTC)
             except OSError as e:
                 log.warning(f'Exception parsing {timestamp} to datetime: {e}; '
                             f'common issue is value is too big for the OS to convert it')
-                return datetime.datetime.utcfromtimestamp(0)
+                return datetime.datetime.fromtimestamp(0, datetime.UTC)
 
         if timezone is not None:
             try:
-                return new_timestamp.replace(tzinfo=pytz.utc).astimezone(timezone)
+                return new_timestamp.replace(tzinfo=datetime.UTC).astimezone(timezone)
             except NameError:
                 return new_timestamp
         else:
             return new_timestamp
     except Exception as e:
         log.warning(f'Exception parsing {timestamp} to datetime: {e}')
-        return datetime.datetime.utcfromtimestamp(0)
+        return datetime.datetime.fromtimestamp(0, datetime.UTC)
 
 
 def friendly_date(timestamp):
@@ -199,7 +196,7 @@ def get_ldb_records(ldb_path, prefix=''):
                 cleaned_records.append(cleaned_record)
 
     except ValueError:
-        log.warning(f' - Exception reading LevelDB: ValueError')
+        log.warning(' - Exception reading LevelDB: ValueError')
 
     except Exception as e:
         log.warning(f' - Exception reading LevelDB: {e}')
@@ -237,19 +234,6 @@ def read_int32(input_bytes, ptr):
 def read_int64(input_bytes, ptr):
     value = struct.unpack('<Q', input_bytes[ptr:ptr + 8])[0]
     return value, ptr + 8
-
-#
-# def create_temp_db(path, database):
-#
-#     # Create 'temp' directory if doesn't exists
-#     Path(temp_directory_name).mkdir(parents=True, exist_ok=True)
-#
-#     # Copy database to temp directory
-#     shutil.copyfile(os.path.join(path, database), os.path.join(temp_directory_name, database))
-
-#
-# def get_temp_db_directory():
-#     return temp_directory_name
 
 
 banner = r'''
