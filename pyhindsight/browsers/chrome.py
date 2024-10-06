@@ -16,7 +16,6 @@ import base64
 import pytz
 import ccl_chromium_reader
 
-from pyhindsight.lib.ccl_chrome_indexeddb import ccl_chromium_indexeddb
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
 
@@ -933,6 +932,7 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts['DIPS'] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}: {e}')
+
     def get_dips_popups(self, path, database, version):
         # Set up empty return array
         results = []
@@ -976,6 +976,7 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts['DIPS Popups'] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}: {e}')
+
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
         results = []
@@ -1128,6 +1129,7 @@ class Chrome(WebBrowser):
 
         log.info(f' - Parsed {len(results)} Session Storage items')
         self.parsed_storage.extend(results)
+
     def get_indexeddb(self, path, dir_name):
         results = []
 
@@ -1154,7 +1156,7 @@ class Chrome(WebBrowser):
                 blob_directory = blob_path
 
             try:
-                origin_idb = ccl_chromium_indexeddb.WrappedIndexDB(
+                origin_idb = ccl_chromium_reader.ccl_chromium_indexeddb.WrappedIndexDB(
                     leveldb_dir=os.path.join(idb_path, f'{origin}.indexeddb.leveldb'), leveldb_blob_dir=blob_directory)
             except ValueError as e:
                 log.error(f' - {e} when processing {storage_directory}')
@@ -1170,9 +1172,14 @@ class Chrome(WebBrowser):
                     obj_store = database.get_object_store_by_name(obj_store_name)
                     try:
                         for record in obj_store.iterate_records():
-                                results.append(Chrome.IndexedDBItem(
-                                    self.profile_path, origin, str(record.key.value), str(record.value),
-                                    int(record.sequence_number), str(database.name), storage_directory))
+                            record_state = 'Deleted'
+                            if record.is_live:
+                                record_state = 'Live'
+
+                            results.append(Chrome.IndexedDBItem(
+                                self.profile_path, origin, str(record.key.value), str(record.value),
+                                int(record.ldb_seq_no), database=f"{record.database_name}.{obj_store_name}",
+                                state=record_state, source_path=storage_directory))
                     except FileNotFoundError as e:
                         log.error(f' - File ({e}) not found while processing {database}')
 
