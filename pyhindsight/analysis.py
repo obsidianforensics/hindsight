@@ -974,6 +974,8 @@ class AnalysisSession(object):
                     s.write(row_number, 7, item.source_path, black_value_format)
                     s.write(row_number, 8, item.database, black_value_format)
                     s.write_number(row_number, 9, item.seq, black_value_format)
+                    s.write_string(row_number, 10, item.state, black_value_format)
+
             except Exception as e:
                 log.error(f'Failed to write row to XLSX: {e}')
 

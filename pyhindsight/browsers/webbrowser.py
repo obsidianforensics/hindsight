@@ -418,7 +418,7 @@ class WebBrowser(object):
             self.source_path = source_path
 
     class IndexedDBItem(StorageItem):
-        def __init__(self, profile, origin, key, value, seq, database, source_path):
+        def __init__(self, profile, origin, key, value, seq, state, database, source_path):
             """
 
             :param profile: The path to the browser profile this item is part of.
@@ -430,13 +430,14 @@ class WebBrowser(object):
             :param source_path: The path to the source of the record.
             """
             super(WebBrowser.IndexedDBItem, self).__init__(
-                'indexeddb', profile=profile, origin=origin, key=key, value=value, seq=seq,
+                'indexeddb', profile=profile, origin=origin, key=key, value=value, seq=seq, state=state,
                 source_path=source_path)
             self.profile = profile
             self.origin = origin
             self.key = key
             self.value = value
             self.seq = seq
+            self.state = state
             self.database = database
             self.source_path = source_path
 
