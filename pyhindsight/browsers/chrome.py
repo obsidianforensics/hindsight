@@ -1040,7 +1040,7 @@ class Chrome(WebBrowser):
 
         # Chrome v61+ used leveldb for LocalStorage, but kept old SQLite .localstorage files if upgraded.
         if 'leveldb' in local_storage_listing:
-            log.debug(f' - Found "leveldb" directory; reading Local Storage LevelDB records')
+            log.debug(' - Found "leveldb" directory; reading Local Storage LevelDB records')
             ls_ldb_path = os.path.join(ls_path, 'leveldb')
             ls_ldb_records = utils.get_ldb_records(ls_ldb_path)
             log.debug(f' - Reading {len(ls_ldb_records)} Local Storage raw LevelDB records; beginning parsing')
@@ -1080,7 +1080,6 @@ class Chrome(WebBrowser):
 
                 except Exception as e:
                     log.warning(f' - Error reading key/values from {ls_file_path}: {e}')
-                    pass
 
         self.artifacts_counts['Local Storage'] = len(results)
         log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
@@ -1093,18 +1092,15 @@ class Chrome(WebBrowser):
         ss_path = os.path.join(path, dir_name)
         log.info('Session Storage:')
         log.info(f' - Reading from {ss_path}')
+        log.info(f' - Using ccl_chromium_sessionstorage v{ccl_chromium_reader.ccl_chromium_sessionstorage.__version__}')
 
         session_storage_listing = os.listdir(ss_path)
         log.debug(f' - {len(session_storage_listing)} files in Session Storage directory')
 
-        # Session Storage parsing is thanks to Alex Caithness of CCL Forensics; ccl_chrome_indexeddb
-        # is bundled with Hindsight with his consent (and our thanks!). The below logic is adapted
-        # from his Chromium_dump_session_storage.py script.
-        from pyhindsight.lib.ccl_chrome_indexeddb import ccl_chromium_sessionstorage
         ss_ldb_records = None
 
         try:
-            ss_ldb_records = ccl_chromium_sessionstorage.SessionStoreDb(pathlib.Path(ss_path))
+            ss_ldb_records = ccl_chromium_reader.ccl_chromium_sessionstorage.SessionStoreDb(pathlib.Path(ss_path))
         except ValueError as e:
             log.warning(f' - Error reading records ({e}); possible LevelDB corruption')
             self.artifacts_counts['Session Storage'] = 'Failed'
@@ -1114,15 +1110,23 @@ class Chrome(WebBrowser):
                 origin_kvs = ss_ldb_records.get_all_for_host(origin)
                 for key, values in origin_kvs.items():
                     for value in values:
+                        record_state = 'Live'
+                        if value.is_deleted:
+                            record_state = 'Deleted'
+
                         results.append(Chrome.SessionStorageItem(
                             self.profile_path, origin, key, value.value,
-                            value.leveldb_sequence_number, 'Live', ss_path))
+                            value.leveldb_sequence_number, state=record_state, source_path=ss_path))
 
             # Some records don't have an associated host for some unknown reason; still include them.
             for key, value in ss_ldb_records.iter_orphans():
+                record_state = 'Live'
+                if value.is_deleted:
+                    record_state = 'Deleted'
+
                 results.append(Chrome.SessionStorageItem(
                     self.profile_path, '<orphan>', key, value.value,
-                    value.leveldb_sequence_number, 'Live', ss_path))
+                    value.leveldb_sequence_number, state=record_state, source_path=ss_path))
 
             ss_ldb_records.close()
             self.artifacts_counts['Session Storage'] = len(results)
@@ -1137,6 +1141,7 @@ class Chrome(WebBrowser):
         idb_path = os.path.join(path, dir_name)
         log.info('IndexedDB:')
         log.info(f' - Reading from {idb_path}')
+        log.info(f' - Using ccl_chromium_indexeddb v{ccl_chromium_reader.ccl_chromium_indexeddb.__version__}')
 
         idb_storage_listing = os.listdir(idb_path)
         log.debug(f' - {len(idb_storage_listing)} files in IndexedDB directory')
