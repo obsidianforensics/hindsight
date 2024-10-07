@@ -111,17 +111,48 @@ class WebBrowser(object):
             d[col[0]] = row[idx]
         return d
 
-    def build_md5_hash_list_of_origins(self):
+    def get_clean_hostnames(self):
+        hostnames = set()
         for artifact in self.parsed_artifacts:
-            if isinstance(artifact, self.HistoryItem):
+            if not isinstance(artifact, self.HistoryItem) or not artifact.url:
+                continue
+
+            # Some artifact "URLs", often parsed from Preferences, are two
+            # origins combined, so split them into two.
+            # Example from Preferences (3pcd_heuristics_grants):
+            #   "https://[*.]lnkd.in,https://[*.]linkedin.com"
+            artifact_urls = artifact.url.split(',')
+
+            for artifact_url in artifact_urls:
+                # Some artifact "URLs" will be in invalid forms, which urllib (rightly)
+                # won't parse. Modify these URLs so they will parse properly.
+                # Examples:
+                #   Cookie: ".example.com",
+                #   Preferences (cookie_controls_metadata): "https://[*.]example.com"
+                prefixes = ('.', 'https://[*.]', 'http://[*.]')
+
+                for prefix in prefixes:
+                    if artifact_url.startswith(prefix):
+                        artifact_url = 'https://' + artifact_url[len(prefix):]
+
+                if artifact_url.endswith(',*'):
+                    artifact_url = artifact_url[:-2]
+
                 try:
-                    domain = urllib.parse.urlparse(artifact.url).hostname
+                    hostname = urllib.parse.urlparse(artifact_url).hostname
                 except ValueError as e:
-                    log.warning(f'Error when parsing domain from {artifact.url}; {e}')
+                    log.warning(f'Error when parsing domain from {artifact_url}; {e}')
                     continue
+
                 # Some URLs don't have a domain, like local PDF files
-                if domain:
-                    self.origin_hashes[hashlib.md5(domain.encode()).hexdigest()] = domain
+                if hostname:
+                    hostnames.add(hostname)
+        return hostnames
+
+    def build_md5_hash_list_of_origins(self):
+        domains = self.get_clean_hostnames()
+        for domain in domains:
+            self.origin_hashes[hashlib.md5(domain.encode()).hexdigest()] = domain
 
     class HistoryItem(object):
         def __init__(self, item_type, timestamp, profile, url=None, name=None, value=None, interpretation=None):
