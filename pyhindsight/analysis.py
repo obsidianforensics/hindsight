@@ -956,7 +956,7 @@ class AnalysisSession(object):
                     s.write_string(row_number, 0, item.row_type, black_type_format)
                     s.write_string(row_number, 1, item.origin, black_url_format)
                     s.write_string(row_number, 2, item.key, black_field_format)
-                    s.write_string(row_number, 3, item.value, black_value_format)
+                    s.write(row_number, 3, item.value, black_value_format)
                     s.write(row_number, 4, friendly_date(item.last_modified), black_date_format)
                     s.write(row_number, 5, item.interpretation, black_value_format)
                     s.write(row_number, 6, item.profile, black_value_format)
