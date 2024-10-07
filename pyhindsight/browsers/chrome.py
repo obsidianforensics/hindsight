@@ -116,7 +116,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 125))
+        possible_versions = list(range(1, 130))
         # TODO: remove 82?
         previous_possible_versions = possible_versions[:]
 
@@ -207,6 +207,7 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('is_persistent', self.structure['Cookies']['cookies'], 66)
                 trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
                 trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
+                trim_lesser_versions_if('source_type', self.structure['Cookies']['cookies'], 125)
             log.debug(f' - Finishing possible versions: {possible_versions}')
 
         possible_versions, previous_possible_versions = \
@@ -273,6 +274,10 @@ class Chrome(WebBrowser):
                     'key', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 55)
                 trim_lesser_versions_if(
                     'proto', self.structure['Network Action Predictor']['resource_prefetch_predictor_url'], 54)
+            if 'lcp_critical_path_predictor' in list(self.structure['Network Action Predictor'].keys()):
+                trim_lesser_versions(117)
+            if 'lcp_critical_path_predictor_initiator_origin' in list(self.structure['Network Action Predictor'].keys()):
+                trim_lesser_versions(129)
             log.debug(f' - Finishing possible versions: {possible_versions}')
 
         possible_versions, previous_possible_versions = \
@@ -2223,39 +2228,7 @@ class Chrome(WebBrowser):
         self.parsed_artifacts.extend(result_list)
 
     def build_hsts_domain_hashes(self):
-        domains = set()
-        for artifact in self.parsed_artifacts:
-            if not isinstance(artifact, self.HistoryItem):
-                continue
-
-            if not artifact.url:
-                continue
-
-            artifact_url = artifact.url
-
-            # Some artifact "URLs" will be in invalid forms, which urllib (rightly)
-            # won't parse. Modify these URLs so they will parse properly.
-            # Examples:
-            #   Cookie: ".example.com",
-            #   Preferences (cookie_controls_metadata): "https://[*.]example.com"
-            prefixes = ('.', 'https://[*.]', 'http://[*.]')
-
-            for prefix in prefixes:
-                if artifact_url.startswith(prefix):
-                    artifact_url = 'http://' + artifact_url[len(prefix):]
-
-            if artifact_url.endswith(',*'):
-                artifact_url = artifact_url[:-2]
-
-            try:
-                domain = urllib.parse.urlparse(artifact_url).hostname
-            except ValueError as e:
-                log.warning(f'Error when parsing domain from {artifact_url}; {e}')
-                continue
-
-            # Some URLs don't have a domain, like local PDF files
-            if domain:
-                domains.add(domain)
+        domains = self.get_clean_hostnames()
 
         for domain in domains:
 
