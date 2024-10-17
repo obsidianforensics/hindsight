@@ -737,7 +737,7 @@ class Chrome(WebBrowser):
                 return
             cursor = conn.cursor()
 
-            # Use highest compatible version SQL to select download data
+            # Use the highest compatible version SQL to select download data
             cursor.execute(query[compatible_version])
 
             for row in cursor:
@@ -751,23 +751,29 @@ class Chrome(WebBrowser):
                     results.append(never_save_row)
 
                 elif row.get('username_value'):
+                    interpretation_str = 'User chose to save the credentials entered'
+                    if row.get('times_used') and row.get('times_used') > 0:
+                        interpretation_str += f' (times used: {row.get("times_used")})'
+
                     username_row = Chrome.LoginItem(
                         self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                        url=row.get('action_url'), name=row.get('username_element'),
+                        url=row.get('origin_url'), name=row.get('username_element'),
                         value=row.get('username_value'), count=row.get('times_used'),
-                        interpretation=f'User chose to save the credentials entered '
-                                       f'(times used: {row.get("times_used")})')
+                        interpretation=interpretation_str)
                     username_row.row_type = 'login (saved credentials)'
                     results.append(username_row)
 
                     # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
                     if row.get('date_last_used') and int(row.get('date_last_used')) > 13100000000000000:
+                        interpretation_str = 'User tried to log in with this username (may or may not have succeeded)'
+                        if row.get('times_used') and row.get('times_used') > 0:
+                            interpretation_str += f'; times used: {row.get("times_used")})'
+                            
                         username_row = Chrome.LoginItem(
                             self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
-                            url=row.get('action_url'), name=row.get('username_element'),
+                            url=row.get('origin_url'), name=row.get('username_element'),
                             value=row.get('username_value'), count=row.get('times_used'),
-                            interpretation=f'User tried to log in with this username (may or may not '
-                                           f'have succeeded; times used: {row.get("times_used")})')
+                            interpretation=interpretation_str)
                         username_row.row_type = 'login (username)'
                         results.append(username_row)
 
@@ -781,7 +787,7 @@ class Chrome(WebBrowser):
 
                     password_row = Chrome.LoginItem(
                         self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                        url=row.get('action_url'), name=row.get('password_element'),
+                        url=row.get('origin_url'), name=row.get('password_element'),
                         value=password, count=row.get('times_used'),
                         interpretation='User chose to save the credentials entered')
                     password_row.row_type = 'login (password)'
@@ -807,7 +813,7 @@ class Chrome(WebBrowser):
                     return
                 cursor = conn.cursor()
 
-                # Use highest compatible version SQL to select download data
+                # Use the highest compatible version SQL to select download data
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
