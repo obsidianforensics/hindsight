@@ -39,12 +39,12 @@ This script parses the files in the Chrome/Chromium/Brave data folder, runs vari
     epi = r'''
 Example:  C:\hindsight.py -i "C:\Users\Ryan\AppData\Local\Google\Chrome\User Data\Default" -o test_case
 
-The Chrome data folder default locations are:
+The Chrome Profile folder default locations are:
+   Vista - 11: <userdir>\AppData\Local\Google\Chrome\\User Data\Default\
         WinXP: <userdir>\Local Settings\Application Data\Google\Chrome
-                \User Data\Default\
- Vista/7/8/10: <userdir>\AppData\Local\Google\Chrome\\User Data\Default\
+                \User Data\Default\        
         Linux: <userdir>/.config/google-chrome/Default/
-         OS X: <userdir>/Library/Application Support/Google/Chrome/Default/
+        MacOS: <userdir>/Library/Application Support/Google/Chrome/Default/
           iOS: \Applications\com.google.chrome.ios\Library\Application Support
                 \Google\Chrome\Default\
   Chromium OS: \home\user\<GUID>\
