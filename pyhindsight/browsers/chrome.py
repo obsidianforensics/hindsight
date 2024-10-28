@@ -1864,6 +1864,8 @@ class Chrome(WebBrowser):
         cache_path_to_parse = pathlib.Path(path, dir_name)
         log.info(f'Cache items from {cache_path_to_parse}:')
         profile = ccl_chromium_reader.ChromiumProfileFolder(path=pathlib.Path(path), cache_folder=cache_path_to_parse)
+        log.info(f' - Using ccl_chromium_cache v{ccl_chromium_reader.ccl_chromium_cache.__version__}')
+
         cache_items = profile.iterate_cache(url=None, omit_cached_data=False)
 
         for cache_item in cache_items:
