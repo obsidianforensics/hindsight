@@ -11,6 +11,7 @@ import time
 from pyhindsight import __version__
 from pyhindsight.browsers.chrome import Chrome
 from pyhindsight.browsers.brave import Brave
+from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight.utils import friendly_date, format_plugin_output
 import pyhindsight.plugins
 
@@ -115,7 +116,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['cookie_name'] = item['name']
             item['data'] = item['value'] if item['value'] != '<encrypted>' else ''
             item['url'] = item['url'].lstrip('.')
-            item['url'] = 'https://{}'.format(item['url']) if item['secure'] else 'http://{}'.format(item['url'])
+            item['url'] = f'https://{item["url"]}' if item['secure'] else f'http://{item["url"]}'
             if item['expires_utc'] == '1970-01-01T00:00:00+00:00':
                 del(item['expires_utc'])
             # Convert these from 1/0 to true/false to match Plaso
@@ -123,10 +124,8 @@ class HindsightEncoder(json.JSONEncoder):
             item['httponly'] = 'true' if item['httponly'] else 'false'
             item['persistent'] = 'true' if item['persistent'] else 'false'
 
-            item['message'] = '{} ({}) Flags: [HTTP only] = {} [Persistent] = {}'.format(
-                item['url'],
-                item['cookie_name'],
-                item['httponly'], item['persistent'])
+            item['message'] = (f'{item["url"]} ({item["cookie_name"]}) Flags: [HTTP only] = {item["httponly"]} '
+                               f'[Persistent] = {item["persistent"]}')
 
             del(item['creation_utc'], item['last_access_utc'], item['row_type'],
                 item['host_key'], item['name'], item['value'])
@@ -141,8 +140,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['usage_count'] = item['count']
             item['field_name'] = item['name']
 
-            item['message'] = '{}: {} (times used: {})'.format(
-                item['field_name'], item['value'], item['usage_count'])
+            item['message'] = f'{item["field_name"]}: {item["value"]} (times used: {item["usage_count"]})'
 
             del(item['name'], item['row_type'], item['count'], item['date_created'])
             return item
@@ -154,8 +152,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:bookmark:entry'
             item['source_long'] = 'Chrome Bookmarks'
 
-            item['message'] = '{} ({}) bookmarked in folder "{}"'.format(
-                item['name'], item['url'], item['parent_folder'])
+            item['message'] = f'{item["name"]} ({item["url"]}) bookmarked in folder "{item["parent_folder"]}"'
 
             del(item['value'], item['row_type'], item['date_added'])
             return item
@@ -167,8 +164,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:bookmark:folder'
             item['source_long'] = 'Chrome Bookmarks'
 
-            item['message'] = '"{}" bookmark folder created in folder "{}"'.format(
-                item['name'], item['parent_folder'])
+            item['message'] = f'"{item["name"]}" bookmark folder created in folder "{item["parent_folder"]}"'
 
             del(item['value'], item['row_type'], item['date_added'])
             return item
@@ -181,8 +177,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome LocalStorage'
             item['url'] = item['origin'][1:]
 
-            item['message'] = 'key: {} value: {}'.format(
-                item['key'], item['value'])
+            item['message'] = f'key: {item["key"]} value: {item["value"]}'
 
             del (item['row_type'])
             return item
@@ -195,8 +190,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Session Storage'
             item['url'] = item['origin']
 
-            item['message'] = 'key: {} value: {}'.format(
-                item['key'], item['value'])
+            item['message'] = f'key: {item["key"]} value: {item["value"]}'
 
             del (item['row_type'])
             return item
@@ -209,8 +203,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome File System'
             item['url'] = item['origin']
 
-            item['message'] = 'key: {} value: {}'.format(
-                item['key'], item['value'])
+            item['message'] = f'key: {item["key"]} value: {item["value"]}'
 
             del (item['row_type'])
             return item
@@ -223,10 +216,9 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Logins'
             item['usage_count'] = item['count']
 
-            item['message'] = '{}: {} used on {} (total times used: {})'.format(
-                item['name'], item['value'], item['url'], item['usage_count'])
+            item['message'] = f'{item["name"]}: {item["value"]} used on {item["url"]} (total times used: {item["usage_count"]})'
 
-            del(item['row_type'], item['count'], item['date_created'])
+            del (item['row_type'], item['count'], item['date_created'])
             return item
 
         if isinstance(obj, Chrome.PreferenceItem):
@@ -259,7 +251,7 @@ class HindsightEncoder(json.JSONEncoder):
             del(item['row_type'], item['name'])
             return item
 
-        if isinstance(obj, CacheEntry):
+        if isinstance(obj, WebBrowser.CacheItem):
             item = HindsightEncoder.base_encoder(obj)
 
             item['timestamp_desc'] = 'Last Visit Time'
@@ -267,11 +259,18 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Cache'
             item['original_url'] = item['url']
             item['cache_type'] = item['row_type']
-            item['cached_state'] = item['name']
+
+            if item['data_summary'] == '<no data>':
+                item['cached_state'] = 'Evicted'
+            else:
+                item['cached_state'] = 'Cached'
 
             item['message'] = f'Original URL: {item["original_url"]}'
 
-            del(item['row_type'], item['name'], item['timezone'])
+            if item.get('data'):
+                del item['data']
+
+            del item['row_type']
             return item
 
 
@@ -308,6 +307,7 @@ class AnalysisSession(object):
         self.plugin_results = plugin_results
         self.hindsight_version = hindsight_version
         self.preferences = preferences
+        self.fatal_error = None
 
         if self.version is None:
             self.version = []
@@ -418,9 +418,8 @@ class AnalysisSession(object):
             # This approach (checking the file names) is naive but should work.
             if required_file not in existing_files or not os.path.isfile(os.path.join(base_path, required_file)):
                 if warn:
-                    log.warning("The profile directory {} does not contain the "
-                                "file {}. Analysis may not be very useful."
-                                .format(base_path, required_file))
+                    log.warning(f"The profile directory {base_path} does not contain the "
+                                f"file {required_file}. Analysis may not be very useful.")
                 is_profile = False
         return is_profile
 
@@ -503,7 +502,7 @@ class AnalysisSession(object):
         log.info(f'Reading files from {self.input_path}')
         try:
             input_listing = os.listdir(self.input_path)
-        except (PermissionError, OSError) as e:
+        except OSError as e:
             fail_message = f'Unable to read input directory; {e}'
             log.error(fail_message)
             self.fatal_error = fail_message
@@ -580,28 +579,28 @@ class AnalysisSession(object):
                 if standard_plugin == plugin:
                     # Check to see if we've already run this plugin (likely from a different path)
                     if plugin in completed_plugins:
-                        log.info(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
+                        log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
                         continue
 
-                    log.info(" - Loading '{}' [standard plugin]".format(plugin))
+                    log.info(f" - Loading '{plugin}' [standard plugin]")
                     try:
-                        module = importlib.import_module("pyhindsight.plugins.{}".format(plugin))
+                        module = importlib.import_module(f"pyhindsight.plugins.{plugin}")
                     except ImportError as e:
-                        log.error(" - Error: {}".format(e))
+                        log.error(f" - Error: {e}")
                         print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
                         continue
                     try:
-                        log.info(" - Running '{}' plugin".format(module.friendlyName))
+                        log.info(f" - Running '{module.friendlyName}' plugin")
                         parsed_items = module.plugin(self)
                         print(format_plugin_output(module.friendlyName, module.version, parsed_items))
                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
-                        log.info(" - Completed; {}".format(parsed_items))
+                        log.info(f" - Completed; {parsed_items}")
                         completed_plugins.append(plugin)
                         break
                     except Exception as e:
                         print(format_plugin_output(module.friendlyName, module.version, 'failed'))
                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
-                        log.info(" - Failed; {}".format(e))
+                        log.info(f" - Failed; {e}")
 
             for potential_path in sys.path:
                 # If a subdirectory exists called 'plugins' at the current path, continue on
@@ -615,7 +614,7 @@ class AnalysisSession(object):
                         plugin_listing = os.listdir(potential_plugin_path)
 
                         for custom_plugin in plugin_listing:
-                            if custom_plugin[-3:] == ".py" and custom_plugin[0] != '_':
+                            if custom_plugin.endswith(".py") and custom_plugin[0] != '_':
                                 custom_plugin = custom_plugin.replace(".py", "")
 
                                 if custom_plugin == plugin:
@@ -624,26 +623,26 @@ class AnalysisSession(object):
                                         log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
                                         continue
 
-                                    log.debug(" - Loading '{}' [custom plugin]".format(plugin))
+                                    log.debug(f" - Loading '{plugin}' [custom plugin]")
                                     try:
                                         module = __import__(plugin)
                                     except ImportError as e:
-                                        log.error(" - Error: {}".format(e))
+                                        log.error(f" - Error: {e}")
                                         print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
                                         continue
                                     try:
-                                        log.info(" - Running '{}' plugin".format(module.friendlyName))
+                                        log.info(f" - Running '{module.friendlyName}' plugin")
                                         parsed_items = module.plugin(self)
                                         print(format_plugin_output(module.friendlyName, module.version, parsed_items))
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
-                                        log.info(" - Completed; {}".format(parsed_items))
+                                        log.info(f" - Completed; {parsed_items}")
                                         completed_plugins.append(plugin)
                                     except Exception as e:
                                         print(format_plugin_output(module.friendlyName, module.version, 'failed'))
                                         self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
-                                        log.info(" - Failed; {}".format(e))
+                                        log.info(f" - Failed; {e}")
                     except Exception as e:
-                        log.debug(' - Error loading plugins ({})'.format(e))
+                        log.debug(f' - Error loading plugins ({e})')
                         print('  - Error loading plugins')
                     finally:
                         # Remove the current plugin location from the system path, so we don't loop over it again
@@ -696,7 +695,7 @@ class AnalysisSession(object):
 
         # Write column headers
         w.write(1, 0, 'Type', header_format)
-        w.write(1, 1, 'Timestamp ({})'.format(self.timezone), header_format)
+        w.write(1, 1, f'Timestamp ({self.timezone})', header_format)
         w.write(1, 2, 'URL', header_format)
         w.write(1, 3, 'Title / Name / Status', header_format)
         w.write(1, 4, 'Data / Value / Path', header_format)
@@ -906,7 +905,7 @@ class AnalysisSession(object):
         s.write(1, 1, 'Origin', header_format)
         s.write(1, 2, 'Key', header_format)
         s.write(1, 3, 'Value', header_format)
-        s.write(1, 4, 'Modification Time ({})'.format(self.timezone), header_format)
+        s.write(1, 4, f'Modification Time ({self.timezone})', header_format)
         s.write(1, 5, 'Interpretation', header_format)
         s.write(1, 6, 'Profile', header_format)
         s.write(1, 7, 'Source Path', header_format)
@@ -993,7 +992,7 @@ class AnalysisSession(object):
                     p = workbook.add_worksheet(d['presentation']['title'])
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
-                        title += " (v{})".format(d['presentation']['version'])
+                        title += f" (v{d['presentation']['version']})"
                     p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
                         # print column
@@ -1025,7 +1024,7 @@ class AnalysisSession(object):
                     p = workbook.add_worksheet(d['presentation']['title'][:31])
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
-                        title += " (v{})".format(d['presentation']['version'])
+                        title += f" (v{d['presentation']['version']})"
                     p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
                         p.write(1, counter, column['display_name'], header_format)
@@ -1045,8 +1044,7 @@ class AnalysisSession(object):
                     p.autofilter(1, 0, len(d['data']) + 2, len(d['presentation']['columns']) - 1)  # Add autofilter
 
             except Exception as e:
-                log.warning("Exception occurred while writing Preferences page: {}".format(e))
-                pass
+                log.warning(f"Exception occurred while writing Preferences page: {e}")
 
         workbook.close()
 
