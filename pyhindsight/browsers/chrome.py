@@ -1813,9 +1813,9 @@ class Chrome(WebBrowser):
                 for lang_code, timestamp in prefs['translate_last_denied_time_for_language'].items():
                     # Example (from in Preferences file):
                     # "translate_last_denied_time_for_language": {
-                    #   u'ar': 1438733440742.06,
-                    #   u'th': [1447786189498.162],
-                    #   u'hi': 1438798234384.275,
+                    #   'ar': 1438733440742.06,
+                    #   'th': [1447786189498.162],
+                    #   'hi': 1438798234384.275,
                     #  },
                     if isinstance(timestamp, list):
                         timestamp = timestamp[0]

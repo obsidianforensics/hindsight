@@ -11,6 +11,7 @@ import time
 from pyhindsight import __version__
 from pyhindsight.browsers.chrome import Chrome
 from pyhindsight.browsers.brave import Brave
+from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight.utils import friendly_date, format_plugin_output
 import pyhindsight.plugins
 
@@ -250,7 +251,7 @@ class HindsightEncoder(json.JSONEncoder):
             del(item['row_type'], item['name'])
             return item
 
-        if isinstance(obj, CacheEntry):
+        if isinstance(obj, WebBrowser.CacheItem):
             item = HindsightEncoder.base_encoder(obj)
 
             item['timestamp_desc'] = 'Last Visit Time'
@@ -258,11 +259,18 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Cache'
             item['original_url'] = item['url']
             item['cache_type'] = item['row_type']
-            item['cached_state'] = item['name']
+
+            if item['data_summary'] == '<no data>':
+                item['cached_state'] = 'Evicted'
+            else:
+                item['cached_state'] = 'Cached'
 
             item['message'] = f'Original URL: {item["original_url"]}'
 
-            del(item['row_type'], item['name'], item['timezone'])
+            if item.get('data'):
+                del item['data']
+
+            del item['row_type']
             return item
 
 
