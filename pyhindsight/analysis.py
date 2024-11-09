@@ -650,7 +650,7 @@ class AnalysisSession(object):
 
     def generate_excel(self, output_object):
         import xlsxwriter
-        workbook = xlsxwriter.Workbook(output_object, {'in_memory': True})
+        workbook = xlsxwriter.Workbook(output_object, {'in_memory': True, 'strings_to_urls': False})
         w = workbook.add_worksheet('Timeline')
 
         # Define cell formats
