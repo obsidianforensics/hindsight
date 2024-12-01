@@ -108,7 +108,7 @@ def get_plugins_info():
 
 
 # Static Routes
-@bottle.get('/static/<filename:re:.*\.(png|css|ico|svg|json|eot|svg|ttf|woff|woff2|js)>')
+@bottle.get(r'/static/<filename:re:.*\.(png|css|ico|svg|json|eot|svg|ttf|woff|woff2|js)>')
 def images(filename):
     return bottle.static_file(filename, root=STATIC_PATH)
 
