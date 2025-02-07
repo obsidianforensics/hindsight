@@ -1866,28 +1866,35 @@ class Chrome(WebBrowser):
         profile = ccl_chromium_reader.ChromiumProfileFolder(path=pathlib.Path(path), cache_folder=cache_path_to_parse)
         log.info(f' - Using ccl_chromium_cache v{ccl_chromium_reader.ccl_chromium_cache.__version__}')
 
-        cache_items = profile.iterate_cache(url=None, omit_cached_data=False)
-
-        for cache_item in cache_items:
-            if not cache_item.metadata:
-                continue
-
-            parsed_item = WebBrowser.CacheItem(
-                profile=str(profile.path), url=cache_item.key.url, request_time=pytz.utc.localize(cache_item.metadata.request_time),
-                locations=str({'data': cache_item.data_location, 'metadata': cache_item.metadata_location}),
-                key=cache_item.key, metadata=cache_item.metadata, data=cache_item.data, title=None)
-
-            parsed_item.row_type = row_type
-            parsed_item.data_summary = parsed_item.create_data_summary()
-            parsed_item.stringify_http_headers()
-            parsed_item.etag = (cache_item.metadata.get_attribute("etag") or [""])[0]
-            parsed_item.last_modified = (cache_item.metadata.get_attribute("last-modified") or [""])[0]
-
-            results.append(parsed_item)
-
         cache_display_name = dir_name
         if dir_name == 'Cache_Data':
             cache_display_name = 'Cache'
+
+        cache_items = profile.iterate_cache(url=None, omit_cached_data=False)
+
+        try:
+            for cache_item in cache_items:
+                if not cache_item.metadata:
+                    continue
+
+                parsed_item = WebBrowser.CacheItem(
+                    profile=str(profile.path), url=cache_item.key.url, request_time=pytz.utc.localize(cache_item.metadata.request_time),
+                    locations=str({'data': cache_item.data_location, 'metadata': cache_item.metadata_location}),
+                    key=cache_item.key, metadata=cache_item.metadata, data=cache_item.data, title=None)
+
+                parsed_item.row_type = row_type
+                parsed_item.data_summary = parsed_item.create_data_summary()
+                parsed_item.stringify_http_headers()
+                parsed_item.etag = (cache_item.metadata.get_attribute("etag") or [""])[0]
+                parsed_item.last_modified = (cache_item.metadata.get_attribute("last-modified") or [""])[0]
+
+                results.append(parsed_item)
+
+        except Exception as e:
+            log.error(f' - Exception parsing Cache items: {e})')
+            self.artifacts_counts[cache_display_name] = 'Failed'
+            return
+
         self.artifacts_counts[cache_display_name] = len(results)
         log.info(f' - Parsed {len(results)} items')
         self.parsed_artifacts.extend(results)
