@@ -1899,6 +1899,89 @@ class Chrome(WebBrowser):
         log.info(f' - Parsed {len(results)} items')
         self.parsed_artifacts.extend(results)
 
+    def get_unified_extension_data(self, path, dir_name):
+        results = []
+
+        # Grab file list of input directory
+        ldb_path = os.path.join(path, dir_name)
+        log.info(f'{dir_name}:')
+        log.info(f' - Reading from {ldb_path}')
+        log.info(f' - Using ccl_leveldb v{ccl_chromium_reader.storage_formats.ccl_leveldb.__version__}')
+
+        ldb_file_listing = os.listdir(ldb_path)
+        log.debug(f' - {len(ldb_file_listing)} files in {dir_name} directory')
+
+        ldb_records = None
+
+        try:
+            ldb_records = ccl_chromium_reader.storage_formats.ccl_leveldb.RawLevelDb(pathlib.Path(ldb_path))
+        except ValueError as e:
+            log.warning(f' - Error reading records ({e}); possible LevelDB corruption')
+            self.artifacts_counts[f'{dir_name}'] = 'Failed'
+
+        if ldb_records:
+            for record in ldb_records.iterate_records_raw():
+                user_key = record.user_key.decode()
+                origin = ""
+                m = re.fullmatch(r'([a-p]{32})\.(.*)$', user_key)
+                if m:
+                    origin = m.group(1)
+                    user_key = m.group(2)
+                results.append(Chrome.StorageItem(
+                    dir_name.lower(), self.profile_path, origin, user_key, record.value.decode(),
+                    record.seq, state=record.state.name, source_path=ldb_path))
+
+            ldb_records.close()
+            self.artifacts_counts[f'{dir_name}'] = len(results)
+
+        log.info(f' - Parsed {len(results)} {dir_name} items')
+        self.parsed_extension_data.extend(results)
+
+    def get_partitioned_extension_data(self, path, dir_name):
+        results = []
+
+        # Grab file list of input directory
+        top_path = os.path.join(path, dir_name)
+        log.info(f'{dir_name}:')
+        log.info(f' - Reading from {top_path}')
+        top_file_listing = os.listdir(top_path)
+
+        # Only process directories with the expected naming convention
+        app_id_re = re.compile(r'^([a-z]{32})$')
+        ext_listing = [str(x) for x in top_file_listing if app_id_re.match(x)]
+        log.debug(f' - {len(ext_listing)} files in {dir_name} directory will be processed: {str(ext_listing)}')
+
+        for ext_id in ext_listing:
+            # Grab file list of input directory
+            ldb_path = os.path.join(path, dir_name, ext_id)
+            log.info(f'{dir_name}:')
+            log.info(f' - Reading from {ldb_path}')
+            log.info(f' - Using ccl_leveldb v{ccl_chromium_reader.storage_formats.ccl_leveldb.__version__}')
+
+            ldb_file_listing = os.listdir(ldb_path)
+            log.debug(f' - {len(ldb_file_listing)} files in {dir_name} directory')
+
+            ldb_records = None
+
+            try:
+                ldb_records = ccl_chromium_reader.storage_formats.ccl_leveldb.RawLevelDb(pathlib.Path(ldb_path))
+            except ValueError as e:
+                log.warning(f' - Error reading records ({e}); possible LevelDB corruption')
+                self.artifacts_counts[f'{dir_name}'] = 'Failed'
+
+            if ldb_records:
+                for record in ldb_records.iterate_records_raw():
+                    user_key = record.user_key.decode()
+                    results.append(Chrome.StorageItem(
+                        dir_name.lower(), self.profile_path, ext_id, user_key, record.value.decode(),
+                        record.seq, state=record.state.name, source_path=ldb_path))
+
+                ldb_records.close()
+
+        self.artifacts_counts[f'{dir_name}'] = len(results)
+        log.info(f' - Parsed {len(results)} {dir_name} items')
+        self.parsed_extension_data.extend(results)
+
     @staticmethod
     def parse_ls_ldb_record(record):
         """
@@ -2566,6 +2649,24 @@ class Chrome(WebBrowser):
             print(self.format_processing_output(
                 self.artifacts_display['DIPS'],
                 self.artifacts_counts.get('DIPS', '0')))
+
+        for directory in ['Extension Rules', 'Extension Scripts', 'Extension State']:
+            if directory in input_listing:
+                self.get_unified_extension_data(self.profile_path, directory)
+                self.artifacts_display[f'{directory}'] = f'{directory} records'
+                print(self.format_processing_output(
+                    self.artifacts_display[f'{directory}'],
+                    self.artifacts_counts.get(f'{directory}', '0')))
+
+        for directory in ['Local App Settings', 'Local Extension Settings',
+                          'Managed Extension Settings', 'Sync App Settings', 'Sync Extension Settings']:
+            if directory in input_listing:
+                self.get_partitioned_extension_data(self.profile_path, directory)
+                self.artifacts_display[f'{directory}'] = f'{directory} records'
+                print(self.format_processing_output(
+                    self.artifacts_display[f'{directory}'],
+                    self.artifacts_counts.get(f'{directory}', '0')))
+
 
         if network_listing:
             if 'Cookies' in network_listing:
