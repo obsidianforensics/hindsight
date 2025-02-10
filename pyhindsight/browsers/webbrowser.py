@@ -12,8 +12,7 @@ log = logging.getLogger(__name__)
 class WebBrowser(object):
     def __init__(
             self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
-            timezone=None, structure=None, parsed_artifacts=None, parsed_storage=None, artifacts_counts=None,
-            artifacts_display=None, preferences=None, no_copy=None, temp_dir=None, origin_hashes=None):
+            timezone=None, structure=None, no_copy=None, temp_dir=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -21,35 +20,18 @@ class WebBrowser(object):
         self.display_version = display_version
         self.timezone = timezone
         self.structure = structure
-        self.parsed_artifacts = parsed_artifacts
-        self.parsed_storage = parsed_storage
-        self.artifacts_counts = artifacts_counts
-        self.artifacts_display = artifacts_display
-        self.preferences = preferences
+        self.parsed_artifacts = []
+        self.parsed_storage = []
+        self.parsed_extension_data = []
+        self.artifacts_counts = {}
+        self.artifacts_display = {}
+        self.preferences = []
         self.no_copy = no_copy
         self.temp_dir = temp_dir
-        self.origin_hashes = origin_hashes
+        self.origin_hashes = {}
 
         if self.version is None:
             self.version = []
-
-        if self.parsed_artifacts is None:
-            self.parsed_artifacts = []
-
-        if self.parsed_storage is None:
-            self.parsed_storage = []
-
-        if self.artifacts_counts is None:
-            self.artifacts_counts = {}
-
-        if self.artifacts_display is None:
-            self.artifacts_display = {}
-
-        if self.preferences is None:
-            self.preferences = []
-
-        if self.origin_hashes is None:
-            self.origin_hashes = {}
 
     @staticmethod
     def format_processing_output(name, items):

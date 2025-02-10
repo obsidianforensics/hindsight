@@ -41,27 +41,21 @@ log = logging.getLogger(__name__)
 
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
-                 parsed_artifacts=None, parsed_storage=None, storage=None, installed_extensions=None,
-                 artifacts_counts=None, artifacts_display=None, available_decrypts=None, preferences=None,
-                 no_copy=None, temp_dir=None, origin_hashes=None, hsts_hashes=None):
+                 storage=None, available_decrypts=None, no_copy=None, temp_dir=None):
         WebBrowser.__init__(
             self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version, timezone=timezone,
-            parsed_artifacts=parsed_artifacts, parsed_storage=parsed_storage, artifacts_counts=artifacts_counts,
-            artifacts_display=artifacts_display, preferences=preferences, no_copy=no_copy, temp_dir=temp_dir,
-            origin_hashes=origin_hashes)
+            no_copy=no_copy, temp_dir=temp_dir)
         self.profile_path = profile_path
         self.browser_name = "Chrome"
         self.cache_path = cache_path
         self.timezone = timezone
-        self.installed_extensions = installed_extensions
+        self.installed_extensions = []
         self.cached_key = None
         self.available_decrypts = available_decrypts
         self.storage = storage
-        self.preferences = preferences
         self.no_copy = no_copy
         self.temp_dir = temp_dir
-        self.origin_hashes = origin_hashes
-        self.hsts_hashes = hsts_hashes
+        self.hsts_hashes = {}
 
         if self.version is None:
             self.version = []
@@ -69,32 +63,13 @@ class Chrome(WebBrowser):
         if self.structure is None:
             self.structure = {}
 
-        if self.parsed_artifacts is None:
-            self.parsed_artifacts = []
-
-        if self.parsed_storage is None:
-            self.parsed_storage = []
-
-        if self.installed_extensions is None:
-            self.installed_extensions = []
 
         if self.preferences is None:
             self.preferences = []
 
-        if self.origin_hashes is None:
-            self.origin_hashes = {}
-
-        if self.hsts_hashes is None:
-            self.hsts_hashes = {}
-
-        if self.artifacts_counts is None:
-            self.artifacts_counts = {}
 
         if self.storage is None:
             self.storage = {}
-
-        if self.artifacts_display is None:
-            self.artifacts_display = {}
 
         if self.available_decrypts is None:
             self.available_decrypts = {'windows': 0, 'mac': 0, 'linux': 0}
