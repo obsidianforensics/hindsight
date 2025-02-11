@@ -689,6 +689,10 @@ class AnalysisSession(object):
         blue_field_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
         blue_value_format = workbook.add_format({'font_color': 'blue', 'align': 'left'})
 
+        ################################
+        # Timeline worksheet
+        ################################
+
         # Title bar
         w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
         w.merge_range('I1:O1', 'URL Specific', center_header_format)
@@ -896,6 +900,9 @@ class AnalysisSession(object):
         w.autofilter(1, 0, row_number, 20)  # Add autofilter
         w.filter_column('B', 'Timestamp > 1970-01-02')
 
+        ##############################
+        # Storage worksheet
+        ##############################
         s = workbook.add_worksheet('Storage')
         # Title bar
         s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
@@ -998,59 +1005,60 @@ class AnalysisSession(object):
         s.freeze_panes(2, 0)  # Freeze top row
         s.autofilter(1, 0, row_number, 12)  # Add autofilter
 
-        e = workbook.add_worksheet('Extension Data')
+        #########################################
+        # Extension Data worksheet
+        #########################################
+        ext = workbook.add_worksheet('Extension Data')
         # Title bar
-        e.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
-        e.merge_range('H1:K1', 'Backing Database Specific', center_header_format)
-        e.merge_range('L1:N1', 'FileSystem Specific', center_header_format)
+        ext.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        ext.merge_range('H1:L1', 'Backing LevelDB Specific', center_header_format)
 
         # Write column headers
-        e.write(1, 0, 'Type', header_format)
-        e.write(1, 1, 'Origin', header_format)
-        e.write(1, 2, 'Key', header_format)
-        e.write(1, 3, 'Value', header_format)
-        e.write(1, 4, f'Modification Time ({self.timezone})', header_format)
-        e.write(1, 5, 'Interpretation', header_format)
-        e.write(1, 6, 'Profile', header_format)
-        e.write(1, 7, 'Source Path', header_format)
-        e.write(1, 8, 'Database', header_format)
-        e.write(1, 9, 'Sequence', header_format)
-        e.write(1, 10, 'State', header_format)
-        e.write(1, 11, 'File Exists?', header_format)
-        e.write(1, 12, 'File Size (bytes)', header_format)
-        e.write(1, 13, 'File Type (Confidence %)', header_format)
+        ext.write(1, 0, 'Type', header_format)
+        ext.write(1, 1, 'Extension ID', header_format)
+        ext.write(1, 2, 'Extension Name', header_format)
+        ext.write(1, 3, 'Key', header_format)
+        ext.write(1, 4, 'Value', header_format)
+        ext.write(1, 5, 'Interpretation', header_format)
+        ext.write(1, 6, 'Profile', header_format)
+        ext.write(1, 7, 'Source Path', header_format)
+        ext.write(1, 8, 'Offset', header_format)
+        ext.write(1, 9, 'Sequence', header_format)
+        ext.write(1, 10, 'State', header_format)
+        ext.write(1, 11, 'Was Compressed', header_format)
 
         # Set column widths
-        e.set_column('A:A', 16)  # Type
-        e.set_column('B:B', 30)  # Origin
-        e.set_column('C:C', 35)  # Key
-        e.set_column('D:D', 60)  # Value
-        e.set_column('E:E', 16)  # Mod Time
-        e.set_column('F:F', 50)  # Interpretation
-        e.set_column('G:G', 50)  # Profile
-        e.set_column('H:H', 50)  # Source Path
-        e.set_column('I:I', 16)  # Database
-        e.set_column('J:J', 8)   # Seq
-        e.set_column('K:K', 8)   # State
-        e.set_column('L:L', 8)   # Exists
-        e.set_column('M:M', 16)  # Size
-        e.set_column('N:N', 25)  # Type
+        ext.set_column('A:A', 16)  # Type
+        ext.set_column('B:B', 30)  # ID
+        ext.set_column('C:C', 30)  # Name
+        ext.set_column('D:D', 35)  # Key
+        ext.set_column('E:E', 70)  # Value
+        ext.set_column('F:F', 40)  # Interpretation
+        ext.set_column('G:G', 50)  # Profile
+        ext.set_column('H:H', 50)  # Source Path
+        ext.set_column('I:I', 12)  # Offset
+        ext.set_column('J:J', 8)   # Seq
+        ext.set_column('K:K', 8)   # State
+        ext.set_column('L:L', 8)   # Was Compressed
+
 
         # Start at the row after the headers, and begin writing out the items in parsed_artifacts
         row_number = 2
         for item in self.parsed_extension_data:
             try:
                 if item.row_type:
-                    e.write_string(row_number, 0, item.row_type, black_type_format)
-                    e.write_string(row_number, 1, item.origin, black_url_format)
-                    e.write_string(row_number, 2, item.key, black_field_format)
-                    e.write_string(row_number, 3, item.value, black_value_format)
-                    e.write(row_number, 5, item.interpretation, black_value_format)
-                    e.write(row_number, 6, item.profile, black_value_format)
-                    e.write(row_number, 7, item.source_path, black_value_format)
-                    # e.write(row_number, 8, item.database, black_value_format)
-                    e.write_number(row_number, 9, item.seq, black_value_format)
-                    e.write_string(row_number, 10, item.state, black_value_format)
+                    ext.write_string(row_number, 0, item.row_type, black_type_format)
+                    ext.write(row_number, 1, item.extension_name, black_url_format)
+                    ext.write_string(row_number, 2, item.extension_id, black_url_format)
+                    ext.write_string(row_number, 3, item.key, black_field_format)
+                    ext.write_string(row_number, 4, item.value, black_value_format)
+                    ext.write(row_number, 5, item.interpretation, black_value_format)
+                    ext.write(row_number, 6, item.profile, black_value_format)
+                    ext.write(row_number, 7, item.source_path, black_value_format)
+                    ext.write(row_number, 8, item.offset, black_value_format)
+                    ext.write_number(row_number, 9, item.seq, black_value_format)
+                    ext.write_string(row_number, 10, item.state, black_value_format)
+                    ext.write(row_number, 11, item.was_compressed, black_flag_format)
 
             except Exception as e:
                 log.error(f'Failed to write row to XLSX: {e}')
@@ -1058,8 +1066,8 @@ class AnalysisSession(object):
             row_number += 1
 
         # Formatting
-        e.freeze_panes(2, 0)  # Freeze top row
-        e.autofilter(1, 0, row_number, 12)  # Add autofilter
+        ext.freeze_panes(2, 0)  # Freeze top row
+        ext.autofilter(1, 0, row_number, 12)  # Add autofilter
 
         for item in self.__dict__:
             try:

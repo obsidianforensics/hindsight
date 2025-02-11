@@ -29,6 +29,7 @@ class WebBrowser(object):
         self.no_copy = no_copy
         self.temp_dir = temp_dir
         self.origin_hashes = {}
+        self.installed_extensions = {}
 
         if self.version is None:
             self.version = []
@@ -135,6 +136,14 @@ class WebBrowser(object):
         domains = self.get_clean_hostnames()
         for domain in domains:
             self.origin_hashes[hashlib.md5(domain.encode()).hexdigest()] = domain
+
+    def get_extension_name_from_id(self, extension_id):
+        if self.installed_extensions and self.installed_extensions.get('data'):
+            for extension in self.installed_extensions['data']:
+                if extension.app_id == extension_id:
+                    return extension.name
+            return "<Extension not found - may have been uninstalled>"
+        return "<Unable to parse installed extensions>"
 
     class HistoryItem(object):
         def __init__(self, item_type, timestamp, profile, url=None, name=None, value=None, interpretation=None):
@@ -376,6 +385,22 @@ class WebBrowser(object):
 
         def __iter__(self):
             return iter(self.__dict__)
+
+    class ExtensionStorageItem(StorageItem):
+        def __init__(self, profile, extension_id, key, value, extension_name=None, seq=None, state=None, source_path=None, offset=None, was_compressed=None):
+            super(WebBrowser.ExtensionStorageItem, self).__init__(
+                item_type='extension storage', profile=profile, origin=extension_id, key=key, value=value, seq=seq, state=state, source_path=source_path
+            )
+            self.profile = profile
+            self.extension_id = extension_id
+            self.extension_name = extension_name
+            self.key = key
+            self.value = value
+            self.seq = seq
+            self.state = state
+            self.source_path = source_path
+            self.offset = offset
+            self.was_compressed = was_compressed
 
     class LocalStorageItem(StorageItem):
         def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None):

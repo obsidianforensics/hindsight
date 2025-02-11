@@ -49,7 +49,7 @@ class Chrome(WebBrowser):
         self.browser_name = "Chrome"
         self.cache_path = cache_path
         self.timezone = timezone
-        self.installed_extensions = []
+        self.installed_extensions = {}
         self.cached_key = None
         self.available_decrypts = available_decrypts
         self.storage = storage
@@ -1897,14 +1897,23 @@ class Chrome(WebBrowser):
         if ldb_records:
             for record in ldb_records.iterate_records_raw():
                 user_key = record.user_key.decode()
-                origin = ""
+                ext_id = None
+                ext_name = ""
                 m = re.fullmatch(r'([a-p]{32})\.(.*)$', user_key)
                 if m:
-                    origin = m.group(1)
+                    ext_id = m.group(1)
                     user_key = m.group(2)
-                results.append(Chrome.StorageItem(
-                    dir_name.lower(), self.profile_path, origin, user_key, record.value.decode(),
-                    record.seq, state=record.state.name, source_path=ldb_path))
+
+                if ext_id:
+                    ext_name = self.get_extension_name_from_id(ext_id)
+
+                parsed = Chrome.ExtensionStorageItem(
+                    profile=self.profile_path, extension_id=ext_id, extension_name=ext_name, key=user_key, value=record.value.decode(),
+                    seq=record.seq, state=record.state.name, source_path=str(record.origin_file), offset=record.offset,
+                    was_compressed=record.was_compressed)
+                parsed.row_type = dir_name.lower()
+
+                results.append(parsed)
 
             ldb_records.close()
             self.artifacts_counts[f'{dir_name}'] = len(results)
@@ -1922,8 +1931,8 @@ class Chrome(WebBrowser):
         top_file_listing = os.listdir(top_path)
 
         # Only process directories with the expected naming convention
-        app_id_re = re.compile(r'^([a-z]{32})$')
-        ext_listing = [str(x) for x in top_file_listing if app_id_re.match(x)]
+        ext_id_re = re.compile(r'^([a-z]{32})$')
+        ext_listing = [str(x) for x in top_file_listing if ext_id_re.match(x)]
         log.debug(f' - {len(ext_listing)} files in {dir_name} directory will be processed: {str(ext_listing)}')
 
         for ext_id in ext_listing:
@@ -1947,9 +1956,13 @@ class Chrome(WebBrowser):
             if ldb_records:
                 for record in ldb_records.iterate_records_raw():
                     user_key = record.user_key.decode()
-                    results.append(Chrome.StorageItem(
-                        dir_name.lower(), self.profile_path, ext_id, user_key, record.value.decode(),
-                        record.seq, state=record.state.name, source_path=ldb_path))
+                    parsed = Chrome.ExtensionStorageItem(
+                        profile=self.profile_path, extension_id=ext_id, extension_name=self.get_extension_name_from_id(ext_id), key=user_key, value=record.value.decode(),
+                        seq=record.seq, state=record.state.name, source_path=str(record.origin_file),
+                        offset=record.offset, was_compressed=record.was_compressed)
+                    parsed.row_type = dir_name.lower()
+
+                    results.append(parsed)
 
                 ldb_records.close()
 
