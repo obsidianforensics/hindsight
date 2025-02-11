@@ -12,8 +12,7 @@ log = logging.getLogger(__name__)
 class WebBrowser(object):
     def __init__(
             self, profile_path, browser_name, cache_path=None, version=None, display_version=None,
-            timezone=None, structure=None, parsed_artifacts=None, parsed_storage=None, artifacts_counts=None,
-            artifacts_display=None, preferences=None, no_copy=None, temp_dir=None, origin_hashes=None):
+            timezone=None, structure=None, no_copy=None, temp_dir=None):
         self.profile_path = profile_path
         self.browser_name = browser_name
         self.cache_path = cache_path
@@ -21,35 +20,19 @@ class WebBrowser(object):
         self.display_version = display_version
         self.timezone = timezone
         self.structure = structure
-        self.parsed_artifacts = parsed_artifacts
-        self.parsed_storage = parsed_storage
-        self.artifacts_counts = artifacts_counts
-        self.artifacts_display = artifacts_display
-        self.preferences = preferences
+        self.parsed_artifacts = []
+        self.parsed_storage = []
+        self.parsed_extension_data = []
+        self.artifacts_counts = {}
+        self.artifacts_display = {}
+        self.preferences = []
         self.no_copy = no_copy
         self.temp_dir = temp_dir
-        self.origin_hashes = origin_hashes
+        self.origin_hashes = {}
+        self.installed_extensions = {}
 
         if self.version is None:
             self.version = []
-
-        if self.parsed_artifacts is None:
-            self.parsed_artifacts = []
-
-        if self.parsed_storage is None:
-            self.parsed_storage = []
-
-        if self.artifacts_counts is None:
-            self.artifacts_counts = {}
-
-        if self.artifacts_display is None:
-            self.artifacts_display = {}
-
-        if self.preferences is None:
-            self.preferences = []
-
-        if self.origin_hashes is None:
-            self.origin_hashes = {}
 
     @staticmethod
     def format_processing_output(name, items):
@@ -153,6 +136,14 @@ class WebBrowser(object):
         domains = self.get_clean_hostnames()
         for domain in domains:
             self.origin_hashes[hashlib.md5(domain.encode()).hexdigest()] = domain
+
+    def get_extension_name_from_id(self, extension_id):
+        if self.installed_extensions and self.installed_extensions.get('data'):
+            for extension in self.installed_extensions['data']:
+                if extension.app_id == extension_id:
+                    return extension.name
+            return "<Extension not found - may have been uninstalled>"
+        return "<Unable to parse installed extensions>"
 
     class HistoryItem(object):
         def __init__(self, item_type, timestamp, profile, url=None, name=None, value=None, interpretation=None):
@@ -394,6 +385,22 @@ class WebBrowser(object):
 
         def __iter__(self):
             return iter(self.__dict__)
+
+    class ExtensionStorageItem(StorageItem):
+        def __init__(self, profile, extension_id, key, value, extension_name=None, seq=None, state=None, source_path=None, offset=None, was_compressed=None):
+            super(WebBrowser.ExtensionStorageItem, self).__init__(
+                item_type='extension storage', profile=profile, origin=extension_id, key=key, value=value, seq=seq, state=state, source_path=source_path
+            )
+            self.profile = profile
+            self.extension_id = extension_id
+            self.extension_name = extension_name
+            self.key = key
+            self.value = value
+            self.seq = seq
+            self.state = state
+            self.source_path = source_path
+            self.offset = offset
+            self.was_compressed = was_compressed
 
     class LocalStorageItem(StorageItem):
         def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None):
