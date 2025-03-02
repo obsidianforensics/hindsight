@@ -140,7 +140,7 @@ class WebBrowser(object):
     def get_extension_name_from_id(self, extension_id):
         if self.installed_extensions and self.installed_extensions.get('data'):
             for extension in self.installed_extensions['data']:
-                if extension.app_id == extension_id:
+                if extension.ext_id == extension_id:
                     return extension.name
             return "<Extension not found - may have been uninstalled>"
         return "<Unable to parse installed extensions>"
@@ -305,12 +305,14 @@ class WebBrowser(object):
             self.sync_transaction_version = sync_transaction_version
 
     class BrowserExtension(object):
-        def __init__(self, profile, app_id, name, description, version):
+        def __init__(self, profile, ext_id, name, description, version, permissions, manifest):
             self.profile = profile
-            self.app_id = app_id
+            self.ext_id = ext_id
             self.name = name
             self.description = description
             self.version = version
+            self.permissions = permissions
+            self.manifest = manifest
 
     class LoginItem(HistoryItem):
         def __init__(self, profile, date_created, url, name, value, count, interpretation):

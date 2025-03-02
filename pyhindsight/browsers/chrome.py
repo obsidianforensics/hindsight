@@ -1198,8 +1198,8 @@ class Chrome(WebBrowser):
         log.debug(f' - {len(ext_listing)} files in Extensions directory: {str(ext_listing)}')
 
         # Only process directories with the expected naming convention
-        app_id_re = re.compile(r'^([a-z]{32})$')
-        ext_listing = [str(x) for x in ext_listing if app_id_re.match(x)]
+        ext_id_re = re.compile(r'^([a-p]{32})$')
+        ext_listing = [str(x) for x in ext_listing if ext_id_re.match(x)]
         log.debug(f' - {len(ext_listing)} files in Extensions directory will be processed: {str(ext_listing)}')
 
         # Process each directory with an app_id name
@@ -1312,7 +1312,7 @@ class Chrome(WebBrowser):
                              'data_name': 'version',
                              'display_width': 10},
                             {'display_name': 'App ID',
-                             'data_name': 'app_id',
+                             'data_name': 'ext_id',
                              'display_width': 36},
                             {'display_name': 'Profile Folder',
                              'data_name': 'profile',
