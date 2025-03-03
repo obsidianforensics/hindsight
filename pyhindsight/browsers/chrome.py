@@ -1181,122 +1181,84 @@ class Chrome(WebBrowser):
         log.info(f' - Parsed {len(results)} items from {len(idb_storage_listing)} files')
         self.parsed_storage.extend(results)
 
-    def get_extensions(self, path, dir_name):
+    @staticmethod
+    def load_extension_manifest(extension_path):
+        # Get listing of the contents of extension_id directory;
+        # this should contain subdirectories for each version of the extension.
+        ext_version_listing = list(pathlib.Path(extension_path).glob('*'))
+
+        # Connect to manifest.json in the latest version directory
+        # The version could be missing leading zeros in the string, so this sort accounts for that.
+        for version in sorted(ext_version_listing, reverse=True, key=lambda x: [int(part) for part in x.name.split('.')]):
+            manifest_path = version / 'manifest.json'
+            try:
+                with open(manifest_path, encoding='utf-8', errors='replace') as f:
+                    return json.loads(f.read()), version.name
+
+            except (IOError, json.JSONDecodeError) as e:
+                log.error(f' - Error opening {manifest_path} for extension {extension_path}; {e}')
+                continue
+
+        log.error(f' - Error opening manifest info for extension {extension_path}')
+        return None, None
+
+    @staticmethod
+    def get_localized_messages(locale_messages, key):
+        """ Helper function to extract localized messages with multiple fallbacks. """
+        if key.startswith('__'):
+            message_key = key[6:-2]  # Extract actual message key
+            return (
+                    locale_messages.get(message_key, {}).get('message') or
+                    locale_messages.get(message_key, {}).get('lower', {}).get('message') or
+                    # Google Wallet / Chrome Payments is weird/hidden - name is saved differently
+                    # than other extensions
+                    locale_messages.get('app_name', {}).get('message') or
+                    '<error>'
+            )
+        return key
+
+    def get_extensions(self, profile, dir_name):
         results = []
         log.info('Extensions:')
 
-        # Profile folder
-        try:
-            profile = os.path.split(path)[1]
-        except:
-            profile = 'error'
-
         # Grab listing of 'Extensions' directory
-        ext_path = os.path.join(path, dir_name)
-        log.info(f' - Reading from {ext_path}')
-        ext_listing = os.listdir(ext_path)
+        extension_directory_path = pathlib.Path(profile, dir_name)
+        log.info(f' - Reading from {extension_directory_path}')
+        ext_listing = os.listdir(extension_directory_path)
         log.debug(f' - {len(ext_listing)} files in Extensions directory: {str(ext_listing)}')
 
         # Only process directories with the expected naming convention
-        app_id_re = re.compile(r'^([a-z]{32})$')
-        ext_listing = [str(x) for x in ext_listing if app_id_re.match(x)]
+        ext_id_re = re.compile(r'^([a-p]{32})$')
+        ext_listing = [str(x) for x in ext_listing if ext_id_re.match(x)]
         log.debug(f' - {len(ext_listing)} files in Extensions directory will be processed: {str(ext_listing)}')
 
-        # Process each directory with an app_id name
-        for app_id in ext_listing:
-            # Get listing of the contents of app_id directory; should contain subdirs for each version of the extension.
-            ext_vers_listing = os.path.join(ext_path, app_id)
-            ext_vers = os.listdir(ext_vers_listing)
-            manifest_file = None
-            selected_version = None
-            decoded_manifest = None
+        # Process each directory with an ext_id name
+        for ext_id in ext_listing:
+            manifest, extension_version = self.load_extension_manifest(extension_directory_path / ext_id)
 
-            try:
-                # Connect to manifest.json in the latest version directory
-                for version in sorted(ext_vers, reverse=True, key=lambda x: int(x.split('.', maxsplit=1)[0])):
-                    manifest_path = os.path.join(ext_vers_listing, version, 'manifest.json')
-                    try:
-                        with open(manifest_path, encoding='utf-8', errors='replace') as f:
-                            decoded_manifest = json.loads(f.read())
-                        selected_version = version
-                        break
-                    except (IOError, json.JSONDecodeError) as e:
-                        log.error(f' - Error opening {manifest_path} for extension {app_id}; {e}')
-                        continue
-
-                if not decoded_manifest:
-                    log.error(f' - Error opening manifest info for extension {app_id}')
-                    continue
-
-                name = None
-                description = None
-
-            except Exception as e:
-                log.error(f' - Error reading manifest info for extension {app_id}; {e}')
+            if not manifest:
                 continue
 
-            try:
-                if decoded_manifest['name'].startswith('__'):
-                    if decoded_manifest['default_locale']:
-                        locale_messages_path = os.path.join(
-                            ext_vers_listing, selected_version, '_locales', decoded_manifest['default_locale'],
-                            'messages.json')
-                        with open(locale_messages_path, encoding='utf-8', errors='replace') as f:
-                            decoded_locale_messages = json.loads(f.read())
-
-                        try:
-                            name = decoded_locale_messages[decoded_manifest['name'][6:-2]]['message']
-                        except KeyError:
-                            try:
-                                name = decoded_locale_messages[decoded_manifest['name'][6:-2]].lower['message']
-                            except KeyError:
-                                try:
-                                    # Google Wallet / Chrome Payments is weird/hidden - name is saved different
-                                    # than other extensions
-                                    name = decoded_locale_messages['app_name']['message']
-                                except:
-                                    log.warning(f' - Error reading \'name\' for {app_id}')
-                                    name = '<error>'
-                else:
+            locale_messages = {}
+            if manifest.get('default_locale'):
+                locale_messages_path = (
+                        extension_directory_path / ext_id / extension_version / '_locales' /
+                        manifest['default_locale'] / 'messages.json'
+                )
+                if locale_messages_path.exists():
                     try:
-                        name = decoded_manifest['name']
-                    except KeyError:
-                        name = None
-                        log.error(f' - Error reading \'name\' for {app_id}')
+                        with open(locale_messages_path, encoding='utf-8', errors='replace') as f:
+                            locale_messages = json.load(f)
+                    except (IOError, json.JSONDecodeError) as e:
+                        log.warning(f" - Error processing extension {ext_id}: {e}")
 
-                if 'description' in list(decoded_manifest.keys()):
-                    if decoded_manifest['description'].startswith('__'):
-                        if decoded_manifest['default_locale']:
-                            locale_messages_path = os.path.join(
-                                ext_vers_listing, selected_version, '_locales', decoded_manifest['default_locale'],
-                                'messages.json')
-                            with open(locale_messages_path, encoding='utf-8', errors='replace') as f:
-                                decoded_locale_messages = json.loads(f.read())
+            name = self.get_localized_messages(locale_messages, manifest.get('name', ''))
+            description = self.get_localized_messages(locale_messages, manifest.get('description', ''))
+            results.append(Chrome.BrowserExtension(
+                profile=profile, ext_id=ext_id, name=name, description=description,
+                version=manifest.get('version'), permissions=str(manifest.get('permissions')),
+                manifest=json.dumps(manifest)))
 
-                            try:
-                                description = decoded_locale_messages[decoded_manifest['description'][6:-2]]['message']
-                            except KeyError:
-                                try:
-                                    description = decoded_locale_messages[
-                                        decoded_manifest['description'][6:-2]].lower['message']
-                                except KeyError:
-                                    try:
-                                        # Google Wallet / Chrome Payments is weird/hidden - name is saved different
-                                        # from other extensions
-                                        description = decoded_locale_messages['app_description']['message']
-                                    except:
-                                        description = '<error>'
-                                        log.error(f' - Error reading \'message\' for {app_id}')
-                    else:
-                        try:
-                            description = decoded_manifest['description']
-                        except KeyError:
-                            description = None
-                            log.warning(f' - Error reading \'description\' for {app_id}')
-
-                results.append(Chrome.BrowserExtension(profile, app_id, name, description, decoded_manifest['version']))
-            except:
-                log.error(f' - Error decoding manifest file for {app_id}')
 
         self.artifacts_counts['Extensions'] = len(results)
         log.info(f' - Parsed {len(results)} items')
@@ -1312,11 +1274,17 @@ class Chrome(WebBrowser):
                              'data_name': 'version',
                              'display_width': 10},
                             {'display_name': 'App ID',
-                             'data_name': 'app_id',
+                             'data_name': 'ext_id',
                              'display_width': 36},
                             {'display_name': 'Profile Folder',
                              'data_name': 'profile',
-                             'display_width': 30}
+                             'display_width': 30},
+                            {'display_name': 'Permissions',
+                             'data_name': 'permissions',
+                             'display_width': 45},
+                            {'display_name': 'Manifest',
+                             'data_name': 'manifest',
+                             'display_width': 60}
                         ]}
         self.installed_extensions = {'data': results, 'presentation': presentation}
 

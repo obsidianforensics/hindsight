@@ -1015,8 +1015,8 @@ class AnalysisSession(object):
 
         # Write column headers
         ext.write(1, 0, 'Type', header_format)
-        ext.write(1, 1, 'Extension ID', header_format)
-        ext.write(1, 2, 'Extension Name', header_format)
+        ext.write(1, 1, 'Extension Name', header_format)
+        ext.write(1, 2, 'Extension ID', header_format)
         ext.write(1, 3, 'Key', header_format)
         ext.write(1, 4, 'Value', header_format)
         ext.write(1, 5, 'Interpretation', header_format)
@@ -1097,7 +1097,7 @@ class AnalysisSession(object):
                     p.freeze_panes(2, 0)  # Freeze top row
                     p.autofilter(1, 0, len(d['data']) + 2, len(d['presentation']['columns']) - 1)  # Add autofilter
 
-            except:
+            except Exception as e:
                 pass
 
         # TODO: combine this with above function
@@ -1152,7 +1152,7 @@ class AnalysisSession(object):
                 'file_exists BOOL, file_size INT, magic_results TEXT)')
 
             c.execute(
-                'CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, app_id TEXT, '
+                'CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, ext_id TEXT, '
                 'profile TEXT)')
 
             for item in self.parsed_artifacts:
@@ -1283,9 +1283,9 @@ class AnalysisSession(object):
             if self.__dict__.get('installed_extensions'):
                 for extension in self.installed_extensions['data']:
                     c.execute(
-                        'INSERT INTO installed_extensions (name, description, version, app_id, profile) '
+                        'INSERT INTO installed_extensions (name, description, version, ext_id, profile) '
                         'VALUES (?, ?, ?, ?, ?)',
-                        (extension.name, extension.description, extension.version, extension.app_id, extension.profile))
+                        (extension.name, extension.description, extension.version, extension.ext_id, extension.profile))
 
     def generate_jsonl(self, output_file):
         with open(output_file, mode='w') as jsonl:

@@ -39,7 +39,7 @@ def plugin(analysis_session=None):
         if m:
             try:
                 for ext in analysis_session.installed_extensions['data']:
-                    if ext.app_id == m.group(2):
+                    if ext.ext_id == m.group(2):
                         item.interpretation = f'{ext.name} ({ext.description}) [Chrome Extension]'
                         parsedItems += 1
             except:
@@ -56,7 +56,7 @@ def plugin(analysis_session=None):
         if m:
             try:
                 for ext in analysis_session.installed_extensions['data']:
-                    if ext.app_id == m.group(2):
+                    if ext.ext_id == m.group(2):
                         item.interpretation = f'{ext.name} ({ext.description}) [Chrome Extension]'
                         parsedItems += 1
             except:
