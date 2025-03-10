@@ -190,7 +190,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Session Storage'
             item['url'] = item['origin']
 
-            item['message'] = f'key: {item["key"]} value: {item["value"]}'
+            item['message'] = f'key: {item.get("key", "")} value: {item.get("value", "")}'
 
             del (item['row_type'])
             return item
@@ -1147,18 +1147,13 @@ class AnalysisSession(object):
                 'danger_type TEXT, opened INT, etag TEXT, last_modified TEXT, http_headers TEXT)')
 
             c.execute(
-                'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, '
+                'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, seq INT, state TEXT, '
                 'modification_time TEXT, interpretation TEXT, profile TEXT, source_path TEXT, '
-                'database TEXT, seq INT, state TEXT, file_exists BOOL, file_size INT, magic_results TEXT)')
+                'file_exists BOOL, file_size INT, magic_results TEXT)')
 
             c.execute(
                 'CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, ext_id TEXT, '
-                'profile TEXT, permissions TEXT, manifest TEXT)')
-
-            c.execute(
-                'CREATE TABLE extension_data(type TEXT, name TEXT, extension_id TEXT, key TEXT, value TEXT, '
-                'interpretation TEXT, profile TEXT, source_path TEXT, offset INT, seq INT, state TEXT, '
-                'was_compressed BOOL)')
+                'profile TEXT)')
 
             for item in self.parsed_artifacts:
                 if item.row_type.startswith('url'):
@@ -1267,7 +1262,7 @@ class AnalysisSession(object):
                         (item.row_type, item.origin, item.key, item.value, item.last_modified,
                          item.interpretation, item.profile, item.source_path, item.seq, item.state))
 
-                elif item.row_type.startswith('session'):
+                if item.row_type.startswith('session'):
                     c.execute(
                         'INSERT INTO storage (type, origin, key, value, '
                         'interpretation, profile, source_path, seq, state) '
@@ -1275,7 +1270,7 @@ class AnalysisSession(object):
                         (item.row_type, item.origin, item.key, item.value, item.interpretation, item.profile,
                          item.source_path, item.seq, item.state))
 
-                elif item.row_type.startswith('file system'):
+                if item.row_type.startswith('file system'):
                     c.execute(
                         'INSERT INTO storage (type, origin, key, value, modification_time, '
                         'interpretation, profile, source_path, seq, state, file_exists, file_size, '
@@ -1285,32 +1280,12 @@ class AnalysisSession(object):
                          item.interpretation, item.profile, item.source_path, item.seq, item.state,
                          item.file_exists, item.file_size, item.magic_results))
 
-                elif item.row_type.startswith('indexed'):
-                    c.execute(
-                        'INSERT INTO storage (type, origin, key, value, '
-                        'interpretation, profile, source_path, seq, state, database) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (item.row_type, item.origin, item.key, item.value, item.interpretation, item.profile,
-                         item.source_path, item.seq, item.state, item.database))
-
-            for item in self.parsed_extension_data:
-                if item.row_type:
-                    c.execute(
-                        'INSERT INTO extension_data (type, name, extension_id, key, value, '
-                        'interpretation, profile, source_path, offset, seq, state, was_compressed) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        (item.row_type, item.extension_name, item.extension_id, item.key, item.value,
-                         item.interpretation, item.profile, item.source_path, item.offset, item.seq, item.state,
-                         item.was_compressed))
-
             if self.__dict__.get('installed_extensions'):
                 for extension in self.installed_extensions['data']:
                     c.execute(
-                        'INSERT INTO installed_extensions (name, description, version, ext_id, profile, '
-                        'permissions, manifest) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
-                        (extension.name, extension.description, extension.version, extension.ext_id,
-                         extension.profile, extension.permissions, extension.manifest))
+                        'INSERT INTO installed_extensions (name, description, version, ext_id, profile) '
+                        'VALUES (?, ?, ?, ?, ?)',
+                        (extension.name, extension.description, extension.version, extension.ext_id, extension.profile))
 
     def generate_jsonl(self, output_file):
         with open(output_file, mode='w') as jsonl:
