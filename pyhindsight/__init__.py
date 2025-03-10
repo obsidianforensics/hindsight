@@ -1,3 +1,3 @@
 __author__ = "Ryan Benson"
-__version__ = "2024.10"
-__email__ = "ryan@dfir.blog"
+__version__ = "2025.03"
+__email__ = "ryan@hindsig.ht"

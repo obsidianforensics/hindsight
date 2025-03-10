@@ -190,7 +190,7 @@ class HindsightEncoder(json.JSONEncoder):
             item['source_long'] = 'Chrome Session Storage'
             item['url'] = item['origin']
 
-            item['message'] = f'key: {item["key"]} value: {item["value"]}'
+            item['message'] = f'key: {item.get("key", "")} value: {item.get("value", "")}'
 
             del (item['row_type'])
             return item

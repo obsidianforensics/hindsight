@@ -91,7 +91,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 131))
+        possible_versions = list(range(1, 135))
         previous_possible_versions = possible_versions[:]
 
         def update_and_rollback_if_empty(version_list, prev_version_list):
@@ -211,6 +211,8 @@ class Chrome(WebBrowser):
                 trim_lesser_versions(124)
             if 'addresses' in list(self.structure['Web Data'].keys()):
                 trim_lesser_versions(130)
+            if 'attributes' in list(self.structure['Web Data'].keys()):
+                trim_lesser_versions(134)
             log.debug(f' - Finishing possible versions: {possible_versions}')
 
         possible_versions, previous_possible_versions = \
@@ -871,7 +873,13 @@ class Chrome(WebBrowser):
                            first_user_interaction_time, first_web_authn_assertion_time, last_bounce_time, 
                            last_site_storage_time, last_stateful_bounce_time, last_user_interaction_time,
                            last_web_authn_assertion_time
-                        FROM bounces'''}
+                        FROM bounces''',
+                 134: '''SELECT site, first_bounce_time, first_site_storage_time, first_stateful_bounce_time, 
+                            first_user_activation_time, first_web_authn_assertion_time, last_bounce_time, 
+                            last_site_storage_time, last_stateful_bounce_time, last_user_activation_time,
+                            last_web_authn_assertion_time
+                        FROM bounces'''
+                 }
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -889,8 +897,9 @@ class Chrome(WebBrowser):
                 cursor = conn.cursor()
 
                 columns = ['first_bounce_time', 'first_site_storage_time', 'first_stateful_bounce_time',
-                           'first_user_interaction_time', 'last_bounce_time', 'last_site_storage_time',
-                           'last_stateful_bounce_time', 'last_user_interaction_time', 'first_web_authn_assertion_time',
+                           'first_user_interaction_time', 'first_user_activation_time', 'last_bounce_time',
+                           'last_site_storage_time', 'last_stateful_bounce_time', 'last_user_activation_time',
+                           'last_user_interaction_time', 'first_web_authn_assertion_time',
                            'last_web_authn_assertion_time']
 
                 # Use the highest compatible version SQL to select download data
