@@ -6,7 +6,7 @@
 #
 # References:
 #   "Netscaler-Cookie-Decryptor" by Adam Maxwell (https://github.com/catalyst256/Netscaler-Cookie-Decryptor)
-#   "Netscalers: Making sense of the cookie" by Adam Maxwell (https://itgeekchronicles.co.uk/category/netscaler/)
+#   "Netscalers: Making sense of the cookie" by Adam Maxwell (https://web.archive.org/web/20200509063851/https://itgeekchronicles.co.uk/category/netscaler/)
 #   "bigip_cookie_decoder.py" by z0mbiehunt3r (https://github.com/trietptm/loadbalancer-finder/blob/master/
 #      loadbalancer-finder/src/methods/bigip_cookie_decoder.py)
 #

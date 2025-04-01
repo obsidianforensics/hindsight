@@ -4,11 +4,11 @@
 #   Attempts to find discrepancies between server-side and local timestamps
 #
 # References:
-#   Lee Whitfield (http://forensic4cast.com/2011/07/flashpost-google-plus-artefacts-url-forwarding/)
-#   Vincent Toubiana and Helen Nissenbaum (http://repository.cmu.edu/cgi/viewcontent.cgi?article=1058&context=jpc)
+#   Lee Whitfield (https://web.archive.org/web/20110712151744/http://forensic4cast.com/2011/07/flashpost-google-plus-artefacts-url-forwarding/)
+#   Vincent Toubiana and Helen Nissenbaum (https://web.archive.org/web/20160308023419/http://repository.cmu.edu/cgi/viewcontent.cgi?article=1058&context=jpc)
 #
 # Blog post explaining plugin:
-#   http://www.obsidianforensics.com/blog/detecting-clock-changes-using-cookies/
+#   https://web.archive.org/web/20131112222848/http://www.obsidianforensics.com/blog/detecting-clock-changes-using-cookies/
 #
 # Plugin Author: Ryan Benson (ryan@obsidianforensics.com)
 #
