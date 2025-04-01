@@ -4,7 +4,7 @@
 #   Interpret Google Analytics cookies
 #
 # References:
-#   Jon S. Nelson (http://www.dfinews.com/article/google-analytics-cookies-and-forensic-implications)
+#   Jon S. Nelson (https://web.archive.org/web/20140228191123/http://www.dfinews.com/articles/2012/02/google-analytics-cookies-and-forensic-implications)
 #
 # Plugin Author: Ryan Benson (ryan@obsidianforensics.com)
 #
