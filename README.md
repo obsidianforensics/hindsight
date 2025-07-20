@@ -1,3 +1,34 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=obsidianforensics&project=hindsight&lang=id">Bahasa Indonesia</a>
+      </div>
+    </div>
+  </details>
+</div>
+
 <img src="./pyhindsight/static/h.png" height="100px"/> Hindsight
 =========
 
