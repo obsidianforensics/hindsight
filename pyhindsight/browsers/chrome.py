@@ -11,7 +11,6 @@ import json
 import logging
 import shutil
 import puremagic
-import urllib
 import base64
 import pytz
 import ccl_chromium_reader
@@ -2683,7 +2682,7 @@ class Chrome(WebBrowser):
                                            #  used for cases where the user selected a choice that didn't look at all
                                            #  like a URL; see GENERATED below.
                                            # We also use this for other 'explicit' navigation actions.
-                2: 'auto bookmark',        # User got to this page through a suggestion in the UI, for example)
+                2: 'auto bookmark',        # User got to this page through a suggestion in the UI, for example
                                            #  through the destinations page.
                 3: 'auto subframe',        # This is a subframe navigation. This is any content that is automatically
                                            #  loaded in a non-toplevel frame. For example, if a page consists of
@@ -2800,54 +2799,115 @@ class Chrome(WebBrowser):
 
         def decode_interrupt_reason(self):
             interrupts = {
-                0:  'No Interrupt',                # Success
-
+                # Success
+                0:  'No Interrupt',
                 # from download_interrupt_reason_values.h on Chromium site
                 # File errors
-                1:  'File Error',                  # Generic file operation failure.
-                2:  'Access Denied',               # The file cannot be accessed due to security restrictions.
-                3:  'Disk Full',                   # There is not enough room on the drive.
-                5:  'Path Too Long',               # The directory or file name is too long.
-                6:  'File Too Large',              # The file is too large for the file system to handle.
-                7:  'Virus',                       # The file contains a virus.
-                10: 'Temporary Problem',           # The file was in use. Too many files are opened at once. We have run
-                                                   #  out of memory.
-                11: 'Blocked',                     # The file was blocked due to local policy.
-                12: 'Security Check Failed',       # An attempt to check the safety of the download failed due to
-                                                   #  unexpected reasons. See http://crbug.com/153212.
-                13: 'Resume Error',                # An attempt was made to seek past the end of a file in opening a
-                                                   #  file (as part of resuming a previously interrupted download).
+
+                # Generic file operation failure.
+                1:  'File Error',
+
+                # The file cannot be accessed due to security restrictions.
+                2:  'Access Denied',
+
+                # There is not enough room on the drive.
+                3:  'Disk Full',
+
+                # The directory or file name is too long.
+                5:  'Path Too Long',
+
+                # The file is too large for the file system to handle.
+                6:  'File Too Large',
+
+                # The file contains a virus.
+                7:  'Virus',
+
+                # The file was in use. Too many files are opened at once. We have run out of memory.
+                10: 'Temporary Problem',
+
+                # The file was blocked due to local policy.
+                11: 'Blocked',
+
+                # An attempt to check the safety of the download failed due to unexpected reasons.
+                # See http://crbug.com/153212.
+                12: 'Security Check Failed',
+
+                # An attempt was made to seek past the end of a file in opening a
+                # file (as part of resuming a previously interrupted download).
+                13: 'Resume Error',
+
+                # The partial file didn't match the expected hash.
+                14: 'File Hash Mismatch',
+
+                # The source and the target of the download were the same.
+                15: 'File Same as Source',
 
                 # Network errors
-                20: 'Network Error',               # Generic network failure.
-                21: 'Operation Timed Out',         # The network operation timed out.
-                22: 'Connection Lost',             # The network connection has been lost.
-                23: 'Server Down',                 # The server has gone down.
+                # Generic network failure.
+                20: 'Network Error',
+
+                # The network operation timed out.
+                21: 'Operation Timed Out',
+
+                # The network connection has been lost.
+                22: 'Connection Lost',
+
+                # The server has gone down.
+                23: 'Server Down',
+
+                # The network request was invalid. This may be due to the original
+                # URL or a redirected URL having an unsupported scheme, being an
+                # invalid URL, or being disallowed by policy.
+                24: 'Invalid Request',
 
                 # Server responses
-                30: 'Server Error',                # The server indicates that the operation has failed (generic).
-                31: 'Range Request Error',         # The server does not support range requests.
-                32: 'Server Precondition Error',   # The download request does not meet the specified precondition.
-                                                   #  Internal use only:  the file has changed on the server.
-                33: 'Unable to get file',          # The server does not have the requested data.
-                34: 'Server Unauthorized',         # Server didn't authorize access to resource.
-                35: 'Server Certificate Problem',  # Server certificate problem.
-                36: 'Server Access Forbidden',     # Server access forbidden.
-                37: 'Server Unreachable',          # Unexpected server response. This might indicate that the responding
-                                                   #  server may not be the intended server.
-                38: 'Content Length Mismatch',     # The server sent fewer bytes than the content-length header. It may
-                                                   #  indicate that the connection was closed prematurely, or the
-                                                   #  Content-Length header was invalid. The download is only
-                                                   #  interrupted if strong validators are present. Otherwise, it is
-                                                   #  treated as finished.
-                39: 'Cross Origin Redirect',       # An unexpected cross-origin redirect happened.
+                # The server indicates that the operation has failed (generic).
+                30: 'Server Error',
+
+                # The server does not support range requests.
+                31: 'Range Request Error',
+
+                # Obsolete. The download request does not meet the specified precondition.
+                # Internal use only: the file has changed on the server.
+                32: 'Server Precondition Error',
+
+                # The server does not have the requested data.
+                33: 'Unable to get file',
+
+                # Server didn't authorize access to resource.
+                34: 'Server Unauthorized',
+
+                # Server certificate problem.
+                35: 'Server Certificate Problem',
+
+                # Server access forbidden.
+                36: 'Server Access Forbidden',
+
+                # Unexpected server response. This might indicate that the responding
+                # server may not be the intended server.
+                37: 'Server Unreachable',
+
+                # The server sent fewer bytes than the content-length header. It may
+                # indicate that the connection was closed prematurely, or the
+                # Content-Length header was invalid. The download is only
+                # interrupted if strong validators are present. Otherwise, it is
+                # treated as finished.
+                38: 'Content Length Mismatch',
+
+                # An unexpected cross-origin redirect happened.
+                39: 'Cross Origin Redirect',
 
                 # User input
-                40: 'Cancelled',                   # The user cancelled the download.
-                41: 'Browser Shutdown',            # The user shut down the browser.
+                # The user canceled the download.
+                40: 'Canceled',
+
+                # The user shut down the browser.
+                41: 'Browser Shutdown',
 
                 # Crash
-                50: 'Browser Crashed'}             # The browser crashed.
+                # The browser crashed.
+                50: 'Browser Crashed'
+            }
 
             if self.interrupt_reason in list(interrupts.keys()):
                 self.interrupt_reason_friendly = interrupts[self.interrupt_reason]
@@ -2860,42 +2920,98 @@ class Chrome(WebBrowser):
         def decode_danger_type(self):
             # from download_danger_type.h on Chromium site
             dangers = {
-                0: 'Not Dangerous',                 # The download is safe.
-                1: 'Dangerous',                     # A dangerous file to the system (eg: a pdf or extension from places
-                                                    #  other than gallery).
-                2: 'Dangerous URL',                 # Safe Browsing download service shows this URL leads to malicious
-                                                    #  file download.
-                3: 'Dangerous Content',             # SafeBrowsing download service shows this file content as being
-                                                    #  malicious.
-                4: 'Content May Be Malicious',      # The content of this download may be malicious (eg: extension is
-                                                    #  exe but Safe Browsing has not finished checking the content).
-                5: 'Uncommon Content',              # Safe Browsing download service checked the contents of the
-                                                    #  download, but didn't have enough data to determine whether 
-                                                    #  it was malicious.
-                6: 'Dangerous But User Validated',  # The download was evaluated to be one of the other types of danger,
-                                                    #  but the user told us to go ahead anyway.
-                7: 'Dangerous Host',                # Safe Browsing download service checked the contents of the
-                                                    #  download and didn't have data on this specific file, 
-                                                    #  but the file was served
-                                                    #  from a host known to serve mostly malicious content.
-                8: 'Potentially Unwanted',          # Applications and extensions that modify browser and/or computer
-                                                    #  settings
-                9: 'Allowlisted by Policy',         # Download URL allowed by enterprise policy.
-                10: 'Pending Scan',                 # Download is pending a more detailed verdict.
-                11: 'Blocked - Password Protected', # Download is password protected, and should be blocked according
-                                                    #  to policy.
-                12: 'Blocked - Too Large',          # Download is too large, and should be blocked according to policy.
-                13: 'Warning - Sensitive Content',  # Download deep scanning identified sensitive content, and
-                                                    #  recommended warning the user.
-                14: 'Blocked - Sensitive Content',  # Download deep scanning identified sensitive content, and
-                                                    #  recommended blocking the file.
-                15: 'Safe - Deep Scanned',          # Download deep scanning identified no problems.
-                16: 'Dangerous, but user opened',   # Download deep scanning identified a problem, but the file has
-                                                    #  already been opened by the user.
-                17: 'Prompt for Scanning',          # The user is enrolled in the Advanced Protection Program, and
-                                                    #  the server has recommended this file be deep scanned.
-                18: 'Blocked - Unsupported Type'   # The download has a file type that is unsupported for deep
-                                                    #  scanning, and should be blocked according to policy.
+                # The download is safe.
+                0: 'Not Dangerous',
+
+                # A dangerous file to the system (eg: a pdf or extension from places
+                # other than gallery).
+                1: 'Dangerous',
+
+                # Safe Browsing download service shows this URL leads to malicious
+                # file download.
+                2: 'Dangerous URL',
+
+                # SafeBrowsing download service shows this file content as being
+                # malicious.
+                3: 'Dangerous Content',
+
+                # The content of this download may be malicious (eg: extension is
+                # exe but Safe Browsing has not finished checking the content).
+                4: 'Content May Be Malicious',
+
+                # Safe Browsing download service checked the contents of the
+                # download, but didn't have enough data to determine whether
+                # it was malicious.
+                5: 'Uncommon Content',
+
+                # The download was evaluated to be one of the other types of danger,
+                # but the user told us to go ahead anyway.
+                6: 'Dangerous But User Validated',
+
+                # Safe Browsing download service checked the contents of the
+                # download and didn't have data on this specific file,
+                # but the file was served from a host known to serve mostly malicious content.
+                7: 'Dangerous Host',
+
+                # Applications and extensions that modify browser and/or computer
+                # settings.
+                8: 'Potentially Unwanted',
+
+                # Download URL allowed by enterprise policy.
+                9: 'Allowlisted by Policy',
+
+                # Download is pending a more detailed verdict.
+                10: 'Pending Scan',
+
+                # Download is password protected, and should be blocked according
+                # to policy.
+                11: 'Blocked - Password Protected',
+
+                # Download is too large, and should be blocked according to policy.
+                12: 'Blocked - Too Large',
+
+                # Download deep scanning identified sensitive content, and
+                # recommended warning the user.
+                13: 'Warning - Sensitive Content',
+
+                # Download deep scanning identified sensitive content, and
+                # recommended blocking the file.
+                14: 'Blocked - Sensitive Content',
+
+                # Download deep scanning identified no problems.
+                15: 'Safe - Deep Scanned',
+
+                # Download deep scanning identified a problem, but the file has
+                # already been opened by the user.
+                16: 'Dangerous, but user opened',
+
+                # The user is enrolled in the Advanced Protection Program, and
+                # the server has recommended this file be deep scanned.
+                17: 'Prompt for Scanning',
+
+                # Deprecated: The download has a file type that is unsupported for
+                # deep scanning, and should be blocked according to policy.
+                18: 'Blocked - Unsupported Type',
+
+                # SafeBrowsing download service has classified this file as
+                # being associated with account compromise through stealing cookies.
+                19: 'Dangerous - Account Compromise',
+
+                # The user has chosen to deep scan this file, but the scan has
+                # failed. The safety of this download is unknown.
+                20: 'Deep Scan Failed',
+
+                # The server has recommended this encrypted archive prompt the user
+                # for a password to use locally for further scanning.
+                21: 'Encrypted - Prompt User for Password for Local Scanning',
+
+                # Download is pending a more detailed verdict after a prompt to use
+                # the password locally for further scanning.
+                22: 'Encrypted - Pending Detailed Verdict after Local Scanning',
+
+                # Download scan is unsuccessful, and should be blocked according to
+                # the policy.
+                23: 'Blocked - Scan Failed'
             }
 
             if self.danger_type in list(dangers.keys()):
@@ -2909,11 +3025,21 @@ class Chrome(WebBrowser):
         def decode_download_state(self):
             # from download_item.h on Chromium site
             states = {
-                0: 'In Progress',   # Download is actively progressing.
-                1: 'Complete',      # Download is completely finished.
-                2: 'Cancelled',     # Download has been cancelled.
-                3: 'Interrupted',   # '3' was the old 'Interrupted' code until a bugfix in Chrome v22. 22+ it's '4'
-                4: 'Interrupted'}   # This state indicates that the download has been interrupted.
+                # Download is actively progressing.
+                0: 'In Progress',
+
+                # Download is completely finished.
+                1: 'Complete',
+
+                # Download has been canceled.
+                2: 'Canceled',
+
+                # '3' was the old 'Interrupted' code until a bugfix in Chrome v22. 22+ it's '4'
+                3: 'Interrupted',
+
+                # This state indicates that the download has been interrupted.
+                4: 'Interrupted'
+            }
 
             if self.state in list(states.keys()):
                 self.state_friendly = states[self.state]
