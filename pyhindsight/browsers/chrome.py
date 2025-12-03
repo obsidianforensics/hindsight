@@ -1682,6 +1682,50 @@ class Chrome(WebBrowser):
                         except Exception as e:
                             log.exception(f' - Exception parsing Preference item: {e})')
 
+                if prefs['profile']['content_settings'].get('permission_actions'):
+                    permission_action_enum = {
+                        0: 'granted',
+                        1: 'denied',
+                        2: 'dismissed',
+                        3: 'ignored',
+                        4: 'revoked',
+                        5: 'granted once'
+                    }
+
+                    prompt_disposition_enum = {
+                        0: "no prompt (ex: changed via settings)",
+                        1: "anchored bubble under padlock (desktop)",
+                        2: "static right-side location-bar icon (desktop)",
+                        3: "animated right-side location-bar icon (desktop)",
+                        4: "modal dialog (android)",
+                        5: "collapsed bottom infobar (android)",
+                        7: "no UI shown (tab closed with pending request)",
+                        8: "custom modal dialog",
+                        9: "quiet left-side chip; click shows bubble (desktop)",
+                        10: "message bubble UI; infobar alternative (android)",
+                        11: "quiet abusive chip; auto-shows bubble (desktop)",
+                        12: "left-side chip; auto-shows bubble (desktop)",
+                        13: "anchored bubble from clicking permission element",
+                        14: "native OS permission prompt (macos)",
+                        15: "loud message bubble UI (android)",
+                    }
+
+                    for permission_type, permission_data_list in prefs['profile']['content_settings']['permission_actions'].items():
+                        for permission_data in permission_data_list:
+                            interpretation = f'{permission_type} permission was {permission_action_enum.get(permission_data.get("action"))}'
+
+                            if permission_data.get('prompt_disposition'):
+                                interpretation += f' via {prompt_disposition_enum.get(permission_data['prompt_disposition'])}'
+
+                            perm_item = Chrome.SiteSetting(
+                                self.profile_path, url='',
+                                timestamp=utils.to_datetime(permission_data['time'], self.timezone),
+                                key=f'{permission_type} '
+                                    f'[in {preferences_file}.profile.content_settings.permission_actions]',
+                                value=str(permission_data), interpretation=interpretation)
+                            perm_item.row_type += ' (permission action)'
+                            timestamped_preference_items.append(perm_item)
+
         if prefs.get('extensions'):
             if prefs['extensions'].get('autoupdate'):
                 # Example (from in Preferences file):
@@ -1710,7 +1754,9 @@ class Chrome(WebBrowser):
                     0: 'Start (The profile was started)',
                     1: 'Restore (A restore was triggered)',
                     2: 'Exit (The profile was shut down)',
-                    3: 'Write Error (an error in writing the file occurred)'
+                    3: 'Write Error (an error in writing the file occurred)',
+                    4: 'Restore canceled',
+                    5: 'Restore initiated (browser will ask SessionService to restore async)',
                 }
 
                 for session_event in prefs['sessions']['event_log']:
@@ -1784,7 +1830,7 @@ class Chrome(WebBrowser):
         self.parsed_artifacts.extend(timestamped_preference_items)
 
         self.artifacts_counts[preferences_file] = len(results) + len(timestamped_preference_items)
-        log.info(f' - Parsed {len(results)} items')
+        log.info(f' - Parsed {self.artifacts_counts[preferences_file]} items')
 
         try:
             profile_folder = os.path.split(path)[1]
