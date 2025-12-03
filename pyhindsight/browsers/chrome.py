@@ -1193,7 +1193,8 @@ class Chrome(WebBrowser):
     def load_extension_manifest(extension_path):
         # Get listing of the contents of extension_id directory;
         # this should contain subdirectories for each version of the extension.
-        ext_version_listing = list(pathlib.Path(extension_path).glob('*'))
+        # Glob should filter out extraneous files (like $I30 from FTK).
+        ext_version_listing = list(pathlib.Path(extension_path).glob("*.*_*"))
 
         # Connect to manifest.json in the latest version directory
         # The version could be missing leading zeros in the string, so this sort accounts for that.
