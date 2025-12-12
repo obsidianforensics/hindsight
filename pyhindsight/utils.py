@@ -90,7 +90,7 @@ class MyEncoder(json.JSONEncoder):
             return obj.__dict__
 
 
-def to_datetime(timestamp, timezone=None):
+def to_datetime(timestamp, timezone=None, quiet=False):
     """Convert a variety of timestamp formats to a datetime object."""
 
     try:
@@ -99,11 +99,12 @@ def to_datetime(timestamp, timezone=None):
         try:
             timestamp = float(timestamp)
         except Exception as e:
-            log.warning(f'Exception parsing {timestamp} to datetime: {e}')
+            if not quiet:
+                log.warning(f'Exception parsing {timestamp} to datetime: {e}')
             return datetime.datetime.fromtimestamp(0, datetime.UTC)
 
         # Very big Webkit microseconds (18 digits), most often cookie expiry dates.
-        if timestamp >= 253402300800000000:
+        if timestamp >= 253402300800000000 and not quiet:
             new_timestamp = datetime.datetime.max
             log.warning(f'Timestamp value {timestamp} is too large to convert; replaced with {datetime.datetime.max}')
 
@@ -145,7 +146,8 @@ def to_datetime(timestamp, timezone=None):
         else:
             return new_timestamp
     except Exception as e:
-        log.warning(f'Exception parsing {timestamp} to datetime: {e}')
+        if not quiet:
+            log.warning(f'Exception parsing {timestamp} to datetime: {e}')
         return datetime.datetime.fromtimestamp(0, datetime.UTC)
 
 

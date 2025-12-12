@@ -1715,7 +1715,7 @@ class Chrome(WebBrowser):
                             interpretation = f'{permission_type} permission was {permission_action_enum.get(permission_data.get("action"))}'
 
                             if permission_data.get('prompt_disposition'):
-                                interpretation += f' via {prompt_disposition_enum.get(permission_data['prompt_disposition'])}'
+                                interpretation += f' via {prompt_disposition_enum.get(permission_data["prompt_disposition"])}'
 
                             perm_item = Chrome.SiteSetting(
                                 self.profile_path, url='',
@@ -1827,6 +1827,33 @@ class Chrome(WebBrowser):
             except Exception as e:
                 log.exception(f' - Exception parsing Preference item: {e})')
 
+        # There are multiple instances of a preference item with the key as a descriptive name
+        # and the value as a timestamp. Try to parse these generically (with a timestamp "floor"
+        # to not erroneously parse any integer or boolean values as very small timestamps).
+        timestamp_floor = datetime.datetime(2010, 1, 1, 0, 0, tzinfo=datetime.timezone.utc)
+
+        def parse_potential_timestamp_preference_value(key_label, raw_value):
+            if isinstance(raw_value, (list, dict)):
+                return
+
+            parsed_timestamp = utils.to_datetime(raw_value, timezone=self.timezone, quiet=True)
+            if parsed_timestamp < timestamp_floor:
+                return
+
+            pref_item = Chrome.PreferenceItem(
+                self.profile_path, url='', timestamp=parsed_timestamp,
+                key=f'{key_label} [in {preferences_file}]',
+                value=f'{raw_value}', interpretation='')
+            timestamped_preference_items.append(pref_item)
+
+        for top_level_key, value in prefs.items():
+            parse_potential_timestamp_preference_value(top_level_key, value)
+
+            if isinstance(value, dict):
+                # Try the same approach one level deep as well
+                for second_level_key, second_value in value.items():
+                    parse_potential_timestamp_preference_value(f'{top_level_key}.{second_level_key}', second_value)
+
         self.parsed_artifacts.extend(timestamped_preference_items)
 
         self.artifacts_counts[preferences_file] = len(results) + len(timestamped_preference_items)
@@ -1889,7 +1916,7 @@ class Chrome(WebBrowser):
                 results.append(parsed_item)
 
         except Exception as e:
-            log.error(f' - Exception parsing Cache items: {e})')
+            log.error(f' - Exception parsing Cache items: {e})', exc_info=True)
             self.artifacts_counts[cache_display_name] = 'Failed'
             return
 
