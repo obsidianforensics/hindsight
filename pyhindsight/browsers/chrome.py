@@ -877,7 +877,10 @@ class Chrome(WebBrowser):
                             first_user_activation_time, first_web_authn_assertion_time, last_bounce_time, 
                             last_site_storage_time, last_stateful_bounce_time, last_user_activation_time,
                             last_web_authn_assertion_time
-                        FROM bounces'''
+                        FROM bounces''',
+                 142: '''SELECT site, first_bounce_time, first_user_activation_time, first_web_authn_assertion_time,
+                                last_bounce_time, last_user_activation_time, last_web_authn_assertion_time
+                         FROM bounces'''
                  }
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
@@ -931,7 +934,8 @@ class Chrome(WebBrowser):
         log.info(f'DIPS Popups items from {database}:')
 
         # Queries for different versions
-        query = {117: '''SELECT opener_site, popup_site, last_popup_time FROM popups'''}
+        query = {117: '''SELECT opener_site, popup_site, last_popup_time FROM popups''',
+                 133: '''SELECT opener_site, popup_site, last_popup_time, is_authentication_interaction FROM popups'''}
 
         # Get the lowest possible version from the version list, and decrement it until it finds a matching query
         compatible_version = version[0]
@@ -952,10 +956,15 @@ class Chrome(WebBrowser):
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
+                    if row.get('is_authentication_interaction'):
+                        name = 'Opened an authentication popup on:'
+                    else:
+                        name = 'Opened a popup on:'
+
                     dips_popup_record = Chrome.SiteSetting(
                         self.profile_path, row['opener_site'],
                         utils.to_datetime(row.get('last_popup_time'), self.timezone),
-                        'Opened a popup on:', row['popup_site'], '')
+                        name, row['popup_site'], '')
                     dips_popup_record.row_type = 'site setting (dips)'
                     results.append(dips_popup_record)
 
