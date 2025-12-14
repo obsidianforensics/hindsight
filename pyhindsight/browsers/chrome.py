@@ -2310,11 +2310,24 @@ class Chrome(WebBrowser):
 
                         result_count += 1
 
-                for entry_id in path_nodes:
-                    if path_nodes[entry_id].get('parent'):
-                        path_nodes[path_nodes[entry_id].get('parent')]['children'][entry_id] = path_nodes[entry_id]
-                    else:
-                        node_tree[entry_id] = path_nodes[entry_id]
+                # Build logical paths for the FileSystem
+                for entry_id, node in path_nodes.items():
+                    parent_id = node.get('parent')
+                    if not parent_id:
+                        node_tree[entry_id] = node
+                        continue
+
+                    parent_node = path_nodes.get(parent_id)
+                    if parent_node is None:
+                        log.debug(f' - Missing parent {parent_id} for node {entry_id}; treating as root')
+                        node_tree[entry_id] = node
+                        continue
+
+                    parent_node['children'][entry_id] = node
+
+                if '0' not in node_tree:
+                    log.debug(' - Missing root node; skipping logical path build for this origin')
+                    continue
 
                 self.build_logical_fs_path(node_tree['0'])
                 flattened_list = []
