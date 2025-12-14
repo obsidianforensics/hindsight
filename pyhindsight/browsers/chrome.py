@@ -90,7 +90,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 135))
+        possible_versions = list(range(1, 144))
         previous_possible_versions = possible_versions[:]
 
         def update_and_rollback_if_empty(version_list, prev_version_list):
@@ -177,6 +177,19 @@ class Chrome(WebBrowser):
                 trim_lesser_versions_if('encrypted_value', self.structure['Cookies']['cookies'], 33)
                 trim_lesser_versions_if('priority', self.structure['Cookies']['cookies'], 28)
                 trim_lesser_versions_if('source_type', self.structure['Cookies']['cookies'], 125)
+            log.debug(f' - Finishing possible versions: {possible_versions}')
+
+        possible_versions, previous_possible_versions = \
+            update_and_rollback_if_empty(possible_versions, previous_possible_versions)
+
+        if 'DIPS' in list(self.structure.keys()):
+            log.debug("Analyzing 'DIPS' structure")
+            log.debug(f' - Starting possible versions:  {possible_versions}')
+            if 'bounces' in list(self.structure['DIPS'].keys()):
+                trim_lesser_versions_if('first_bounce_time', self.structure['DIPS']['bounces'], 114)
+                trim_lesser_versions_if('first_web_authn_assertion_time', self.structure['DIPS']['bounces'], 117)
+                trim_lesser_versions_if('first_user_activation_time', self.structure['DIPS']['bounces'], 134)
+                trim_greater_versions_if('first_site_storage_time', self.structure['DIPS']['bounces'], 141)
             log.debug(f' - Finishing possible versions: {possible_versions}')
 
         possible_versions, previous_possible_versions = \
@@ -2461,7 +2474,7 @@ class Chrome(WebBrowser):
 
     def process(self):
         supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies', 'Login Data',
-                               'Extension Cookies']
+                               'Extension Cookies', 'Network Action Predictor', 'DIPS']
         supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications', 'Network']
         supported_jsons = ['Bookmarks', 'TransportSecurity']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
