@@ -1493,6 +1493,35 @@ class Chrome(WebBrowser):
                 }
             return codes.get(code, code)
 
+        def translate_account_capabilities(capability_code):
+            # From https://cs.chromium.org/chromium/src/components/signin/internal/identity_manager/account_capabilities_list.h
+            account_capabilities = {
+                "accountcapabilities/ge2dinbnmnqxa": "Fetch family member info",
+                "accountcapabilities/haytqlldmfya": "Show email address in UI",
+                "accountcapabilities/ge4tenznmnqxa": "Make Chrome search engine choice screen selection",
+                "accountcapabilities/gu2dqlldmfya": "Participate in Chrome Privacy Sandbox trials",
+                "accountcapabilities/gi2tklldmfya": "Show history sync opt-ins without minor-mode restrictions",
+                "accountcapabilities/gu4dmlldmfya": "Toggle auto updates (ChromeOS)",
+                "accountcapabilities/ge3dgmjnmnqxa": "Use ChromeOS generative AI features",
+                "accountcapabilities/ge2tkmznmnqxa": "Use Copy Editor feature",
+                "accountcapabilities/geztenjnmnqxa": "Use DevTools generative AI features",
+                "accountcapabilities/gezdsmbnmnqxa": "Use education-focused features",
+                "accountcapabilities/ge2tkobnmnqxa": "Use generative AI in Recorder app",
+                "accountcapabilities/ge3dgobnmnqxa": "Use generative AI photo editing",
+                "accountcapabilities/geytcnbnmnqxa": "Use Manta service",
+                "accountcapabilities/gezdcnbnmnqxa": "Use model execution features",
+                "accountcapabilities/ge2tknznmnqxa": "Use speaker label in Recorder app",
+                "accountcapabilities/g42tslldmfya": "Allowed for machine learning features",
+                "accountcapabilities/guzdslldmfya": "Opted into parental supervision",
+                "accountcapabilities/ge4tgnznmnqxa": "Subject to account-level enterprise policies",
+                "accountcapabilities/he4tolldmfya": "Subject to Chrome Privacy Sandbox restricted measurement notice",
+                "accountcapabilities/g44tilldmfya": "Subject to enterprise policies",
+                "accountcapabilities/guydolldmfya": "Subject to parental controls",
+                "accountcapabilities/giytmnrnmnqxa": "Use Gemini in Chrome (gated by kGlicEligibilitySeparateAccountCapability)",
+            }
+            return account_capabilities.get(capability_code, capability_code)
+
+
         results = []
         timestamped_preference_items = []
         log.info('Preferences:')
@@ -1515,6 +1544,11 @@ class Chrome(WebBrowser):
             for account in prefs['account_info']:
                 for account_item in list(account.keys()):
                     if account_item == 'accountcapabilities':
+                        capability_string = ''
+                        for accountcapability, enabled in account[account_item].items():
+                            if enabled:
+                                capability_string += f'{translate_account_capabilities(accountcapability)}; '
+                        append_pref("Account Capabilities", capability_string)
                         continue
                     append_pref(account_item, account[account_item])
 
@@ -1721,6 +1755,7 @@ class Chrome(WebBrowser):
                         3: "animated right-side location-bar icon (desktop)",
                         4: "modal dialog (android)",
                         5: "collapsed bottom infobar (android)",
+                        6: "chip on left-hand side of location bar (desktop)",
                         7: "no UI shown (tab closed with pending request)",
                         8: "custom modal dialog",
                         9: "quiet left-side chip; click shows bubble (desktop)",
