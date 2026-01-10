@@ -314,6 +314,7 @@ class Chrome(WebBrowser):
 
         if compatible_version != 0:
             log.info(f' - Using SQL query for History items for Chrome {compatible_version}')
+            conn = None
             try:
                 # Copy and connect to copy of 'History' SQLite DB
                 conn = utils.open_sqlite_db(self, path, history_file)
@@ -355,8 +356,6 @@ class Chrome(WebBrowser):
                     # Add the new row to the results array
                     results.append(new_row)
 
-                conn.close()
-
                 self.artifacts_counts[history_file] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -364,6 +363,9 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts[history_file] = 'Failed'
                 log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_media_history(self, path, history_file, version, row_type):
         results = []
@@ -384,6 +386,7 @@ class Chrome(WebBrowser):
 
         if compatible_version != 0:
             log.info(f' - Using SQL query for Media History items for Chrome {compatible_version}')
+            conn = None
             try:
                 # Copy and connect to copy of 'Media History' SQLite DB
                 conn = utils.open_sqlite_db(self, path, history_file)
@@ -430,8 +433,6 @@ class Chrome(WebBrowser):
                     # Add the new row to the results array
                     results.append(new_row)
 
-                conn.close()
-
                 self.artifacts_counts[history_file] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -439,6 +440,9 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts[history_file] = 'Failed'
                 log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_downloads(self, path, database, version, row_type):
         # Set up empty return array
@@ -472,6 +476,7 @@ class Chrome(WebBrowser):
 
         if compatible_version != 0:
             log.info(f' - Using SQL query for Download items for Chrome v{compatible_version}')
+            conn = None
             try:
                 # Copy and connect to copy of 'History' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
@@ -523,8 +528,6 @@ class Chrome(WebBrowser):
                     new_row.row_type = row_type
                     results.append(new_row)
 
-                conn.close()
-
                 self.artifacts_counts[database + '_downloads'] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -536,6 +539,9 @@ class Chrome(WebBrowser):
             except sqlite3.OperationalError as e:
                 self.artifacts_counts[database + '_downloads'] = 'Failed'
                 log.error(f' - Couldn\'t read "downloads" from {os.path.join(path, database)}; {e}')
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def decrypt_cookie(self, encrypted_value):
         """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
@@ -634,6 +640,7 @@ class Chrome(WebBrowser):
 
         if compatible_version != 0:
             log.info(f' - Using SQL query for Cookie items for Chrome v{compatible_version}')
+            conn = None
             try:
                 # Copy and connect to copy of 'Cookies' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
@@ -684,7 +691,6 @@ class Chrome(WebBrowser):
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
 
-                conn.close()
                 self.artifacts_counts[database] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -692,6 +698,9 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts[database] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}')
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_login_data(self, path, database, version):
         # Set up empty return array
@@ -716,70 +725,73 @@ class Chrome(WebBrowser):
         if compatible_version != 0:
             log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
 
-            # Copy and connect to copy of 'Login Data' SQLite DB
-            conn = utils.open_sqlite_db(self, path, database)
-            if not conn:
-                self.artifacts_counts[database] = 'Failed'
-                return
-            cursor = conn.cursor()
+            conn = None
+            try:
+                # Copy and connect to copy of 'Login Data' SQLite DB
+                conn = utils.open_sqlite_db(self, path, database)
+                if not conn:
+                    self.artifacts_counts[database] = 'Failed'
+                    return
+                cursor = conn.cursor()
 
-            # Use the highest compatible version SQL to select download data
-            cursor.execute(query[compatible_version])
+                # Use the highest compatible version SQL to select download data
+                cursor.execute(query[compatible_version])
 
-            for row in cursor:
-                if row.get('blacklisted_by_user') == 1:
-                    never_save_row = Chrome.LoginItem(
-                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                        url=row.get('origin_url'), name=row.get('username_element'),
-                        value='', count=row.get('times_used'),
-                        interpretation='User chose to "Never save password" for this site')
-                    never_save_row.row_type = 'login (never save)'
-                    results.append(never_save_row)
+                for row in cursor:
+                    if row.get('blacklisted_by_user') == 1:
+                        never_save_row = Chrome.LoginItem(
+                            self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                            url=row.get('origin_url'), name=row.get('username_element'),
+                            value='', count=row.get('times_used'),
+                            interpretation='User chose to "Never save password" for this site')
+                        never_save_row.row_type = 'login (never save)'
+                        results.append(never_save_row)
 
-                elif row.get('username_value'):
-                    interpretation_str = 'User chose to save the credentials entered'
-                    if row.get('times_used') and row.get('times_used') > 0:
-                        interpretation_str += f' (times used: {row.get("times_used")})'
-
-                    username_row = Chrome.LoginItem(
-                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                        url=row.get('origin_url'), name=row.get('username_element'),
-                        value=row.get('username_value'), count=row.get('times_used'),
-                        interpretation=interpretation_str)
-                    username_row.row_type = 'login (saved credentials)'
-                    results.append(username_row)
-
-                    # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
-                    if row.get('date_last_used') and int(row.get('date_last_used')) > 13100000000000000:
-                        interpretation_str = 'User tried to log in with this username (may or may not have succeeded)'
+                    elif row.get('username_value'):
+                        interpretation_str = 'User chose to save the credentials entered'
                         if row.get('times_used') and row.get('times_used') > 0:
-                            interpretation_str += f'; times used: {row.get("times_used")})'
-                            
+                            interpretation_str += f' (times used: {row.get("times_used")})'
+
                         username_row = Chrome.LoginItem(
-                            self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
+                            self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
                             url=row.get('origin_url'), name=row.get('username_element'),
                             value=row.get('username_value'), count=row.get('times_used'),
                             interpretation=interpretation_str)
-                        username_row.row_type = 'login (username)'
+                        username_row.row_type = 'login (saved credentials)'
                         results.append(username_row)
 
-                if row.get('password_value') is not None and self.available_decrypts['windows'] == 1:
-                    try:
-                        # Windows is all I've had time to test; Ubuntu uses built-in password manager
-                        password = win32crypt.CryptUnprotectData(
-                            row.get('password_value').decode(), None, None, None, 0)[1]
-                    except:
-                        password = self.decrypt_cookie(row.get('password_value'))
+                        # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
+                        if row.get('date_last_used') and int(row.get('date_last_used')) > 13100000000000000:
+                            interpretation_str = 'User tried to log in with this username (may or may not have succeeded)'
+                            if row.get('times_used') and row.get('times_used') > 0:
+                                interpretation_str += f'; times used: {row.get("times_used")})'
 
-                    password_row = Chrome.LoginItem(
-                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                        url=row.get('origin_url'), name=row.get('password_element'),
-                        value=password, count=row.get('times_used'),
-                        interpretation='User chose to save the credentials entered')
-                    password_row.row_type = 'login (password)'
-                    results.append(password_row)
+                            username_row = Chrome.LoginItem(
+                                self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
+                                url=row.get('origin_url'), name=row.get('username_element'),
+                                value=row.get('username_value'), count=row.get('times_used'),
+                                interpretation=interpretation_str)
+                            username_row.row_type = 'login (username)'
+                            results.append(username_row)
 
-            conn.close()
+                    if row.get('password_value') is not None and self.available_decrypts['windows'] == 1:
+                        try:
+                            # Windows is all I've had time to test; Ubuntu uses built-in password manager
+                            password = win32crypt.CryptUnprotectData(
+                                row.get('password_value').decode(), None, None, None, 0)[1]
+                        except:
+                            password = self.decrypt_cookie(row.get('password_value'))
+
+                        password_row = Chrome.LoginItem(
+                            self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                            url=row.get('origin_url'), name=row.get('password_element'),
+                            value=password, count=row.get('times_used'),
+                            interpretation='User chose to save the credentials entered')
+                        password_row.row_type = 'login (password)'
+                        results.append(password_row)
+            finally:
+                if conn is not None:
+                    conn.close()
 
             # Queries for "stats" table for different versions
             query = {48: '''SELECT origin_domain, username_value, dismissal_count, update_time FROM stats'''}
@@ -792,26 +804,30 @@ class Chrome(WebBrowser):
             if compatible_version != 0:
                 log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
 
-                # Copy and connect to copy of 'Login Data' SQLite DB
-                conn = utils.open_sqlite_db(self, path, database)
-                if not conn:
-                    self.artifacts_counts[database] = 'Failed'
-                    return
-                cursor = conn.cursor()
+                conn = None
+                try:
+                    # Copy and connect to copy of 'Login Data' SQLite DB
+                    conn = utils.open_sqlite_db(self, path, database)
+                    if not conn:
+                        self.artifacts_counts[database] = 'Failed'
+                        return
+                    cursor = conn.cursor()
 
-                # Use the highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                    # Use the highest compatible version SQL to select download data
+                    cursor.execute(query[compatible_version])
 
-                for row in cursor:
-                    stats_row = Chrome.LoginItem(
-                        self.profile_path, utils.to_datetime(row.get('update_time'), self.timezone),
-                        url=row.get('origin_domain'), name='',
-                        value=row.get('username_value'), count=row.get('dismissal_count'),
-                        interpretation=f'User declined to save the password for this site '
-                                       f'(dismissal count: {row.get("dismissal_count")})')
-                    stats_row.row_type = 'login (declined save)'
-                    results.append(stats_row)
-                conn.close()
+                    for row in cursor:
+                        stats_row = Chrome.LoginItem(
+                            self.profile_path, utils.to_datetime(row.get('update_time'), self.timezone),
+                            url=row.get('origin_domain'), name='',
+                            value=row.get('username_value'), count=row.get('dismissal_count'),
+                            interpretation=f'User declined to save the password for this site '
+                                           f'(dismissal count: {row.get("dismissal_count")})')
+                        stats_row.row_type = 'login (declined save)'
+                        results.append(stats_row)
+                finally:
+                    if conn is not None:
+                        conn.close()
 
         self.artifacts_counts['Login Data'] = len(results)
         log.info(f' - Parsed {len(results)} items')
@@ -836,6 +852,7 @@ class Chrome(WebBrowser):
 
         if compatible_version != 0:
             log.info(f' - Using SQL query for Autofill items for Chrome v{compatible_version}')
+            conn = None
             try:
                 # Copy and connect to copy of 'Web Data' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
@@ -861,7 +878,6 @@ class Chrome(WebBrowser):
                             self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
                             row.get('name'), autofill_value, row.get('count')))
 
-                conn.close()
                 self.artifacts_counts['Autofill'] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -869,6 +885,9 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts['Autofill'] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}: {e}')
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_dips(self, path, database, version):
         # Set up empty return array
@@ -903,6 +922,7 @@ class Chrome(WebBrowser):
 
         if compatible_version != 0:
             log.info(f' - Using SQL query for DIPS items for Chrome v{compatible_version}')
+            conn = None
             try:
                 # Copy and connect to copy of 'DIPS' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
@@ -931,7 +951,6 @@ class Chrome(WebBrowser):
                         dips_record.row_type = 'site setting (dips)'
                         results.append(dips_record)
 
-                conn.close()
                 self.artifacts_counts['DIPS'] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -939,6 +958,9 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts['DIPS'] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}: {e}')
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_dips_popups(self, path, database, version):
         # Set up empty return array
@@ -957,6 +979,7 @@ class Chrome(WebBrowser):
 
         if compatible_version != 0:
             log.info(f' - Using SQL query for DIPS items for Chrome v{compatible_version}')
+            conn = None
             try:
                 # Copy and connect to copy of 'DIPS' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
@@ -981,7 +1004,6 @@ class Chrome(WebBrowser):
                     dips_popup_record.row_type = 'site setting (dips)'
                     results.append(dips_popup_record)
 
-                conn.close()
                 self.artifacts_counts['DIPS Popups'] = len(results)
                 log.info(f' - Parsed {len(results)} items')
                 self.parsed_artifacts.extend(results)
@@ -989,6 +1011,9 @@ class Chrome(WebBrowser):
             except Exception as e:
                 self.artifacts_counts['DIPS Popups'] = 'Failed'
                 log.error(f' - Could not open {os.path.join(path, database)}: {e}')
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
@@ -1071,9 +1096,12 @@ class Chrome(WebBrowser):
                 ls_file_path = os.path.join(ls_path, ls_file)
                 ls_created = os.stat(ls_file_path).st_ctime
 
+                conn = None
                 try:
                     # Copy and connect to copy of the Local Storage SQLite DB
                     conn = utils.open_sqlite_db(self, ls_path, ls_file)
+                    if not conn:
+                        continue
                     cursor = conn.cursor()
 
                     cursor.execute('SELECT key,value,rowid FROM ItemTable')
@@ -1089,10 +1117,11 @@ class Chrome(WebBrowser):
                             last_modified=utils.to_datetime(ls_created, self.timezone),
                             source_path=os.path.join(ls_path, ls_file)))
 
-                    conn.close()
-
                 except Exception as e:
                     log.warning(f' - Error reading key/values from {ls_file_path}: {e}')
+                finally:
+                    if conn is not None:
+                        conn.close()
 
         self.artifacts_counts['Local Storage'] = len(results)
         log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
@@ -1173,9 +1202,33 @@ class Chrome(WebBrowser):
             if os.path.exists(blob_path):
                 blob_directory = blob_path
 
+            origin_idb = None
             try:
                 origin_idb = ccl_chromium_reader.ccl_chromium_indexeddb.WrappedIndexDB(
                     leveldb_dir=os.path.join(idb_path, f'{origin}.indexeddb.leveldb'), leveldb_blob_dir=blob_directory)
+
+                for database_id in origin_idb.database_ids:
+                    database = origin_idb[database_id.dbid_no]
+                    for obj_store_name in database.object_store_names:
+                        obj_store = database.get_object_store_by_name(obj_store_name)
+                        try:
+                            for record in obj_store.iterate_records():
+                                record_state = 'Deleted'
+                                if record.is_live:
+                                    record_state = 'Live'
+
+                                results.append(Chrome.IndexedDBItem(
+                                    self.profile_path, origin, str(record.key.value), str(record.value),
+                                    int(record.ldb_seq_no), database=f"{record.database_name}.{obj_store_name}",
+                                    state=record_state, source_path=storage_directory))
+                        except FileNotFoundError as e:
+                            log.error(f' - File ({e}) not found while processing {database}')
+
+                        except ValueError as e:
+                            log.error(f' - ValueError ({e}) when processing {database}')
+
+                        except Exception as e:
+                            log.error(f' - Unexpected Exception: {e}')
             except ValueError as e:
                 log.error(f' - {e} when processing {storage_directory}')
                 continue
@@ -1184,28 +1237,9 @@ class Chrome(WebBrowser):
                 log.error(f' - Unexpected Exception ({e}) when processing {storage_directory}')
                 continue
 
-            for database_id in origin_idb.database_ids:
-                database = origin_idb[database_id.dbid_no]
-                for obj_store_name in database.object_store_names:
-                    obj_store = database.get_object_store_by_name(obj_store_name)
-                    try:
-                        for record in obj_store.iterate_records():
-                            record_state = 'Deleted'
-                            if record.is_live:
-                                record_state = 'Live'
-
-                            results.append(Chrome.IndexedDBItem(
-                                self.profile_path, origin, str(record.key.value), str(record.value),
-                                int(record.ldb_seq_no), database=f"{record.database_name}.{obj_store_name}",
-                                state=record_state, source_path=storage_directory))
-                    except FileNotFoundError as e:
-                        log.error(f' - File ({e}) not found while processing {database}')
-
-                    except ValueError as e:
-                        log.error(f' - ValueError ({e}) when processing {database}')
-
-                    except Exception as e:
-                        log.error(f' - Unexpected Exception: {e}')
+            finally:
+                if origin_idb is not None:
+                    origin_idb.close()
 
         self.artifacts_counts['IndexedDB'] = len(results)
         log.info(f' - Parsed {len(results)} items from {len(idb_storage_listing)} files')

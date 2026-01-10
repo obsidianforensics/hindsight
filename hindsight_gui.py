@@ -3,6 +3,7 @@
 import os
 import sys
 import logging
+import warnings
 import bottle
 import importlib
 import pyhindsight
@@ -146,6 +147,8 @@ def do_run():
                         format='%(asctime)s.%(msecs).03d | %(levelname).01s | %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
     log = logging.getLogger(__name__)
+    # Suppress ResourceWarning spam from long-running GUI sessions.
+    warnings.filterwarnings("ignore", category=ResourceWarning)
 
     # Hindsight version info
     log.info(

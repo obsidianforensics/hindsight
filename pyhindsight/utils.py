@@ -47,6 +47,7 @@ def open_sqlite_db(chrome, database_path, database_name):
             log.error(f' - Error copying {database_name}: {e}')
             return None
 
+    db_conn = None
     try:
         # Connect to copied database
         db_conn = sqlite3.connect(db_path_to_open)
@@ -60,6 +61,8 @@ def open_sqlite_db(chrome, database_path, database_name):
 
     except Exception as e:
         log.error(f' - Error opening {database_name}: {e}')
+        if db_conn is not None:
+            db_conn.close()
         return None
 
     return db_conn
