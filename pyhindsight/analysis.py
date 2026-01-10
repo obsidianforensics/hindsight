@@ -280,7 +280,7 @@ class AnalysisSession(object):
             version=None, display_version=None, output_name=None, log_path=None, no_copy=None, temp_dir=None,
             timezone=None, available_output_formats=None, selected_output_format=None, available_decrypts=None,
             selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
-            parsed_storage=None, plugin_descriptions=None, selected_plugins=None, plugin_results=None,
+            parsed_storage=None, parsed_sync_data=None, plugin_descriptions=None, selected_plugins=None, plugin_results=None,
             hindsight_version=None, preferences=None):
         self.input_path = input_path
         self.profile_paths = profile_paths
@@ -303,6 +303,7 @@ class AnalysisSession(object):
         self.artifacts_counts = artifacts_counts
         self.parsed_storage = parsed_storage
         self.parsed_extension_data = []
+        self.parsed_sync_data = parsed_sync_data
         self.plugin_descriptions = plugin_descriptions
         self.selected_plugins = selected_plugins
         self.plugin_results = plugin_results
@@ -324,6 +325,9 @@ class AnalysisSession(object):
 
         if self.parsed_storage is None:
             self.parsed_storage = []
+
+        if self.parsed_sync_data is None:
+            self.parsed_sync_data = []
 
         if self.available_output_formats is None:
             self.available_output_formats = ['sqlite', 'jsonl']
@@ -529,6 +533,7 @@ class AnalysisSession(object):
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
                 self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.parsed_extension_data.extend(browser_analysis.parsed_extension_data)
+                self.parsed_sync_data.extend(browser_analysis.parsed_sync_data)
                 self.artifacts_counts = self.sum_dict_counts(self.artifacts_counts, browser_analysis.artifacts_counts)
                 self.artifacts_display = browser_analysis.artifacts_display
                 self.version.extend(browser_analysis.version)
@@ -1069,6 +1074,63 @@ class AnalysisSession(object):
         ext.freeze_panes(2, 0)  # Freeze top row
         ext.autofilter(1, 0, row_number, 12)  # Add autofilter
 
+        #########################################
+        # Sync Data worksheet
+        #########################################
+        sync_ws = workbook.add_worksheet('Sync Data')
+        # Title bar
+        sync_ws.merge_range('A1:E1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        sync_ws.merge_range('F1:J1', 'Backing LevelDB Specific', center_header_format)
+
+        # Write column headers
+        sync_ws.write(1, 0, 'Type', header_format)
+        sync_ws.write(1, 1, 'Key', header_format)
+        sync_ws.write(1, 2, 'Value', header_format)
+        sync_ws.write(1, 3, 'Interpretation', header_format)
+        sync_ws.write(1, 4, 'Profile', header_format)
+        sync_ws.write(1, 5, 'Source Path', header_format)
+        sync_ws.write(1, 6, 'Offset', header_format)
+        sync_ws.write(1, 7, 'Sequence', header_format)
+        sync_ws.write(1, 8, 'State', header_format)
+        sync_ws.write(1, 9, 'File Type', header_format)
+
+        # Set column widths
+        sync_ws.set_column('A:A', 20)  # Type
+        sync_ws.set_column('B:B', 60)  # Key
+        sync_ws.set_column('C:C', 70)  # Value
+        sync_ws.set_column('D:D', 40)  # Interpretation
+        sync_ws.set_column('E:E', 50)  # Profile
+        sync_ws.set_column('F:F', 50)  # Source Path
+        sync_ws.set_column('G:G', 12)  # Offset
+        sync_ws.set_column('H:H', 8)   # Seq
+        sync_ws.set_column('I:I', 8)   # State
+        sync_ws.set_column('J:J', 12)  # File Type
+
+        # Start at the row after the headers, and begin writing out the items in parsed_sync_data
+        row_number = 2
+        for item in self.parsed_sync_data:
+            try:
+                if item.row_type:
+                    sync_ws.write_string(row_number, 0, item.row_type, black_type_format)
+                    sync_ws.write_string(row_number, 1, item.key, black_field_format)
+                    sync_ws.write_string(row_number, 2, item.value, black_value_format)
+                    sync_ws.write(row_number, 3, item.interpretation, black_value_format)
+                    sync_ws.write(row_number, 4, item.profile, black_value_format)
+                    sync_ws.write(row_number, 5, item.source_path, black_value_format)
+                    sync_ws.write(row_number, 6, item.offset, black_value_format)
+                    sync_ws.write_number(row_number, 7, item.seq, black_value_format)
+                    sync_ws.write_string(row_number, 8, item.state, black_value_format)
+                    sync_ws.write_string(row_number, 9, item.file_type, black_value_format)
+
+            except Exception as e:
+                log.error(f'Failed to write row to XLSX: {e}')
+
+            row_number += 1
+
+        # Formatting
+        sync_ws.freeze_panes(2, 0)  # Freeze top row
+        sync_ws.autofilter(1, 0, row_number, 9)  # Add autofilter
+
         for item in self.__dict__:
             try:
                 if self.__dict__[item]['presentation'] and self.__dict__[item]['data']:
@@ -1159,6 +1221,10 @@ class AnalysisSession(object):
                 'CREATE TABLE extension_data(type TEXT, name TEXT, extension_id TEXT, key TEXT, value TEXT, '
                 'interpretation TEXT, profile TEXT, source_path TEXT, offset INT, seq INT, state TEXT, '
                 'was_compressed BOOL)')
+
+            c.execute(
+                'CREATE TABLE sync_data(type TEXT, key TEXT, value TEXT, interpretation TEXT, profile TEXT, '
+                'source_path TEXT, offset INT, seq INT, state TEXT, file_type TEXT)')
 
             for item in self.parsed_artifacts:
                 if item.row_type.startswith('url'):
@@ -1302,6 +1368,15 @@ class AnalysisSession(object):
                         (item.row_type, item.extension_name, item.extension_id, item.key, item.value,
                          item.interpretation, item.profile, item.source_path, item.offset, item.seq, item.state,
                          item.was_compressed))
+
+            for item in self.parsed_sync_data:
+                if item.row_type:
+                    c.execute(
+                        'INSERT INTO sync_data (type, key, value, interpretation, profile, source_path, '
+                        'offset, seq, state, file_type) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        (item.row_type, item.key, item.value, item.interpretation, item.profile, item.source_path,
+                         item.offset, item.seq, item.state, item.file_type))
 
             if self.__dict__.get('installed_extensions'):
                 for extension in self.installed_extensions['data']:

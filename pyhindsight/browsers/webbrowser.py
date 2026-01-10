@@ -23,6 +23,7 @@ class WebBrowser(object):
         self.parsed_artifacts = []
         self.parsed_storage = []
         self.parsed_extension_data = []
+        self.parsed_sync_data = []
         self.artifacts_counts = {}
         self.artifacts_display = {}
         self.preferences = []
@@ -38,7 +39,7 @@ class WebBrowser(object):
     def format_processing_output(name, items):
         width = 80
         left_side = width*0.55
-        count = '{:>6}'.format(str(items))
+        count = '{:>7}'.format(str(items))
         pretty_name = "{name:>{left_width}}:{count:^{right_width}}" \
             .format(name=name, left_width=int(left_side), count=' '.join(['[', count, ']']),
                     right_width=(width - int(left_side)-2))
@@ -403,6 +404,21 @@ class WebBrowser(object):
             self.source_path = source_path
             self.offset = offset
             self.was_compressed = was_compressed
+
+    class SyncDataItem(object):
+        def __init__(
+                self, profile, key, value, row_type='sync data', interpretation=None, source_path=None,
+                offset=None, seq=None, state=None, file_type=None):
+            self.row_type = row_type
+            self.profile = profile
+            self.key = key
+            self.value = value
+            self.interpretation = interpretation
+            self.source_path = source_path
+            self.offset = offset
+            self.seq = seq
+            self.state = state
+            self.file_type = file_type
 
     class LocalStorageItem(StorageItem):
         def __init__(self, profile, origin, key, value, seq, state, source_path, last_modified=None):
