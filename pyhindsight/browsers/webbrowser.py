@@ -61,32 +61,35 @@ class WebBrowser(object):
             if not conn:
                 self.artifacts_counts[database] = 'Failed'
                 return
-            cursor = conn.cursor()
-
-            # Find the names of each table in the db
             try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                tables = cursor.fetchall()
-            except sqlite3.OperationalError:
-                print("\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files "
-                      "if Chrome has them locked.  This error most often occurs when trying to analyze a local "
-                      "Chrome installation while it is running.  Please close Chrome and try again.")
-                sys.exit(1)
-            except:
-                log.error(f' - Could not query {database} in {path}')
-                return
+                cursor = conn.cursor()
 
-            # For each table, find all the columns in it
-            for table in tables:
-                # cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
-                cursor.execute('PRAGMA table_info({})'.format(table['name']))
-                columns = cursor.fetchall()
+                # Find the names of each table in the db
+                try:
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                    tables = cursor.fetchall()
+                except sqlite3.OperationalError:
+                    print("\nSQLite3 error; is the Chrome profile in use?  Hindsight cannot access history files "
+                          "if Chrome has them locked.  This error most often occurs when trying to analyze a local "
+                          "Chrome installation while it is running.  Please close Chrome and try again.")
+                    sys.exit(1)
+                except:
+                    log.error(f' - Could not query {database} in {path}')
+                    return
 
-                # Create a dict of lists of the table/column names
-                # self.structure[database][str(table[0])] = []
-                self.structure[database][table['name']] = []
-                for column in columns:
-                    self.structure[database][table['name']].append(column['name'])
+                # For each table, find all the columns in it
+                for table in tables:
+                    # cursor.execute('PRAGMA table_info({})'.format(str(table[0])))
+                    cursor.execute('PRAGMA table_info({})'.format(table['name']))
+                    columns = cursor.fetchall()
+
+                    # Create a dict of lists of the table/column names
+                    # self.structure[database][str(table[0])] = []
+                    self.structure[database][table['name']] = []
+                    for column in columns:
+                        self.structure[database][table['name']].append(column['name'])
+            finally:
+                conn.close()
 
     @staticmethod
     def dict_factory(cursor, row):

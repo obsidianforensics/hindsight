@@ -1387,6 +1387,8 @@ class AnalysisSession(object):
                         (extension.name, extension.description, extension.version, extension.ext_id,
                          extension.profile, extension.permissions, extension.manifest))
 
+        output_db.close()
+
     def generate_jsonl(self, output_file):
         with open(output_file, mode='w') as jsonl:
             for parsed_artifact in self.parsed_artifacts:
