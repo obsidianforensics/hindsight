@@ -315,7 +315,7 @@ class AnalysisSession(object):
             self.version = []
 
         if self.available_input_types is None:
-            self.available_input_types = ['Chrome', 'Brave']
+            self.available_input_types = ['Chrome']
 
         if self.parsed_artifacts is None:
             self.parsed_artifacts = []
