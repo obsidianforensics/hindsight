@@ -54,7 +54,6 @@
                                     <b>Input Type:</b>
                                     <select name="browser_type" onchange="toggle(this.value)">
                                         <option value="Chrome">Chrome</option>
-                                        <option value="Brave">Brave</option>
                                     </select>
                                 </td>
                                 <td style="text-align: right;">
@@ -112,26 +111,6 @@
                                         <tr><td class="input-option">iOS:</td><td> \Applications\com.google.chrome.ios\Library\Application Support\Google\Chrome</td></tr>
                                         <tr><td class="input-option">Android:</td><td> /userdata/data/com.android.chrome/app_chrome</td></tr>
                                         <tr><td class="input-option" colspan=2>In a running Chrome browser, go to chrome://version/ to see the Profile Path information</td></tr>
-                                    </table>
-                                </td>
-                            </tr>
-                            <tr id="description-Brave" style="display:none">
-                                <td colspan=2 class="input-description">
-                                    <table>
-                                        <tr><td>
-                                            <b>Description:</b> Brave is a free web browser that aims to "speed up the web, stop bad ads and pay publishers." Brave has an integrated ad-blocker and an optional ad replacement system that pays both ad companies and the user in BAT. Brave also claims to offer a faster and more private browsing experience by blocking trackers and intrusive ads.
-
-                                        </td>
-                                        <td>
-                                            <img src="static/brave_logo.png" width=75>
-                                        </td></tr>
-                                    </table>
-                                    <br />
-                                    <b>Default Locations:</b>
-                                    <table>
-                                        <tr><td class="input-option">Vista/7/8/10:</td><td> \[userdir]\AppData\Roaming\brave</td></tr>
-                                        <tr><td class="input-option">Linux:</td><td> \[userdir]/.config/brave</td></tr>
-                                        <tr><td class="input-option">OSX/macOS:</td><td> \[userdir]/Library/Application Support/brave</td></tr>
                                     </table>
                                 </td>
                             </tr>
