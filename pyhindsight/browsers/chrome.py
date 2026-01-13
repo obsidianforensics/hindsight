@@ -2500,43 +2500,43 @@ class Chrome(WebBrowser):
             # Only live records have a value
             if raw_proto:
                 if item['key'].startswith(b'device_info-dt'):
-                    record_type = 'sync data (device info)'
+                    record_type = 'device info'
                     parsed_proto = DeviceInfoSpecifics.FromString(raw_proto)
 
                 elif b'-GlobalMetadata' in item['key']:
-                    record_type = 'sync data (global metadata)'
+                    record_type = 'global metadata'
                     # There's a "token" field (#2) that isn't supposed to be anything parseable, but it sometimes is
                     # a nested protobuf; I'm unsure of the matching proto definition. Not parsing it for now.
                     parsed_proto = DataTypeState.FromString(raw_proto)
 
                 elif item['key'].startswith(b'sessions-dt'):
-                    record_type = 'sync data (sessions)'
+                    record_type = 'sessions'
                     parsed_proto = SessionSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'preferences-dt'):
-                    record_type = 'sync data (preferences)'
+                    record_type = 'preferences'
                     parsed_proto = PersistedEntityData.FromString(raw_proto)
 
                 elif item['key'].startswith(b'user_events-dt'):
-                    record_type = 'sync data (user events)'
+                    record_type = 'user events'
                     parsed_proto = UserEventSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'apps-dt'):
-                    record_type = 'sync data (apps)'
+                    record_type = 'apps'
                     parsed_proto = AppSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'user_consent-dt'):
-                    record_type = 'sync data (user consent)'
+                    record_type = 'user consent'
                     parsed_proto = UserConsentSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'search_engines-dt'):
-                    record_type = 'sync data (search engine)'
+                    record_type = 'search engine'
                     parsed_proto = PersistedEntityData.FromString(raw_proto)
 
                 elif item['key'].startswith((b'sessions-md-', b'preferences-md-', b'search_engines-md-',
                                             b'device_info-md-', b'user_events-md-', b'priority_preferences-md-',
                                              b'extensions-md-', b'themes-md-', b'apps-md-', b'user_consent-md-')):
-                    record_type = 'sync data (entity metadata)'
+                    record_type = 'entity metadata'
                     parsed_proto = EntityMetadata.FromString(raw_proto)
 
                 else:
