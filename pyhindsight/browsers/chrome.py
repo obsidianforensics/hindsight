@@ -40,7 +40,8 @@ log = logging.getLogger(__name__)
 
 class Chrome(WebBrowser):
     def __init__(self, profile_path, browser_name=None, cache_path=None, version=None, timezone=None,
-                 storage=None, available_decrypts=None, no_copy=None, temp_dir=None):
+                 storage=None, available_decrypts=None, no_copy=None, temp_dir=None,
+                 originator_guids=None):
         WebBrowser.__init__(
             self, profile_path, browser_name=browser_name, cache_path=cache_path, version=version, timezone=timezone,
             no_copy=no_copy, temp_dir=temp_dir)
@@ -55,20 +56,22 @@ class Chrome(WebBrowser):
         self.no_copy = no_copy
         self.temp_dir = temp_dir
         self.hsts_hashes = {}
+        self.originator_guids = originator_guids
 
-        if self.version is None:
-            self.version = []
-
-        if self.structure is None:
-            self.structure = {}
-
+        if self.originator_guids is None:
+            self.originator_guids = {}
 
         if self.preferences is None:
             self.preferences = []
 
-
         if self.storage is None:
             self.storage = {}
+
+        if self.structure is None:
+            self.structure = {}
+
+        if self.version is None:
+            self.version = []
 
         if self.available_decrypts is None:
             self.available_decrypts = {'windows': 0, 'mac': 0, 'linux': 0}
@@ -277,7 +280,13 @@ class Chrome(WebBrowser):
         log.info(f'History items from {history_file}')
 
         # Queries for different versions
-        query = {59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+        query = {107: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                            urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time, 
+                            visits.from_visit, visits.visit_duration, visits.transition, visit_source.source, 
+                            visits.id as visit_id
+                        FROM urls JOIN visits 
+                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                 59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.id as visit_id
                         FROM urls JOIN visits 
@@ -337,12 +346,23 @@ class Chrome(WebBrowser):
                         duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
                     new_row = Chrome.URLItem(
-                        self.profile_path, row.get('visit_id'), row.get('url'), row.get('title'),
-                        utils.to_datetime(row.get('visit_time'), self.timezone),
-                        utils.to_datetime(row.get('last_visit_time'), self.timezone),
-                        row.get('visit_count'), row.get('typed_count'), row.get('from_visit'),
-                        row.get('transition'), row.get('hidden'), row.get('favicon_id'),
-                        row.get('is_indexed'), str(duration), row.get('source'))
+                        profile=self.profile_path,
+                        visit_id=row.get('visit_id'),
+                        url=row.get('url'),
+                        title=row.get('title'),
+                        visit_time=utils.to_datetime(row.get('visit_time'), self.timezone),
+                        last_visit_time=utils.to_datetime(row.get('last_visit_time'), self.timezone),
+                        visit_count=row.get('visit_count'),
+                        typed_count=row.get('typed_count'),
+                        from_visit=row.get('from_visit'),
+                        transition=row.get('transition'),
+                        hidden=row.get('hidden'),
+                        favicon_id=row.get('favicon_id'),
+                        indexed=row.get('is_indexed'),
+                        visit_duration=str(duration),
+                        visit_source=row.get('source'),
+                        is_known_to_sync=row.get('is_known_to_sync'),
+                        originator_cache_guid=row.get('originator_cache_guid'))
 
                     # Set the row type as determined earlier
                     new_row.row_type = row_type
@@ -2490,7 +2510,19 @@ class Chrome(WebBrowser):
         from pyhindsight.lib.buf.components.sync.protocol.app_specifics_pb2 import AppSpecifics
         from pyhindsight.lib.buf.components.sync.protocol.user_consent_specifics_pb2 import UserConsentSpecifics
         from pyhindsight.lib.buf.components.sync.protocol.persisted_entity_data_pb2 import PersistedEntityData
+        from pyhindsight.lib.buf.components.sync.protocol.sync_enums_pb2 import SyncEnums
 
+        os_type_labels = {
+            'OS_TYPE_UNSPECIFIED': 'Unspecified',
+            'OS_TYPE_WINDOWS': 'Windows',
+            'OS_TYPE_MAC': 'macOS',
+            'OS_TYPE_LINUX': 'Linux',
+            'OS_TYPE_CHROME_OS_ASH': 'ChromeOS (Ash)',
+            'OS_TYPE_ANDROID': 'Android',
+            'OS_TYPE_IOS': 'iOS',
+            'OS_TYPE_CHROME_OS_LACROS': 'ChromeOS (Lacros)',
+            'OS_TYPE_FUCHSIA': 'Fuchsia',
+        }
         for item in items:
             raw_proto = item['value']
             parsed_proto = None
@@ -2500,43 +2532,60 @@ class Chrome(WebBrowser):
             # Only live records have a value
             if raw_proto:
                 if item['key'].startswith(b'device_info-dt'):
-                    record_type = 'sync data (device info)'
+                    record_type = 'device info'
                     parsed_proto = DeviceInfoSpecifics.FromString(raw_proto)
+                    cache_guid = parsed_proto.cache_guid
+                    if cache_guid:
+                        os_type_value = parsed_proto.os_type
+                        model_value = parsed_proto.model
+                        try:
+                            os_type_value = SyncEnums.OsType.Name(os_type_value)
+                        except ValueError:
+                            pass
+                        if isinstance(os_type_value, str):
+                            os_type_value = os_type_labels.get(os_type_value, os_type_value)
+
+                        if cache_guid not in self.originator_guids:
+                            self.originator_guids[cache_guid] = {
+                                'hostname': parsed_proto.client_name,
+                                'os_type': os_type_value,
+                                'model': model_value,
+                            }
 
                 elif b'-GlobalMetadata' in item['key']:
-                    record_type = 'sync data (global metadata)'
+                    record_type = 'global metadata'
                     # There's a "token" field (#2) that isn't supposed to be anything parseable, but it sometimes is
                     # a nested protobuf; I'm unsure of the matching proto definition. Not parsing it for now.
                     parsed_proto = DataTypeState.FromString(raw_proto)
 
                 elif item['key'].startswith(b'sessions-dt'):
-                    record_type = 'sync data (sessions)'
+                    record_type = 'sessions'
                     parsed_proto = SessionSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'preferences-dt'):
-                    record_type = 'sync data (preferences)'
+                    record_type = 'preferences'
                     parsed_proto = PersistedEntityData.FromString(raw_proto)
 
                 elif item['key'].startswith(b'user_events-dt'):
-                    record_type = 'sync data (user events)'
+                    record_type = 'user events'
                     parsed_proto = UserEventSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'apps-dt'):
-                    record_type = 'sync data (apps)'
+                    record_type = 'apps'
                     parsed_proto = AppSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'user_consent-dt'):
-                    record_type = 'sync data (user consent)'
+                    record_type = 'user consent'
                     parsed_proto = UserConsentSpecifics.FromString(raw_proto)
 
                 elif item['key'].startswith(b'search_engines-dt'):
-                    record_type = 'sync data (search engine)'
+                    record_type = 'search engine'
                     parsed_proto = PersistedEntityData.FromString(raw_proto)
 
                 elif item['key'].startswith((b'sessions-md-', b'preferences-md-', b'search_engines-md-',
                                             b'device_info-md-', b'user_events-md-', b'priority_preferences-md-',
                                              b'extensions-md-', b'themes-md-', b'apps-md-', b'user_consent-md-')):
-                    record_type = 'sync data (entity metadata)'
+                    record_type = 'entity metadata'
                     parsed_proto = EntityMetadata.FromString(raw_proto)
 
                 else:
@@ -2963,13 +3012,14 @@ class Chrome(WebBrowser):
         def __init__(
                 self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                 transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
-                transition_friendly=None):
+                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None):
             WebBrowser.URLItem.__init__(
                 self, profile=profile, visit_id=visit_id, url=url, title=title, visit_time=visit_time,
                 last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
                 from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
                 indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
-                transition_friendly=transition_friendly)
+                transition_friendly=transition_friendly, is_known_to_sync=is_known_to_sync,
+                originator_cache_guid=originator_cache_guid)
 
         def decode_transition(self):
             # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h

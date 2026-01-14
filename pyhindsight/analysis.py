@@ -281,7 +281,7 @@ class AnalysisSession(object):
             timezone=None, available_output_formats=None, selected_output_format=None, available_decrypts=None,
             selected_decrypts=None, parsed_artifacts=None, artifacts_display=None, artifacts_counts=None,
             parsed_storage=None, parsed_sync_data=None, plugin_descriptions=None, selected_plugins=None, plugin_results=None,
-            hindsight_version=None, preferences=None):
+            hindsight_version=None, preferences=None, originator_guids=None):
         self.input_path = input_path
         self.profile_paths = profile_paths
         self.cache_path = cache_path
@@ -304,6 +304,7 @@ class AnalysisSession(object):
         self.parsed_storage = parsed_storage
         self.parsed_extension_data = []
         self.parsed_sync_data = parsed_sync_data
+        self.originator_guids = originator_guids
         self.plugin_descriptions = plugin_descriptions
         self.selected_plugins = selected_plugins
         self.plugin_results = plugin_results
@@ -328,6 +329,9 @@ class AnalysisSession(object):
 
         if self.parsed_sync_data is None:
             self.parsed_sync_data = []
+
+        if self.originator_guids is None:
+            self.originator_guids = {}
 
         if self.available_output_formats is None:
             self.available_output_formats = ['sqlite', 'jsonl']
@@ -528,7 +532,8 @@ class AnalysisSession(object):
             if self.browser_type == "Chrome":
                 browser_analysis = Chrome(found_profile_path, available_decrypts=self.available_decrypts,
                                           cache_path=self.cache_path, timezone=self.timezone,
-                                          no_copy=self.no_copy, temp_dir=self.temp_dir)
+                                          no_copy=self.no_copy, temp_dir=self.temp_dir,
+                                          originator_guids=self.originator_guids)
                 browser_analysis.process()
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
                 self.parsed_storage.extend(browser_analysis.parsed_storage)
@@ -570,8 +575,48 @@ class AnalysisSession(object):
                         except Exception as e:
                             log.info(f'Exception occurred while analyzing {item} for analysis session promotion: {e}')
 
+        self.apply_originator_visit_sources()
         self.generate_display_version()
         return True
+
+    def apply_originator_visit_sources(self):
+        if not self.originator_guids:
+            return
+
+        updated_count = 0
+        for item in self.parsed_artifacts:
+            if not isinstance(item, Chrome.URLItem):
+                continue
+
+            cache_guid = getattr(item, 'originator_cache_guid', None)
+            if not cache_guid:
+                continue
+
+            cache_entry = self.originator_guids.get(cache_guid)
+            if not cache_entry:
+                continue
+
+            if item.visit_source not in (None, 'Synced', 0):
+                continue
+
+            device_parts = []
+            hostname = cache_entry.get('hostname')
+            os_type = cache_entry.get('os_type')
+            model = cache_entry.get('model')
+            if os_type:
+                device_parts.append(os_type)
+            if model:
+                device_parts.append(model)
+
+            device_suffix = f" ({', '.join(device_parts)})" if device_parts else ""
+            if hostname:
+                item.visit_source = f'Synced from "{hostname}"{device_suffix}'
+            else:
+                item.visit_source = f"Synced{device_suffix}"
+            updated_count += 1
+
+        if updated_count:
+            log.info(f' - Applied originator cache info to {updated_count} URL visit sources')
 
     def run_plugins(self):
         log.info("Selected plugins: " + str(self.selected_plugins))
