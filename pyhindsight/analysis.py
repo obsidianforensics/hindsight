@@ -1326,7 +1326,8 @@ class AnalysisSession(object):
             c.execute(
                 'CREATE TABLE storage(type TEXT, origin TEXT, key TEXT, value TEXT, '
                 'modification_time TEXT, interpretation TEXT, profile TEXT, source_path TEXT, '
-                'database TEXT, seq INT, state TEXT, file_exists BOOL, file_size INT, magic_results TEXT)')
+                'database TEXT, seq INT, state INT, state_friendly TEXT, file_exists BOOL, file_size INT, '
+                'magic_results TEXT)')
 
             c.execute(
                 'CREATE TABLE installed_extensions(name TEXT, description TEXT, version TEXT, ext_id TEXT, '
@@ -1334,12 +1335,28 @@ class AnalysisSession(object):
 
             c.execute(
                 'CREATE TABLE extension_data(type TEXT, name TEXT, extension_id TEXT, key TEXT, value TEXT, '
-                'interpretation TEXT, profile TEXT, source_path TEXT, offset INT, seq INT, state TEXT, '
-                'was_compressed BOOL)')
+                'interpretation TEXT, profile TEXT, source_path TEXT, offset INT, seq INT, state INT, '
+                'state_friendly TEXT, was_compressed BOOL)')
 
             c.execute(
                 'CREATE TABLE sync_data(type TEXT, key TEXT, value TEXT, interpretation TEXT, profile TEXT, '
-                'source_path TEXT, offset INT, seq INT, state TEXT, file_type TEXT)')
+                'source_path TEXT, offset INT, seq INT, state INT, state_friendly TEXT, file_type TEXT)')
+
+            c.execute(
+                'CREATE TABLE preferences(group_name TEXT, name TEXT, value TEXT, description TEXT, title TEXT)')
+
+            def state_to_int(state_value):
+                if state_value is None:
+                    return None
+                return 0 if state_value == 'Deleted' else 1
+
+            def preference_field(pref_item, field_name):
+                if isinstance(pref_item, dict):
+                    return pref_item.get(field_name)
+                return getattr(pref_item, field_name, None)
+
+            def is_empty(value):
+                return value is None or value == ''
 
             for item in self.parsed_artifacts:
                 if item.row_type.startswith('url'):
@@ -1443,55 +1460,57 @@ class AnalysisSession(object):
                 if item.row_type.startswith('local'):
                     c.execute(
                         'INSERT INTO storage (type, origin, key, value, modification_time, '
-                        'interpretation, profile, source_path, seq, state) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'interpretation, profile, source_path, seq, state, state_friendly) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, item.origin, item.key, item.value, item.last_modified,
-                         item.interpretation, item.profile, item.source_path, item.seq, item.state))
+                         item.interpretation, item.profile, item.source_path, item.seq,
+                         state_to_int(item.state), item.state))
 
                 elif item.row_type.startswith('session'):
                     c.execute(
                         'INSERT INTO storage (type, origin, key, value, '
-                        'interpretation, profile, source_path, seq, state) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'interpretation, profile, source_path, seq, state, state_friendly) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, item.origin, item.key, item.value, item.interpretation, item.profile,
-                         item.source_path, item.seq, item.state))
+                         item.source_path, item.seq, state_to_int(item.state), item.state))
 
                 elif item.row_type.startswith('file system'):
                     c.execute(
                         'INSERT INTO storage (type, origin, key, value, modification_time, '
-                        'interpretation, profile, source_path, seq, state, file_exists, file_size, '
+                        'interpretation, profile, source_path, seq, state, state_friendly, file_exists, file_size, '
                         'magic_results) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, item.origin, item.key, item.value, item.last_modified,
-                         item.interpretation, item.profile, item.source_path, item.seq, item.state,
+                         item.interpretation, item.profile, item.source_path, item.seq,
+                         state_to_int(item.state), item.state,
                          item.file_exists, item.file_size, item.magic_results))
 
                 elif item.row_type.startswith('indexed'):
                     c.execute(
                         'INSERT INTO storage (type, origin, key, value, '
-                        'interpretation, profile, source_path, seq, state, database) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'interpretation, profile, source_path, seq, state, state_friendly, database) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, item.origin, item.key, item.value, item.interpretation, item.profile,
-                         item.source_path, item.seq, item.state, item.database))
+                         item.source_path, item.seq, state_to_int(item.state), item.state, item.database))
 
             for item in self.parsed_extension_data:
                 if item.row_type:
                     c.execute(
                         'INSERT INTO extension_data (type, name, extension_id, key, value, '
-                        'interpretation, profile, source_path, offset, seq, state, was_compressed) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'interpretation, profile, source_path, offset, seq, state, state_friendly, was_compressed) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, item.extension_name, item.extension_id, item.key, item.value,
-                         item.interpretation, item.profile, item.source_path, item.offset, item.seq, item.state,
-                         item.was_compressed))
+                         item.interpretation, item.profile, item.source_path, item.offset, item.seq,
+                         state_to_int(item.state), item.state, item.was_compressed))
 
             for item in self.parsed_sync_data:
                 if item.row_type:
                     c.execute(
                         'INSERT INTO sync_data (type, key, value, interpretation, profile, source_path, '
-                        'offset, seq, state, file_type) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'offset, seq, state, state_friendly, file_type) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, item.key, item.value, item.interpretation, item.profile, item.source_path,
-                         item.offset, item.seq, item.state, item.file_type))
+                         item.offset, item.seq, state_to_int(item.state), item.state, item.file_type))
 
             if self.__dict__.get('installed_extensions'):
                 for extension in self.installed_extensions['data']:
@@ -1501,6 +1520,29 @@ class AnalysisSession(object):
                         'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         (extension.name, extension.description, extension.version, extension.ext_id,
                          extension.profile, extension.permissions, extension.manifest))
+
+            for preference_group in self.preferences:
+                title = preference_group.get('presentation', {}).get('title')
+                current_group = None
+                for preference in preference_group.get('data', []):
+                    group_value = preference_field(preference, 'group')
+                    name_value = preference_field(preference, 'name')
+                    value_value = preference_field(preference, 'value')
+                    description_value = preference_field(preference, 'description')
+
+                    if group_value and is_empty(name_value) and is_empty(value_value) and is_empty(description_value):
+                        current_group = group_value
+                        continue
+
+                    if group_value:
+                        current_group = group_value
+                    elif current_group:
+                        group_value = current_group
+
+                    c.execute(
+                        'INSERT INTO preferences (group_name, name, value, description, title) '
+                        'VALUES (?, ?, ?, ?, ?)',
+                        (group_value, name_value, value_value, description_value, title))
 
         output_db.close()
 
@@ -1526,7 +1568,28 @@ class AnalysisSession(object):
             for parsed_sync_data in self.parsed_sync_data:
                 write_jsonl_record(parsed_sync_data)
             for preference_group in self.preferences:
+                current_group = None
                 for preference in preference_group.get('data', []):
+                    group_value = preference.get('group')
+                    name_value = preference.get('name')
+                    value_value = preference.get('value')
+                    description_value = preference.get('description')
+
+                    is_header_row = (
+                        group_value and
+                        name_value is None and
+                        value_value is None and
+                        description_value is None
+                    )
+                    if is_header_row:
+                        current_group = group_value
+                        continue
+
+                    if group_value:
+                        current_group = group_value
+                    elif current_group:
+                        group_value = current_group
+
                     preference_record = {
                         'source_short': 'WEBHIST',
                         'source_long': 'Chrome Preferences',
@@ -1534,11 +1597,11 @@ class AnalysisSession(object):
                         'timestamp_desc': 'Not a time',
                         'data_type': 'chrome:preferences:entry',
                         'datetime': '1970-01-01T00:00:00.000000+00:00',
-                        'group': preference.get('group'),
-                        'name': preference.get('name'),
-                        'value': preference.get('value'),
-                        'description': preference.get('description'),
-                        'message': f'{preference.get("name", "")}: {preference.get("value", "")}',
+                        'group': group_value,
+                        'name': name_value,
+                        'value': value_value,
+                        'description': description_value,
+                        'message': f'{name_value or ""}: {value_value or ""}',
                     }
                     preference_record = {k: v for k, v in preference_record.items() if v is not None}
                     write_jsonl_record(preference_record)
