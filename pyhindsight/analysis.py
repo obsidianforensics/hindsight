@@ -103,6 +103,18 @@ class HindsightEncoder(json.JSONEncoder):
             del(item['row_type'], item['start_time'])
             return item
 
+        if isinstance(obj, Chrome.BrowserExtension):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:extension:installed'
+            item['source_long'] = 'Chrome Extensions'
+            item['url'] = item.get('ext_id')
+
+            item['message'] = f'{item.get("name", "")} ({item.get("version", "")})'
+
+            return item
+
         if isinstance(obj, Chrome.CookieItem):
             item = HindsightEncoder.base_encoder(obj)
 
@@ -176,6 +188,8 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:local_storage:entry'
             item['source_long'] = 'Chrome LocalStorage'
             item['url'] = item['origin'][1:]
+            item['state_friendly'] = item.get('state')
+            item['state'] = 0 if item.get('state') == 'Deleted' else 1
 
             item['message'] = f'key: {item["key"]} value: {item["value"]}'
 
@@ -189,8 +203,29 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:session_storage:entry'
             item['source_long'] = 'Chrome Session Storage'
             item['url'] = item['origin']
+            item['state_friendly'] = item.get('state')
+            item['state'] = 0 if item.get('state') == 'Deleted' else 1
 
             item['message'] = f'key: {item.get("key", "")} value: {item.get("value", "")}'
+
+            del (item['row_type'])
+            return item
+
+        if isinstance(obj, Chrome.IndexedDBItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:indexeddb:entry'
+            item['source_long'] = 'Chrome IndexedDB'
+            item['url'] = item['origin']
+            item['state_friendly'] = item.get('state')
+            item['state'] = 0 if item.get('state') == 'Deleted' else 1
+
+            item['message'] = (
+                f'database: {item.get("database", "")} '
+                f'key: {item.get("key", "")} '
+                f'value: {item.get("value", "")}'
+            )
 
             del (item['row_type'])
             return item
@@ -202,6 +237,8 @@ class HindsightEncoder(json.JSONEncoder):
             item['data_type'] = 'chrome:file_system:entry'
             item['source_long'] = 'Chrome File System'
             item['url'] = item['origin']
+            item['state_friendly'] = item.get('state')
+            item['state'] = 0 if item.get('state') == 'Deleted' else 1
 
             item['message'] = f'key: {item["key"]} value: {item["value"]}'
 
@@ -230,6 +267,39 @@ class HindsightEncoder(json.JSONEncoder):
             item['message'] = f'Updated preference: {item["key"]}: {item["value"]})'
 
             del(item['row_type'], item['name'])
+            return item
+
+        if isinstance(obj, Chrome.ExtensionStorageItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:extension_storage:entry'
+            item['source_long'] = 'Chrome Extension Storage'
+            item['url'] = item.get('extension_id')
+            item['state_friendly'] = item.get('state')
+            item['state'] = 0 if item.get('state') == 'Deleted' else 1
+
+            item['message'] = (
+                f'extension: {item.get("extension_name", "")} '
+                f'key: {item.get("key", "")} '
+                f'value: {item.get("value", "")}'
+            )
+
+            del (item['row_type'])
+            return item
+
+        if isinstance(obj, Chrome.SyncDataItem):
+            item = HindsightEncoder.base_encoder(obj)
+
+            item['timestamp_desc'] = 'Not a time'
+            item['data_type'] = 'chrome:sync_data:entry'
+            item['source_long'] = 'Chrome Sync Data'
+            item['state_friendly'] = item.get('state')
+            item['state'] = 0 if item.get('state') == 'Deleted' else 1
+
+            item['message'] = f'key: {item.get("key", "")} value: {item.get("value", "")}'
+
+            del (item['row_type'])
             return item
 
         if isinstance(obj, Chrome.SiteSetting):
@@ -1436,11 +1506,45 @@ class AnalysisSession(object):
 
     def generate_jsonl(self, output_file):
         with open(output_file, mode='w') as jsonl:
+            unparsed_count = 0
+
+            def write_jsonl_record(record):
+                nonlocal unparsed_count
+                record_json = json.dumps(record, cls=HindsightEncoder)
+                if record_json == 'null':
+                    unparsed_count += 1
+                    return
+                jsonl.write(record_json)
+                jsonl.write('\n')
+
             for parsed_artifact in self.parsed_artifacts:
-                parsed_artifact_json = json.dumps(parsed_artifact, cls=HindsightEncoder)
-                jsonl.write(parsed_artifact_json)
-                jsonl.write('\n')
+                write_jsonl_record(parsed_artifact)
             for parsed_storage in self.parsed_storage:
-                parsed_storage_json = json.dumps(parsed_storage, cls=HindsightEncoder)
-                jsonl.write(parsed_storage_json)
-                jsonl.write('\n')
+                write_jsonl_record(parsed_storage)
+            for parsed_extension_data in self.parsed_extension_data:
+                write_jsonl_record(parsed_extension_data)
+            for parsed_sync_data in self.parsed_sync_data:
+                write_jsonl_record(parsed_sync_data)
+            for preference_group in self.preferences:
+                for preference in preference_group.get('data', []):
+                    preference_record = {
+                        'source_short': 'WEBHIST',
+                        'source_long': 'Chrome Preferences',
+                        'parser': f'hindsight/{__version__}',
+                        'timestamp_desc': 'Not a time',
+                        'data_type': 'chrome:preferences:entry',
+                        'datetime': '1970-01-01T00:00:00.000000+00:00',
+                        'group': preference.get('group'),
+                        'name': preference.get('name'),
+                        'value': preference.get('value'),
+                        'description': preference.get('description'),
+                        'message': f'{preference.get("name", "")}: {preference.get("value", "")}',
+                    }
+                    preference_record = {k: v for k, v in preference_record.items() if v is not None}
+                    write_jsonl_record(preference_record)
+            installed_extensions = getattr(self, 'installed_extensions', None)
+            if installed_extensions and installed_extensions.get('data'):
+                for extension in installed_extensions['data']:
+                    write_jsonl_record(extension)
+            if unparsed_count:
+                log.warning(f'Skipped {unparsed_count} unparsed JSONL record(s)')
