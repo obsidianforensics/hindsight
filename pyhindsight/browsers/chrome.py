@@ -101,7 +101,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 144))
+        possible_versions = list(range(1, 145))
         previous_possible_versions = possible_versions[:]
 
         def update_and_rollback_if_empty(version_list, prev_version_list):
@@ -2793,7 +2793,8 @@ class Chrome(WebBrowser):
         self.parsed_artifacts.extend(result_list)
 
     def process(self):
-        supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies', 'Login Data',
+        supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies',
+                               'Login Data', 'Login Data For Account'
                                'Extension Cookies', 'Network Action Predictor', 'DIPS']
         supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications', 'Network']
         supported_jsons = ['Bookmarks', 'TransportSecurity']  # , 'Preferences']
@@ -2944,13 +2945,11 @@ class Chrome(WebBrowser):
                     self.profile_path, 'Media History', self.version, 'media (playback end)',
                     display_key='Media History', display_value='Media History records')
 
-
             if 'Web Data' in input_listing:
                 run_with_status(
                     'Autofill', 'Autofill', self.get_autofill,
                     self.profile_path, 'Web Data', self.version,
                     display_key='Autofill', display_value='Autofill records')
-
 
             if 'Login Data' in input_listing:
                 run_with_status(
@@ -2958,6 +2957,11 @@ class Chrome(WebBrowser):
                     self.profile_path, 'Login Data', self.version,
                     display_key='Login Data', display_value='Login Data records')
 
+            if 'Login Data For Account' in input_listing:
+                run_with_status(
+                    'Login Data', 'Login Data', self.get_login_data,
+                    self.profile_path, 'Login Data For Account', self.version,
+                    display_key='Login Data', display_value='Login Data (Account) records')
 
             if 'Bookmarks' in input_listing:
                 run_with_status(
