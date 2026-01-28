@@ -19,7 +19,14 @@ import time
 import pyhindsight
 import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
-from pyhindsight.utils import banner, format_meta_output, format_plugin_output
+from pyhindsight.utils import get_rich_banner
+
+import rich.align
+import rich.console
+import rich.live
+import rich.spinner
+import rich.table
+import rich.text
 
 # Try to import module for timezone support
 try:
@@ -52,7 +59,7 @@ The Chrome Profile folder default locations are:
 
     class MyParser(argparse.ArgumentParser):
         def error(self, message):
-            sys.stderr.write('error: %s\n' % message)
+            sys.stderr.write(f'error: {message}\n')
             self.print_help()
             sys.exit(2)
 
@@ -133,27 +140,27 @@ def main():
         with open(f'{analysis_session.output_name}.{analysis_session.selected_output_format}', 'wb') as file_output:
             shutil.copyfileobj(string_buffer, file_output)
 
-    def write_sqlite(analysis_session):
+    def write_sqlite(analysis_session, console):
         output_file = analysis_session.output_name + '.sqlite'
 
         if os.path.exists(output_file):
             if os.path.getsize(output_file) > 0:
-                print(('\nDatabase file "{}" already exists.\n'.format(output_file)))
-                user_input = input('Would you like to (O)verwrite it, (R)ename output file, or (E)xit? ')
+                console.print(f'\nDatabase file "{output_file}" already exists.\n')
+                user_input = console.input('Would you like to (O)verwrite it, (R)ename output file, or (E)xit? ')
                 over_re = re.compile(r'(^o$|overwrite)', re.IGNORECASE)
                 rename_re = re.compile(r'(^r$|rename)', re.IGNORECASE)
                 exit_re = re.compile(r'(^e$|exit)', re.IGNORECASE)
                 if re.search(exit_re, user_input):
-                    print("Exiting... ")
+                    console.print("Exiting... ")
                     sys.exit()
                 elif re.search(over_re, user_input):
                     os.remove(output_file)
-                    print(("Deleted old \"%s\"" % output_file))
+                    console.print(f'Deleted old "{output_file}"')
                 elif re.search(rename_re, user_input):
-                    output_file = "{}_1.sqlite".format(output_file[:-7])
-                    print(("Renaming new output to {}".format(output_file)))
+                    output_file = f"{output_file[:-7]}_1.sqlite"
+                    console.print(f"Renaming new output to {output_file}")
                 else:
-                    print("Did not understand response.  Exiting... ")
+                    console.print("Did not understand response.  Exiting... ")
                     sys.exit()
 
         analysis_session.generate_sqlite(output_file)
@@ -162,10 +169,9 @@ def main():
         output_file = analysis_session.output_name + '.jsonl'
         analysis_session.generate_jsonl(output_file)
 
-    print(banner)
-
-    # Useful when Hindsight is run from a different directory than where the file is located
-    real_path = os.path.dirname(os.path.realpath(sys.argv[0]))
+    console = rich.console.Console()
+    rich_banner = get_rich_banner()
+    console.print(rich.align.Align.center(rich_banner))
 
     # Set up the AnalysisSession object, and transfer the relevant input arguments to it
     analysis_session = AnalysisSession()
@@ -195,61 +201,109 @@ def main():
     # Hindsight version info
     log.info(
         '\n' + '#' * 80 +
-        f'\n##   Hindsight v{pyhindsight.__version__} (https://github.com/obsidianforensics/hindsight)   ##\n' +
+        f'\n##    Hindsight v{pyhindsight.__version__} (https://github.com/obsidianforensics/hindsight)     ##\n' +
         '#' * 80)
 
     # Analysis start time
-    print((format_meta_output("Start time", str(datetime.datetime.now())[:-3])))
+    start_datetime = datetime.datetime.now()
+    start_time = str(start_datetime)[:-3]
 
     # Print input & output directories
     analysis_session.input_path = args.input
-    print((format_meta_output('Input directory', args.input)))
-    print((format_meta_output(
-        'Output name', f'{analysis_session.output_name}.{analysis_session.selected_output_format}')))
-
-    # Run the AnalysisSession
-    print("\n Processing:")
+    output_name = f'{analysis_session.output_name}.{analysis_session.selected_output_format}'
+    # Find browser profiles early so we can display the count
+    profile_paths = analysis_session.find_browser_profiles(args.input)
+    profile_count = len(profile_paths)
+    console.rule("Processing", style="green")
+    meta_table = rich.table.Table(show_header=False, box=None)
+    meta_table.add_column("Item", style="bold", justify="right", no_wrap=True)
+    meta_table.add_column("Value", overflow="fold")
+    meta_table.add_row("Start time", start_time)
+    meta_table.add_row("Input directory", args.input)
+    meta_table.add_row("Profiles found", str(profile_count))
+    console.print(rich.align.Align.center(meta_table))
+    console.print()
     run_status = analysis_session.run()
     if not run_status:
         if analysis_session.fatal_error:
-            print(f"\n Fatal Error '{analysis_session.fatal_error}'")
+            console.print(f"\n Fatal Error '{analysis_session.fatal_error}'", style="bold red")
         sys.exit(1)
 
-    print("\n Running plugins:")
+    console.rule("Running Plugins", style="green")
+    console.print()
     log.info("Plugins:")
     completed_plugins = []
+    plugin_rows = []
+
+    def build_plugin_table():
+        table = rich.table.Table(show_header=False, box=None, expand=False)
+        table.add_column(justify="right", min_width=44)
+        table.add_column(justify="center", min_width=30)
+        for row in plugin_rows:
+            table.add_row(*row)
+        return rich.align.Align.center(table)
+
+    def update_plugin_table(live):
+        if live:
+            live.update(build_plugin_table())
+
+    def format_plugin_name(name, version):
+        text = rich.text.Text()
+        text.append(f"{name} ")
+        text.append(f"(v{version}):", style="dim")
+        return text
+
+    def format_plugin_result(items):
+        text = rich.text.Text()
+        text.append("- ", style="dim")
+        text.append(f"{items}")
+        text.append(" -", style="dim")
+        return text
+
+    def running_status():
+        return rich.spinner.Spinner("dots")
+
+    live = rich.live.Live(build_plugin_table(), console=console, refresh_per_second=6)
 
     # First run built-in plugins that ship with Hindsight
     log.info(" Built-in Plugins:")
-    for plugin in pyhindsight.plugins.__all__:
-        # Check to see if we've already run this plugin (likely from a different path)
-        if plugin in completed_plugins:
-            continue
+    with live:
+        for plugin in pyhindsight.plugins.__all__:
+            # Check to see if we've already run this plugin (likely from a different path)
+            if plugin in completed_plugins:
+                continue
 
-        log.debug(f" - Loading '{plugin}'")
-        try:
-            module = importlib.import_module(f'pyhindsight.plugins.{plugin}')
-        except ImportError as e:
-            log.error(f' - Error: {e}')
-            print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
-            continue
-        except Exception as e:
-            log.error(f' - Exception in {plugin} plugin: {e}')
-            continue
+            log.debug(f" - Loading '{plugin}'")
+            try:
+                module = importlib.import_module(f'pyhindsight.plugins.{plugin}')
+            except ImportError as e:
+                log.error(f' - Error: {e}')
+                plugin_rows.append((format_plugin_name(plugin, "unknown"), rich.text.Text("- import failed -", style="red")))
+                update_plugin_table(live)
+                continue
+            except Exception as e:
+                log.error(f' - Exception in {plugin} plugin: {e}')
+                continue
 
-        try:
-            log.info(f" - Running '{module.friendlyName}' plugin")
-            parsed_items = module.plugin(analysis_session)
-            print((format_plugin_output(module.friendlyName, module.version, parsed_items)))
-            log.info(f' - Completed; {parsed_items}')
-            completed_plugins.append(plugin)
-        except Exception as e:
-            print((format_plugin_output(module.friendlyName, module.version, 'failed')))
-            log.info(f' - Failed; {e}')
+            try:
+                log.info(f" - Running '{module.friendlyName}' plugin")
+                plugin_rows.append((format_plugin_name(module.friendlyName, module.version), running_status()))
+                update_plugin_table(live)
+                parsed_items = module.plugin(analysis_session)
+                plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), format_plugin_result(parsed_items))
+                update_plugin_table(live)
+                log.info(f' - Completed; {parsed_items}')
+                completed_plugins.append(plugin)
+            except Exception as e:
+                plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), rich.text.Text("- failed -", style="red"))
+                update_plugin_table(live)
+                log.info(f' - Failed; {e}')
 
     # Then look for any custom user-provided plugins in a 'plugins' directory
     log.info(" Custom Plugins:")
 
+    # Useful when Hindsight is run from a different directory than where the file is located
+    real_path = os.path.dirname(os.path.realpath(sys.argv[0]))
     if real_path not in sys.path:
         sys.path.insert(0, real_path)
 
@@ -259,7 +313,7 @@ def main():
         for potential_plugin_path in [os.path.join(potential_path, 'plugins'),
                                       os.path.join(potential_path, 'pyhindsight', 'plugins')]:
             if os.path.isdir(potential_plugin_path):
-                log.info(" Found custom plugin directory {}:".format(potential_plugin_path))
+                log.info(f" Found custom plugin directory {potential_plugin_path}:")
                 try:
                     # Insert the current plugin location to the system path, so we can import plugin modules by name
                     sys.path.insert(0, potential_plugin_path)
@@ -274,31 +328,37 @@ def main():
 
                             # Check to see if we've already run this plugin (likely from a different path)
                             if plugin in completed_plugins:
-                                log.debug(" - Skipping '{}'; a plugin with that name has run already".format(plugin))
+                                log.debug(f" - Skipping '{plugin}'; a plugin with that name has run already")
                                 continue
 
-                            log.debug(" - Loading '{}'".format(plugin))
+                            log.debug(f" - Loading '{plugin}'")
                             try:
                                 module = __import__(plugin)
                             except ImportError as e:
                                 log.error(f' - Error: {e}')
-                                print((format_plugin_output(plugin, "-unknown", 'import failed (see log)')))
+                                plugin_rows.append((format_plugin_name(plugin, "unknown"), rich.text.Text("- import failed -", style="red")))
+                                update_plugin_table(None)
                                 continue
                             except Exception as e:
                                 log.error(f' - Exception in {plugin} plugin: {e}')
+                                continue
 
                             try:
-                                log.info(" - Running '{}' plugin".format(module.friendlyName))
+                                log.info(f" - Running '{module.friendlyName}' plugin")
+                                plugin_rows.append((format_plugin_name(module.friendlyName, module.version), running_status()))
+                                update_plugin_table(None)
                                 parsed_items = module.plugin(analysis_session)
-                                print((format_plugin_output(module.friendlyName, module.version, parsed_items)))
-                                log.info(" - Completed; {}".format(parsed_items))
+                                plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), format_plugin_result(parsed_items))
+                                update_plugin_table(None)
+                                log.info(f' - Completed; {parsed_items}')
                                 completed_plugins.append(plugin)
                             except Exception as e:
-                                print((format_plugin_output(module.friendlyName, module.version, 'failed')))
-                                log.info(" - Failed; {}".format(e))
+                                plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), rich.text.Text("- failed -", style="red"))
+                                update_plugin_table(None)
+                                log.info(f' - Failed; {e}')
                 except Exception as e:
-                    log.debug(' - Error loading plugins ({})'.format(e))
-                    print('  - Error loading plugins')
+                    log.debug(f' - Error loading plugins ({e})')
+                    console.print('  - Error loading plugins')
                 finally:
                     # Remove the current plugin location from the system path, so we don't loop over it again
                     sys.path.remove(potential_plugin_path)
@@ -309,28 +369,45 @@ def main():
         os.makedirs(os.path.dirname(analysis_session.output_name))
 
     # Get desired output type form args.format and call the correct output creation function
+    output_file = os.path.abspath(f"{analysis_session.output_name}.{analysis_session.selected_output_format}")
+
+    console.print()
+    console.rule("Writing Output", style="green")
+    console.print()
+
     if analysis_session.selected_output_format == 'xlsx':
         log.info("Writing output; XLSX format selected")
         try:
-            print(("\n Writing {}.xlsx".format(analysis_session.output_name)))
             write_excel(analysis_session)
         except IOError:
             error_type, value, traceback = sys.exc_info()
-            print((value, "- is the file open?  If so, please close it and try again."))
+            console.print(f"{value} - is the file open?  If so, please close it and try again.")
             log.error(f"Error writing XLSX file; type: {error_type}, value: {value}, traceback: {traceback}")
 
     elif args.format == 'jsonl':
         log.info("Writing output; JSONL format selected")
-        print(("\n Writing {}.jsonl".format(analysis_session.output_name)))
         write_jsonl(analysis_session)
 
     elif args.format == 'sqlite':
         log.info("Writing output; SQLite format selected")
-        print(("\n Writing {}.sqlite".format(analysis_session.output_name)))
-        write_sqlite(analysis_session)
+        write_sqlite(analysis_session, console)
 
-    # Display and log finish time
-    print(f'\n Finish time: {str(datetime.datetime.now())[:-3]}')
+    # Display finish info
+    total_items = len(analysis_session.parsed_artifacts) + len(analysis_session.parsed_storage)
+    elapsed = datetime.datetime.now() - start_datetime
+    elapsed_str = str(elapsed).split('.')[0]  # Remove microseconds
+    finish_time = str(datetime.datetime.now())[:-3]
+
+    output_table = rich.table.Table(show_header=False, box=None)
+    output_table.add_column("Item", style="bold", justify="right", no_wrap=True)
+    output_table.add_column("Value", overflow="fold")
+    output_table.add_row("Output path", output_file)
+    output_table.add_row("Log path", os.path.abspath(analysis_session.log_path))
+    output_table.add_row("Format", analysis_session.selected_output_format.upper())
+    output_table.add_row("Total items", str(total_items))
+    output_table.add_row("Elapsed time", elapsed_str)
+    output_table.add_row("Finish time", finish_time)
+    console.print(rich.align.Align.center(output_table))
     log.info(f'Finish time: {str(datetime.datetime.now())[:-3]}\n\n')
 
 
