@@ -8,4 +8,5 @@ pycryptodomex>=3.9.7
 pytz>=2021.3
 setuptools>=65.5.1
 xlsxwriter>=3.1
+rich>=13.0
 ccl_chromium_reader @ git+https://github.com/cclgroupltd/ccl_chromium_reader.git

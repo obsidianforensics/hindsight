@@ -9,7 +9,8 @@ import importlib
 import pyhindsight
 import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
-from pyhindsight.utils import banner
+from pyhindsight.utils import get_rich_banner
+import rich.console
 
 # This will be the main pyhindsight.AnalysisSession object that all the work will be done on
 analysis_session = None
@@ -270,8 +271,8 @@ def sqlite_view():
 
 
 def main():
-
-    print(banner)
+    console = rich.console.Console()
+    console.print(get_rich_banner())
     global STATIC_PATH
 
     # Get the hindsight module's path on disk to add to sys.path, so we can find templates and static files
@@ -290,7 +291,6 @@ def main():
         if os.path.isdir(potential_static_path):
             STATIC_PATH = potential_static_path
 
-    # webbrowser.open("http://localhost:8080")
     bottle.run(host='localhost', port=8080, debug=True)
 
 

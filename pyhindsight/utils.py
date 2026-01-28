@@ -242,16 +242,52 @@ def read_int64(input_bytes, ptr):
 
 
 banner = r'''
-################################################################################
-
-                   _     _           _     _       _     _
-                  | |   (_)         | |   (_)     | |   | |
-                  | |__  _ _ __   __| |___ _  __ _| |__ | |_
-                  | '_ \| | '_ \ / _` / __| |/ _` | '_ \| __|
-                  | | | | | | | | (_| \__ \ | (_| | | | | |_
-                  |_| |_|_|_| |_|\__,_|___/_|\__, |_| |_|\__|
-                                              __/ |
-                       by ryan@hindsig.ht    |___/ v{}
-
-################################################################################
+ _                 _             _     _
+| |    ▼          | |    ▼      | |   | |
+| |__  _ _ __   __| |___ _  __ _| |__ | |_
+| '_ \| | '_ \ / _` / __| |/ _` | '_ \| __|
+| | | | | | | | (_| \__ \ | (_| | | | | |_
+|_| |_|_|_| |_|\__,_|___/_|\__, ▼_| |_|\__|
+                            __/ |
+     by ryan@hindsig.ht    |___/  v{}
 '''.format(__version__)
+
+
+def get_rich_banner():
+    """
+    Returns a colored version of the banner using Rich Text.
+    - Dim for outline characters
+    - White for attribution text
+    - Green for ▼ and . characters
+    """
+    import rich.text
+    import re
+
+    banner_lines = banner.rstrip('\n').split('\n')[1:]  # [1:] to skip first empty line from triple quote
+    colored_text = rich.text.Text()
+
+    for line in banner_lines:
+        if 'by ryan@' in line:
+            # Special handling for attribution line
+            match = re.match(r'^(\s*)(by ryan@hindsig)(\.)(ht)(\s+)(\|___/)(\s+)(v\S+)(\s*)$', line)
+            if match:
+                colored_text.append(match.group(1), style="dim")      # leading spaces
+                colored_text.append(match.group(2), style="white")    # by ryan@hindsig
+                colored_text.append(match.group(3), style="green")    # .
+                colored_text.append(match.group(4), style="white")    # ht
+                colored_text.append(match.group(5), style="dim")      # spaces
+                colored_text.append(match.group(6), style="dim")      # |___/
+                colored_text.append(match.group(7), style="dim")      # spaces
+                colored_text.append(match.group(8), style="white")    # version
+                colored_text.append(match.group(9), style="dim")      # trailing spaces
+            else:
+                colored_text.append(line, style="dim")
+        else:
+            for char in line:
+                if char == '▼':
+                    colored_text.append(char, style="green")
+                else:
+                    colored_text.append(char, style="dim")
+        colored_text.append('\n')
+
+    return colored_text

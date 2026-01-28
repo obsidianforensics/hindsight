@@ -14,6 +14,14 @@ import puremagic
 import base64
 import pytz
 import ccl_chromium_reader
+import rich.console
+import rich.live
+import rich.spinner
+import rich.table
+import rich.columns
+import rich.align
+import rich.panel
+import rich.text
 
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
@@ -2760,9 +2768,6 @@ class Chrome(WebBrowser):
         else:
             print('Unable to determine browser version')
 
-        print(self.format_profile_path(self.profile_path))
-
-        print(self.format_processing_output(f'Detected {self.browser_name} version', self.display_version))
         log.info(f'Detected {self.browser_name} version {self.display_version}')
 
         log.info('Found the following supported files or directories:')
@@ -2770,230 +2775,288 @@ class Chrome(WebBrowser):
             if input_file in supported_items:
                 log.info(f' - {input_file}')
 
-        # Process History files
-        custom_type_re = re.compile(r'__([A-z0-9\._]*)$')
-        for input_file in input_listing:
-            if re.search(r'^History__|^History$', input_file):
-                row_type = 'url'
-                custom_type_m = re.search(custom_type_re, input_file)
-                if custom_type_m:
-                    row_type = f'url ({custom_type_m.group(1)})'
-                self.get_history(self.profile_path, input_file, self.version, row_type)
-                display_type = 'URL' if not custom_type_m else f'URL ({custom_type_m.group(1)})'
-                self.artifacts_display[input_file] = f'{display_type} records'
-                print(self.format_processing_output(
-                    self.artifacts_display[input_file], 
-                    self.artifacts_counts.get(input_file, '0')))
+        console = rich.console.Console()
+        output_groups = {}
+        group_order = [
+            "User Activity",
+            "Website Storage",
+            "Browser Extensions",
+            "Configuration & Supporting Data",
+        ]
+        current_group = group_order[0]
 
-                row_type = 'download'
-                if custom_type_m:
-                    row_type = f'download ({custom_type_m.group(1)})'
-                self.get_downloads(self.profile_path, input_file, self.version, row_type)
-                display_type = 'Download' if not custom_type_m else f'Download ({custom_type_m.group(1)})'
-                self.artifacts_display[input_file + '_downloads'] = f'{display_type} records'
-                print(self.format_processing_output(
-                    self.artifacts_display[input_file + '_downloads'], 
-                    self.artifacts_counts.get(input_file + '_downloads', '0')))
+        count_width = 7
+        table_width = 50  # Consistent width for tables and panel
 
-        if 'Archived History' in input_listing:
-            self.get_history(self.profile_path, 'Archived History', self.version, 'url (archived)')
-            self.artifacts_display['Archived History'] = "Archived URL records"
-            print(self.format_processing_output(
-                self.artifacts_display['Archived History'],
-                self.artifacts_counts.get('Archived History', '0')))
+        def build_table(rows, header_label):
+            # Header row as separate table with center alignment
+            header = rich.table.Table(show_header=False, box=None, expand=False)
+            header.add_column(justify="left", width=table_width - count_width - 8, style="bold on #333333")
+            header.add_column(justify="center", width=count_width + 8, style="bold on #333333")
+            header.add_row(rich.text.Text(header_label, style="bold"), rich.text.Text("Count", style="bold"))
 
-        if 'IndexedDB' in input_listing:
-            self.get_indexeddb(self.profile_path, 'IndexedDB')
-            self.artifacts_display['IndexedDB'] = 'IndexedDB records'
-            print(self.format_processing_output(
-                self.artifacts_display['IndexedDB'],
-                self.artifacts_counts.get('IndexedDB', '0')))
+            # Content table with right alignment
+            table = rich.table.Table(show_header=False, box=None, expand=False)
+            table.add_column(overflow="fold", justify="right", width=table_width - count_width - 8)
+            table.add_column(justify="center", width=count_width + 8, no_wrap=True)
+            for row_label, row_count in rows:
+                table.add_row(row_label, row_count)
+            return rich.console.Group(header, table)
 
-        if 'Media History' in input_listing:
-            self.get_media_history(self.profile_path, 'Media History', self.version, 'media (playback end)')
-            self.artifacts_display['Media History'] = "Media History records"
-            print(self.format_processing_output(
-                self.artifacts_display['Media History'],
-                self.artifacts_counts.get('Media History', '0')))
+        def build_group_tables():
+            tables = []
+            for group_name in group_order:
+                rows = output_groups.get(group_name, [])
+                if not rows:
+                    continue
+                inner_table = build_table(rows, group_name)
+                tables.append(rich.align.Align.center(inner_table))
+                tables.append(rich.text.Text(""))  # Padding between groups
+            return rich.console.Group(*tables)
 
-        if self.cache_path is not None and self.cache_path != '':
-            c_path, c_dir = os.path.split(self.cache_path)
-            self.get_cache(c_path, c_dir, row_type='cache')
-            self.artifacts_display['Cache'] = 'Cache records'
-            print(self.format_processing_output(
-                self.artifacts_display['Cache'],
-                self.artifacts_counts.get('Cache', '0')))
+        def build_profile_panel():
+            # Use a table with min_width so panel can expand for long paths
+            content = rich.table.Table(show_header=False, box=None, expand=False)
+            content.add_column(min_width=table_width, overflow="fold")
+            content.add_row(f"Path: {self.profile_path}")
+            content.add_row(f"Detected Browser: {self.browser_name} v{self.display_version}")
+            return rich.align.Align.center(rich.panel.Panel(content, title="Profile", border_style="green", padding=(0, 2)))
 
-        elif 'Cache' in input_listing:
-            if os.path.isdir(os.path.join(self.profile_path, 'Cache', 'Cache_Data')):
-                self.get_cache(os.path.join(self.profile_path, 'Cache'), 'Cache_Data', row_type='cache')
+        def build_live_view():
+            return rich.console.Group(build_profile_panel(), build_group_tables())
+
+        def bracketed_spinner():
+            leading = " " * (count_width - 1)
+            spinner = rich.columns.Columns(
+                [rich.text.Text("  [ ", style="dim"), rich.text.Text(leading), rich.spinner.Spinner("dots", text="", style="green"), rich.text.Text(" ]  ", style="dim")],
+                expand=False,
+                equal=False,
+                padding=(0, 0))
+            return spinner
+
+        def bracketed_count(count):
+            text = rich.text.Text()
+            text.append("[ ", style="dim")
+            if str(count) == "Failed":
+                text.append(f"{count:>{count_width}}", style="red")
+            elif str(count) == "0":
+                text.append(f"{count:>{count_width}}", style="dim")
             else:
-                self.get_cache(self.profile_path, 'Cache', row_type='cache')
-            self.artifacts_display['Cache'] = 'Cache records'
-            print(self.format_processing_output(
-                self.artifacts_display['Cache'],
-                self.artifacts_counts.get('Cache', '0')))
-            
-        if 'GPUCache' in input_listing:
-            self.get_cache(self.profile_path, 'GPUCache', row_type='cache (gpu)')
-            self.artifacts_display['GPUCache'] = 'GPU Cache records'
-            print(self.format_processing_output(
-                self.artifacts_display['GPUCache'],
-                self.artifacts_counts.get('GPUCache', '0')))
+                text.append(f"{count:>{count_width}}")
+            text.append(" ]", style="dim")
+            return text
 
-        if 'Media Cache' in input_listing:
-            self.get_cache(self.profile_path, 'Media Cache', row_type='cache (media)')
-            self.artifacts_display['Media Cache'] = 'Media Cache records'
-            print(self.format_processing_output(
-                self.artifacts_display['Media Cache'],
-                self.artifacts_counts.get('Media Cache', '0')))
+        def run_with_status(label, count_key, func, *args, display_key=None, display_value=None, **kwargs):
+            group_rows = output_groups.setdefault(current_group, [])
+            display_label_value = display_value or self.artifacts_display.get(display_key, label)
+            display_label = display_label_value
+            group_rows.append((display_label, bracketed_spinner()))
+            live.update(build_live_view())
+            func(*args, **kwargs)
+            if display_key and display_value:
+                self.artifacts_display[display_key] = display_value
+            group_rows[-1] = (display_label, bracketed_count(self.artifacts_counts.get(count_key, "0")))
+            live.update(build_live_view())
 
-        if 'Cookies' in input_listing:
-            self.get_cookies(self.profile_path, 'Cookies', self.version)
-            self.artifacts_display['Cookies'] = 'Cookie records'
-            print(self.format_processing_output(
-                self.artifacts_display['Cookies'],
-                self.artifacts_counts.get('Cookies', '0')))
+        with rich.live.Live(build_live_view(), console=console, refresh_per_second=4) as live:
+            # User Activity
+            current_group = "User Activity"
+            if 'History' in input_listing:
+                run_with_status(
+                    'URL', 'History', self.get_history,
+                    self.profile_path, 'History', self.version, 'url',
+                    display_key='History', display_value=f'URL records')
 
-        if 'Web Data' in input_listing:
-            self.get_autofill(self.profile_path, 'Web Data', self.version)
-            self.artifacts_display['Autofill'] = 'Autofill records'
-            print(self.format_processing_output(
-                self.artifacts_display['Autofill'],
-                self.artifacts_counts.get('Autofill', '0')))
+                run_with_status(
+                    'Download', 'History_downloads', self.get_downloads,
+                    self.profile_path, 'History', self.version, 'download',
+                    display_key='History_downloads', display_value=f'Download records')
 
-        if 'Bookmarks' in input_listing:
-            self.get_bookmarks(self.profile_path, 'Bookmarks', self.version)
-            self.artifacts_display['Bookmarks'] = 'Bookmark records'
-            print(self.format_processing_output(
-                self.artifacts_display['Bookmarks'],
-                self.artifacts_counts.get('Bookmarks', '0')))
+            if 'Archived History' in input_listing:
+                run_with_status(
+                    'Archived History', 'Archived History', self.get_history,
+                    self.profile_path, 'Archived History', self.version, 'url (archived)',
+                    display_key='Archived History', display_value='Archived URL records')
 
-        if 'Local Storage' in input_listing:
-            self.get_local_storage(self.profile_path, 'Local Storage')
-            self.artifacts_display['Local Storage'] = 'Local Storage records'
-            print(self.format_processing_output(
-                self.artifacts_display['Local Storage'],
-                self.artifacts_counts.get('Local Storage', '0')))
-
-        if 'Session Storage' in input_listing:
-            self.get_session_storage(self.profile_path, 'Session Storage')
-            self.artifacts_display['Session Storage'] = 'Session Storage records'
-            print(self.format_processing_output(
-                self.artifacts_display['Session Storage'],
-                self.artifacts_counts.get('Session Storage', '0')))
-
-        if 'Extensions' in input_listing:
-            self.get_extensions(self.profile_path, 'Extensions')
-            self.artifacts_display['Extensions'] = 'Extensions'
-            print(self.format_processing_output(
-                self.artifacts_display['Extensions'],
-                self.artifacts_counts.get('Extensions', '0')))
-
-        if 'Extension Cookies' in input_listing:
-            # Workaround to cap the version at 65 for Extension Cookies, as until that
-            # point it has the same database format as Cookies
-            # TODO: Need to revisit this, as in v69 the structures are the same again, but
-            # I don't have test data for v67 or v68 to tell when it changed back.
-            ext_cookies_version = self.version
-            # if min(self.version) > 65:
-            #     ext_cookies_version.insert(0, 65)
-
-            self.get_cookies(self.profile_path, 'Extension Cookies', ext_cookies_version)
-            self.artifacts_display['Extension Cookies'] = 'Extension Cookie records'
-            print(self.format_processing_output(
-                self.artifacts_display['Extension Cookies'],
-                self.artifacts_counts.get('Extension Cookies', '0')))
-
-        if 'Login Data' in input_listing:
-            self.get_login_data(self.profile_path, 'Login Data', self.version)
-            self.artifacts_display['Login Data'] = 'Login Data records'
-            print(self.format_processing_output(
-                self.artifacts_display['Login Data'],
-                self.artifacts_counts.get('Login Data', '0')))
-
-        if 'Preferences' in input_listing:
-            self.get_preferences(self.profile_path, 'Preferences')
-            self.artifacts_display['Preferences'] = 'Preference Items'
-            print(self.format_processing_output(
-                self.artifacts_display['Preferences'],
-                self.artifacts_counts.get('Preferences', '0')))
-
-        if 'Site Characteristics Database' in input_listing:
-            self.get_site_characteristics(self.profile_path, 'Site Characteristics Database')
-            self.artifacts_display['Site Characteristics'] = "Site Characteristics records"
-            print(self.format_processing_output(
-                self.artifacts_display['Site Characteristics'],
-                self.artifacts_counts.get('Site Characteristics', '0')))
-
-        if 'Sync Data' in input_listing:
-            self.get_sync_data(self.profile_path, 'Sync Data')
-            self.artifacts_display['Sync Data'] = "Sync Data"
-            print(self.format_processing_output(
-                self.artifacts_display['Sync Data'],
-                self.artifacts_counts.get('Sync Data', '0')))
-
-        if 'TransportSecurity' in input_listing:
-            self.get_transport_security(self.profile_path, 'TransportSecurity')
-            self.artifacts_display['HSTS'] = "HSTS records"
-            print(self.format_processing_output(
-                self.artifacts_display['HSTS'],
-                self.artifacts_counts.get('HSTS', '0')))
-
-        if 'File System' in input_listing:
-            self.get_file_system(self.profile_path, 'File System')
-            self.artifacts_display['File System'] = 'File System Items'
-            print(self.format_processing_output(
-                self.artifacts_display['File System'],
-                self.artifacts_counts.get('File System', '0')))
-
-        if 'DIPS' in input_listing:
-            self.get_dips_popups(self.profile_path, 'DIPS', self.version)
-            self.artifacts_display['DIPS Popups'] = 'DIPS Popup Items'
-            print(self.format_processing_output(
-                self.artifacts_display['DIPS Popups'],
-                self.artifacts_counts.get('DIPS Popups', '0')))
-
-            self.get_dips(self.profile_path, 'DIPS', self.version)
-            self.artifacts_display['DIPS'] = 'DIPS Items'
-            print(self.format_processing_output(
-                self.artifacts_display['DIPS'],
-                self.artifacts_counts.get('DIPS', '0')))
-
-        for directory in ['Extension Rules', 'Extension Scripts', 'Extension State']:
-            if directory in input_listing:
-                self.get_unified_extension_data(self.profile_path, directory)
-                self.artifacts_display[f'{directory}'] = f'{directory} records'
-                print(self.format_processing_output(
-                    self.artifacts_display[f'{directory}'],
-                    self.artifacts_counts.get(f'{directory}', '0')))
-
-        for directory in ['Local App Settings', 'Local Extension Settings',
-                          'Managed Extension Settings', 'Sync App Settings', 'Sync Extension Settings']:
-            if directory in input_listing:
-                self.get_partitioned_extension_data(self.profile_path, directory)
-                self.artifacts_display[f'{directory}'] = f'{directory} records'
-                print(self.format_processing_output(
-                    self.artifacts_display[f'{directory}'],
-                    self.artifacts_counts.get(f'{directory}', '0')))
+            if 'Media History' in input_listing:
+                run_with_status(
+                    'Media History', 'Media History', self.get_media_history,
+                    self.profile_path, 'Media History', self.version, 'media (playback end)',
+                    display_key='Media History', display_value='Media History records')
 
 
-        if network_listing:
-            if 'Cookies' in network_listing:
-                self.get_cookies(os.path.join(self.profile_path, 'Network'), 'Cookies', self.version)
-                self.artifacts_display['Cookies'] = 'Cookie records'
-                print(self.format_processing_output(
-                    self.artifacts_display['Cookies'],
-                    self.artifacts_counts.get('Cookies', '0')))
+            if 'Web Data' in input_listing:
+                run_with_status(
+                    'Autofill', 'Autofill', self.get_autofill,
+                    self.profile_path, 'Web Data', self.version,
+                    display_key='Autofill', display_value='Autofill records')
 
-            if 'TransportSecurity' in network_listing:
-                self.get_transport_security(os.path.join(self.profile_path, 'Network'), 'TransportSecurity')
-                self.artifacts_display['HSTS'] = "HSTS records"
-                print(self.format_processing_output(
-                    self.artifacts_display['HSTS'],
-                    self.artifacts_counts.get('HSTS', '0')))
 
-        # Destroy the cached key so that json serialization doesn't
+            if 'Login Data' in input_listing:
+                run_with_status(
+                    'Login Data', 'Login Data', self.get_login_data,
+                    self.profile_path, 'Login Data', self.version,
+                    display_key='Login Data', display_value='Login Data records')
+
+
+            if 'Bookmarks' in input_listing:
+                run_with_status(
+                    'Bookmarks', 'Bookmarks', self.get_bookmarks,
+                    self.profile_path, 'Bookmarks', self.version,
+                    display_key='Bookmarks', display_value='Bookmark records')
+
+            # Website Storage
+            current_group = "Website Storage"
+            if network_listing and 'Cookies' in network_listing:
+                run_with_status(
+                    'Network Cookies', 'Cookies', self.get_cookies,
+                    os.path.join(self.profile_path, 'Network'), 'Cookies', self.version,
+                    display_key='Cookies', display_value='Cookie records')
+
+            elif 'Cookies' in input_listing:
+                run_with_status(
+                    'Cookies', 'Cookies', self.get_cookies,
+                    self.profile_path, 'Cookies', self.version,
+                    display_key='Cookies', display_value='Cookie records')
+
+            if self.cache_path is not None and self.cache_path != '':
+                c_path, c_dir = os.path.split(self.cache_path)
+                run_with_status(
+                    'Cache', 'Cache', self.get_cache,
+                    c_path, c_dir, row_type='cache',
+                    display_key='Cache', display_value='Cache records')
+
+            elif 'Cache' in input_listing:
+                if os.path.isdir(os.path.join(self.profile_path, 'Cache', 'Cache_Data')):
+                    run_with_status(
+                        'Cache', 'Cache', self.get_cache,
+                        os.path.join(self.profile_path, 'Cache'), 'Cache_Data', row_type='cache',
+                        display_key='Cache', display_value='Cache records')
+                else:
+                    run_with_status(
+                        'Cache', 'Cache', self.get_cache,
+                        self.profile_path, 'Cache', row_type='cache',
+                        display_key='Cache', display_value='Cache records')
+                
+            if 'GPUCache' in input_listing:
+                run_with_status(
+                    'GPU Cache', 'GPUCache', self.get_cache,
+                    self.profile_path, 'GPUCache', row_type='cache (gpu)',
+                    display_key='GPUCache', display_value='GPU Cache records')
+
+            if 'Media Cache' in input_listing:
+                run_with_status(
+                    'Media Cache', 'Media Cache', self.get_cache,
+                    self.profile_path, 'Media Cache', row_type='cache (media)',
+                    display_key='Media Cache', display_value='Media Cache records')
+
+            if 'Local Storage' in input_listing:
+                run_with_status(
+                    'Local Storage', 'Local Storage', self.get_local_storage,
+                    self.profile_path, 'Local Storage',
+                    display_key='Local Storage', display_value='Local Storage records')
+
+            if 'Session Storage' in input_listing:
+                run_with_status(
+                    'Session Storage', 'Session Storage', self.get_session_storage,
+                    self.profile_path, 'Session Storage',
+                    display_key='Session Storage', display_value='Session Storage records')
+
+            if 'IndexedDB' in input_listing:
+                run_with_status(
+                    'IndexedDB', 'IndexedDB', self.get_indexeddb,
+                    self.profile_path, 'IndexedDB',
+                    display_key='IndexedDB', display_value='IndexedDB records')
+
+            if 'File System' in input_listing:
+                run_with_status(
+                    'File System', 'File System', self.get_file_system,
+                    self.profile_path, 'File System',
+                    display_key='File System', display_value='File System items')
+
+            # Browser Extensions
+            current_group = "Browser Extensions"
+
+            if 'Extensions' in input_listing:
+                run_with_status(
+                    'Extensions', 'Extensions', self.get_extensions,
+                    self.profile_path, 'Extensions',
+                    display_key='Extensions', display_value='Installed Extensions')
+
+            if 'Extension Cookies' in input_listing:
+                # Workaround to cap the version at 65 for Extension Cookies, as until that
+                # point it has the same database format as Cookies
+                # TODO: Need to revisit this, as in v69 the structures are the same again, but
+                # I don't have test data for v67 or v68 to tell when it changed back.
+                ext_cookies_version = self.version
+                # if min(self.version) > 65:
+                #     ext_cookies_version.insert(0, 65)
+
+                run_with_status(
+                    'Extension Cookies', 'Extension Cookies', self.get_cookies,
+                    self.profile_path, 'Extension Cookies', ext_cookies_version,
+                    display_key='Extension Cookies', display_value='Extension Cookie records')
+
+            for directory in ['Extension Rules', 'Extension Scripts', 'Extension State']:
+                if directory in input_listing:
+                    run_with_status(
+                        directory, directory, self.get_unified_extension_data,
+                        self.profile_path, directory,
+                        display_key=f'{directory}', display_value=f'{directory} records')
+
+            for directory in ['Local App Settings', 'Local Extension Settings',
+                              'Managed Extension Settings', 'Sync App Settings', 'Sync Extension Settings']:
+                if directory in input_listing:
+                    run_with_status(
+                        directory, directory, self.get_partitioned_extension_data,
+                        self.profile_path, directory,
+                        display_key=f'{directory}', display_value=f'{directory} records')
+
+            # Configuration & Supporting Data
+            current_group = "Configuration & Supporting Data"
+
+            if 'Preferences' in input_listing:
+                run_with_status(
+                    'Preferences', 'Preferences', self.get_preferences,
+                    self.profile_path, 'Preferences',
+                    display_key='Preferences', display_value='Preference items')
+
+            if 'Site Characteristics Database' in input_listing:
+                run_with_status(
+                    'Site Characteristics', 'Site Characteristics', self.get_site_characteristics,
+                    self.profile_path, 'Site Characteristics Database',
+                    display_key='Site Characteristics', display_value='Site Characteristics records')
+
+            if 'Sync Data' in input_listing:
+                run_with_status(
+                    'Sync Data', 'Sync Data', self.get_sync_data,
+                    self.profile_path, 'Sync Data',
+                    display_key='Sync Data', display_value='Sync Data records')
+
+            if network_listing and 'TransportSecurity' in network_listing:
+                run_with_status(
+                    'Network HSTS', 'HSTS', self.get_transport_security,
+                    os.path.join(self.profile_path, 'Network'), 'TransportSecurity',
+                    display_key='HSTS', display_value='HSTS records')
+
+            elif 'TransportSecurity' in input_listing:
+                run_with_status(
+                    'HSTS', 'HSTS', self.get_transport_security,
+                    self.profile_path, 'TransportSecurity',
+                    display_key='HSTS', display_value='HSTS records')
+
+            if 'DIPS' in input_listing:
+                run_with_status(
+                    'DIPS Popups', 'DIPS Popups', self.get_dips_popups,
+                    self.profile_path, 'DIPS', self.version,
+                    display_key='DIPS Popups', display_value='DIPS Popup records')
+
+                run_with_status(
+                    'DIPS', 'DIPS', self.get_dips,
+                    self.profile_path, 'DIPS', self.version,
+                    display_key='DIPS', display_value='DIPS records')
+
+        # Destroy the cached key so that JSON serialization doesn't
         # have a cardiac arrest on the non-unicode binary data.
         self.cached_key = None
 
