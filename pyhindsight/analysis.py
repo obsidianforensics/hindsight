@@ -773,7 +773,26 @@ class AnalysisSession(object):
     def generate_excel(self, output_object):
         import xlsxwriter
         workbook = xlsxwriter.Workbook(output_object, {'in_memory': True, 'strings_to_urls': False})
+
+        # Track used sheet names to avoid duplicates
+        used_sheet_names = set()
+
+        def get_unique_sheet_name(base_name):
+            """Return a unique sheet name, appending a number if needed."""
+            # Excel sheet names are limited to 31 characters
+            base_name = base_name[:31]
+            name = base_name
+            counter = 2
+            while name.lower() in used_sheet_names:
+                suffix = f" ({counter})"
+                # Make room for the suffix within the 31 char limit
+                name = base_name[:31 - len(suffix)] + suffix
+                counter += 1
+            used_sheet_names.add(name.lower())
+            return name
+
         w = workbook.add_worksheet('Timeline')
+        used_sheet_names.add('timeline')
 
         # Define cell formats
         title_header_format = workbook.add_format({'font_color': 'white', 'bg_color': 'gray', 'bold': 'true'})
@@ -1024,6 +1043,7 @@ class AnalysisSession(object):
         # Storage worksheet
         ##############################
         s = workbook.add_worksheet('Storage')
+        used_sheet_names.add('storage')
         # Title bar
         s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
         s.merge_range('H1:K1', 'Backing Database Specific', center_header_format)
@@ -1129,6 +1149,7 @@ class AnalysisSession(object):
         # Extension Data worksheet
         #########################################
         ext = workbook.add_worksheet('Extension Data')
+        used_sheet_names.add('extension data')
         # Title bar
         ext.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
         ext.merge_range('H1:L1', 'Backing LevelDB Specific', center_header_format)
@@ -1193,6 +1214,7 @@ class AnalysisSession(object):
         # Sync Data worksheet
         #########################################
         sync_ws = workbook.add_worksheet('Sync Data')
+        used_sheet_names.add('sync data')
         # Title bar
         sync_ws.merge_range('A1:E1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
         sync_ws.merge_range('F1:J1', 'Backing LevelDB Specific', center_header_format)
@@ -1250,8 +1272,8 @@ class AnalysisSession(object):
             try:
                 if self.__dict__[item]['presentation'] and self.__dict__[item]['data']:
                     d = self.__dict__[item]
-                    # TODO: try/except name exists
-                    p = workbook.add_worksheet(d['presentation']['title'])
+                    sheet_name = get_unique_sheet_name(d['presentation']['title'])
+                    p = workbook.add_worksheet(sheet_name)
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += f" (v{d['presentation']['version']})"
@@ -1282,8 +1304,8 @@ class AnalysisSession(object):
             try:
                 if item['presentation'] and item['data']:
                     d = item
-                    # TODO: try/except name exists
-                    p = workbook.add_worksheet(d['presentation']['title'][:31])
+                    sheet_name = get_unique_sheet_name(d['presentation']['title'])
+                    p = workbook.add_worksheet(sheet_name)
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += f" (v{d['presentation']['version']})"

@@ -1100,6 +1100,11 @@ class Chrome(WebBrowser):
         log.info('Local Storage:')
         log.info(f' - Reading from {ls_path}')
 
+        if not os.path.isdir(ls_path):
+            log.error(f' - {ls_path} is not a directory')
+            self.artifacts_counts['Local Storage'] = 'Failed'
+            return
+
         local_storage_listing = os.listdir(ls_path)
         log.debug(f' - {len(local_storage_listing)} files in Local Storage directory')
         filtered_listing = []
@@ -1164,6 +1169,11 @@ class Chrome(WebBrowser):
         log.info(f' - Reading from {ss_path}')
         log.info(f' - Using ccl_chromium_sessionstorage v{ccl_chromium_reader.ccl_chromium_sessionstorage.__version__}')
 
+        if not os.path.isdir(ss_path):
+            log.error(f' - {ss_path} is not a directory')
+            self.artifacts_counts['Session Storage'] = 'Failed'
+            return
+
         session_storage_listing = os.listdir(ss_path)
         log.debug(f' - {len(session_storage_listing)} files in Session Storage directory')
 
@@ -1212,6 +1222,11 @@ class Chrome(WebBrowser):
         log.info('IndexedDB:')
         log.info(f' - Reading from {idb_path}')
         log.info(f' - Using ccl_chromium_indexeddb v{ccl_chromium_reader.ccl_chromium_indexeddb.__version__}')
+
+        if not os.path.isdir(idb_path):
+            log.error(f' - {idb_path} is not a directory')
+            self.artifacts_counts['IndexedDB'] = 'Failed'
+            return
 
         idb_storage_listing = os.listdir(idb_path)
         log.debug(f' - {len(idb_storage_listing)} files in IndexedDB directory')
@@ -1317,6 +1332,11 @@ class Chrome(WebBrowser):
         # Grab listing of 'Extensions' directory
         extension_directory_path = pathlib.Path(profile, dir_name)
         log.info(f' - Reading from {extension_directory_path}')
+        if not extension_directory_path.is_dir():
+            log.error(f' - {extension_directory_path} is not a directory')
+            self.artifacts_counts['Extensions'] = 'Failed'
+            return
+
         ext_listing = os.listdir(extension_directory_path)
         log.debug(f' - {len(ext_listing)} files in Extensions directory: {str(ext_listing)}')
 
@@ -2014,6 +2034,11 @@ class Chrome(WebBrowser):
         if dir_name == 'Cache_Data':
             cache_display_name = 'Cache'
 
+        # Using any() - returns True if directory has any contents
+        if not any(pathlib.Path(cache_path_to_parse).iterdir()):
+            log.info(' - Cache path is empty')
+            return
+
         cache_items = profile.iterate_cache(url=None, omit_cached_data=False)
 
         try:
@@ -2051,6 +2076,11 @@ class Chrome(WebBrowser):
         log.info(f'{dir_name}:')
         log.info(f' - Reading from {ldb_path}')
         log.info(f' - Using ccl_leveldb v{ccl_chromium_reader.storage_formats.ccl_leveldb.__version__}')
+
+        if not os.path.isdir(ldb_path):
+            log.error(f' - {ldb_path} is not a directory')
+            self.artifacts_counts[f'{dir_name}'] = 'Failed'
+            return
 
         ldb_file_listing = os.listdir(ldb_path)
         log.debug(f' - {len(ldb_file_listing)} files in {dir_name} directory')
@@ -2092,11 +2122,17 @@ class Chrome(WebBrowser):
 
     def get_partitioned_extension_data(self, path, dir_name):
         results = []
+        any_failed = False
 
         # Grab file list of input directory
         top_path = os.path.join(path, dir_name)
         log.info(f'{dir_name}:')
         log.info(f' - Reading from {top_path}')
+        if not os.path.isdir(top_path):
+            log.error(f' - {top_path} is not a directory')
+            self.artifacts_counts[f'{dir_name}'] = 'Failed'
+            return
+
         top_file_listing = os.listdir(top_path)
 
         # Only process directories with the expected naming convention
@@ -2110,6 +2146,12 @@ class Chrome(WebBrowser):
             log.info(f'{dir_name}:')
             log.info(f' - Reading from {ldb_path}')
             log.info(f' - Using ccl_leveldb v{ccl_chromium_reader.storage_formats.ccl_leveldb.__version__}')
+
+            if not os.path.isdir(ldb_path):
+                log.error(f' - {ldb_path} is not a directory')
+                self.artifacts_counts[f'{dir_name}'] = 'Failed'
+                any_failed = True
+                continue
 
             ldb_file_listing = os.listdir(ldb_path)
             log.debug(f' - {len(ldb_file_listing)} files in {dir_name} directory')
@@ -2135,7 +2177,10 @@ class Chrome(WebBrowser):
 
                 ldb_records.close()
 
-        self.artifacts_counts[f'{dir_name}'] = len(results)
+        if any_failed:
+            self.artifacts_counts[f'{dir_name}'] = 'Failed'
+        else:
+            self.artifacts_counts[f'{dir_name}'] = len(results)
         log.info(f' - Parsed {len(results)} {dir_name} items')
         self.parsed_extension_data.extend(results)
 
@@ -2281,6 +2326,11 @@ class Chrome(WebBrowser):
         log.info('File System:')
         fs_root_path = os.path.join(path, dir_name)
         log.info(f' - Reading from {fs_root_path}')
+        if not os.path.isdir(fs_root_path):
+            log.error(f' - {fs_root_path} is not a directory')
+            self.artifacts_counts['File System'] = 'Failed'
+            return
+
         fs_root_listing = os.listdir(fs_root_path)
         log.debug(f' - {len(fs_root_listing)} files in File System directory: {str(fs_root_listing)}')
 
@@ -2453,6 +2503,11 @@ class Chrome(WebBrowser):
         log.info(f' - Reading from {sc_root_path}')
 
         # Grab listing of 'Site Characteristics' directory
+        if not os.path.isdir(sc_root_path):
+            log.error(f' - {sc_root_path} is not a directory')
+            self.artifacts_counts['Site Characteristics'] = 'Failed'
+            return
+
         sc_root_listing = os.listdir(sc_root_path)
         log.debug(f' - {len(sc_root_listing)} files in Site Characteristics directory: {str(sc_root_listing)}')
 
@@ -2500,6 +2555,11 @@ class Chrome(WebBrowser):
         log.info(f' - Reading from {sync_data_root_path}')
 
         # Grab listing of 'Sync Data' directory
+        if not os.path.isdir(sync_data_root_path):
+            log.error(f' - {sync_data_root_path} is not a directory')
+            self.artifacts_counts['Sync Data'] = 'Failed'
+            return
+
         sd_root_listing = os.listdir(sync_data_root_path)
         log.debug(f' - {len(sd_root_listing)} files in Sync Data directory: {str(sd_root_listing)}')
 

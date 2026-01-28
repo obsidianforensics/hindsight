@@ -40,9 +40,12 @@ def open_sqlite_db(chrome, database_path, database_name):
             # Create 'temp' directory if it doesn't exist
             Path(chrome.temp_dir).mkdir(parents=True, exist_ok=True)
 
-            # Copy database to temp directory
+            # Copy database and any WAL/SHM files to temp directory
             db_path_to_open = os.path.join(chrome.temp_dir, database_name)
-            shutil.copyfile(os.path.join(database_path, database_name), db_path_to_open)
+            for suffix in ['', '-wal', '-shm']:
+                src = os.path.join(database_path, database_name + suffix)
+                if os.path.exists(src):
+                    shutil.copyfile(src, db_path_to_open + suffix)
         except Exception as e:
             log.error(f' - Error copying {database_name}: {e}')
             return None
