@@ -36,6 +36,13 @@ except ImportError:
           f'will be in examiner local time ({time.tzname[time.daylight]}).')
 
 
+def get_base_dir():
+    """Get base directory for resolving relative paths (exe dir for frozen apps)."""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.realpath(__file__))
+
+
 def parse_arguments(analysis_session):
     description = f'''
 Hindsight v{pyhindsight.__version__} - Internet history forensics for Google Chrome/Chromium.
@@ -77,7 +84,7 @@ The Chrome Profile folder default locations are:
     parser.add_argument('-f', '--format', choices=analysis_session.available_output_formats,
                         default=analysis_session.available_output_formats[-1], help='Output format')
     parser.add_argument('-l', '--log', help='Location Hindsight should log to (will append if exists)',
-                        default=os.path.join(os.getcwd(), 'hindsight.log'))
+                        default=os.path.join(get_base_dir(), 'hindsight.log'))
     parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
     parser.add_argument('-d', '--decrypt', choices=['mac', 'linux'], default=None,
                         help='Try to decrypt Chrome data from a Linux or Mac system; support for both is currently '
@@ -90,10 +97,17 @@ The Chrome Profile folder default locations are:
                              'directory location for Chrome is <userdir>/Library/Caches/Google/Chrome/Default/Cache/')
     parser.add_argument('--nocopy', '--no_copy', help='Don\'t copy files before opening them; this might run faster, '
                                                       'but some locked files may be inaccessible', action='store_true')
-    parser.add_argument('--temp_dir', default='hindsight-temp',
+    parser.add_argument('--temp_dir', default=os.path.join(get_base_dir(), 'hindsight-temp'),
                         help='If files are copied before being opened, use this directory as the copy destination')
 
     args = parser.parse_args()
+
+    # Convert any relative paths to absolute using base directory
+    base_dir = get_base_dir()
+    if not os.path.isabs(args.log):
+        args.log = os.path.join(base_dir, args.log)
+    if not os.path.isabs(args.temp_dir):
+        args.temp_dir = os.path.join(base_dir, args.temp_dir)
 
     if args.timezone:
         try:
