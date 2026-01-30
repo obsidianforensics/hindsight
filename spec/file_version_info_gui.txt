@@ -6,8 +6,8 @@ VSVersionInfo(
   ffi=FixedFileInfo(
     # filevers and prodvers should be always a tuple with four items: (1, 2, 3, 4)
     # Set not needed items to zero 0.
-    filevers=(2025, 3, 0, 0),
-    prodvers=(2025, 3, 0, 0),
+    filevers=(2026, 1, 0, 0),
+    prodvers=(2026, 1, 0, 0),
     # Contains a bitmask that specifies the valid bits 'flags'r
     mask=0x0,
     # Contains a bitmask that specifies the Boolean attributes of the file.
@@ -33,10 +33,10 @@ VSVersionInfo(
         [StringStruct(u'Comments', u'Internet history forensics for Google Chrome/Chromium'),
         StringStruct(u'CompanyName', u'dfir.blog'),
         StringStruct(u'FileDescription', u'Hindsight'),
-        StringStruct(u'LegalCopyright', u'Copyright© 2012 - 2024  Ryan Benson'),
+        StringStruct(u'LegalCopyright', u'Copyright© 2012 - 2026  Ryan Benson'),
         StringStruct(u'ProductName', u'Hindsight'),
-        StringStruct(u'FileVersion', u'2025.03'),
-        StringStruct(u'ProductVersion', u'2025.03'),
+        StringStruct(u'FileVersion', u'2026.01'),
+        StringStruct(u'ProductVersion', u'2026.01'),
         StringStruct(u'InternalName', u'Hindsight'),
         StringStruct(u'OriginalFilename', u'hindsight_gui.exe')])
       ])

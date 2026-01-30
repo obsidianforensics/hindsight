@@ -10,6 +10,7 @@ import pyhindsight
 import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
 from pyhindsight.utils import get_rich_banner
+import rich.align
 import rich.console
 
 # This will be the main pyhindsight.AnalysisSession object that all the work will be done on
@@ -135,13 +136,27 @@ def do_run():
     analysis_session.cache_path = bottle.request.forms.get('cache_path')
     analysis_session.browser_type = bottle.request.forms.get('browser_type')
     analysis_session.timezone = bottle.request.forms.get('timezone')
-    analysis_session.log_path = bottle.request.forms.get('log_path')
+    # Get base directory for resolving relative paths (exe dir for frozen apps)
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+
+    log_path = bottle.request.forms.get('log_path')
+    if not os.path.isabs(log_path):
+        log_path = os.path.join(base_dir, log_path)
+    analysis_session.log_path = log_path
+
     copy_before_opening = bottle.request.forms.get('copy')
     if copy_before_opening == 'copy':
         analysis_session.no_copy = False
     else:
         analysis_session.no_copy = True
-    analysis_session.temp_dir = bottle.request.forms.get('temp_dir', 'hindsight-temp')
+
+    temp_dir = bottle.request.forms.get('temp_dir', 'hindsight-temp')
+    if not os.path.isabs(temp_dir):
+        temp_dir = os.path.join(base_dir, temp_dir)
+    analysis_session.temp_dir = temp_dir
 
     # Set up logging
     logging.basicConfig(filename=analysis_session.log_path, level=logging.DEBUG,
@@ -272,7 +287,7 @@ def sqlite_view():
 
 def main():
     console = rich.console.Console()
-    console.print(get_rich_banner())
+    console.print(rich.align.Align.center(get_rich_banner()))
     global STATIC_PATH
 
     # Get the hindsight module's path on disk to add to sys.path, so we can find templates and static files

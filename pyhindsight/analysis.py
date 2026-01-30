@@ -12,8 +12,14 @@ from pyhindsight import __version__
 from pyhindsight.browsers.chrome import Chrome
 from pyhindsight.browsers.brave import Brave
 from pyhindsight.browsers.webbrowser import WebBrowser
-from pyhindsight.utils import friendly_date, format_plugin_output
+from pyhindsight.utils import friendly_date
 import pyhindsight.plugins
+import rich.align
+import rich.console
+import rich.live
+import rich.spinner
+import rich.table
+import rich.text
 
 log = logging.getLogger(__name__)
 
@@ -691,84 +697,127 @@ class AnalysisSession(object):
     def run_plugins(self):
         log.info("Selected plugins: " + str(self.selected_plugins))
         completed_plugins = []
+        plugin_rows = []
+        console = rich.console.Console()
 
-        for plugin in self.selected_plugins:
+        def format_plugin_name(name, version):
+            text = rich.text.Text()
+            text.append(f"{name} ")
+            text.append(f"(v{version}):", style="dim")
+            return text
 
-            # First check built-in plugins that ship with Hindsight
-            # log.info(" Built-in Plugins:")
-            for standard_plugin in pyhindsight.plugins.__all__:
-                # Check if the standard plugin is the selected_plugin we're looking for
-                if standard_plugin == plugin:
-                    # Check to see if we've already run this plugin (likely from a different path)
-                    if plugin in completed_plugins:
-                        log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
-                        continue
+        def format_plugin_result(items):
+            text = rich.text.Text()
+            text.append("- ", style="dim")
+            text.append(f"{items}")
+            text.append(" -", style="dim")
+            return text
 
-                    log.info(f" - Loading '{plugin}' [standard plugin]")
-                    try:
-                        module = importlib.import_module(f"pyhindsight.plugins.{plugin}")
-                    except ImportError as e:
-                        log.error(f" - Error: {e}")
-                        print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
-                        continue
-                    try:
-                        log.info(f" - Running '{module.friendlyName}' plugin")
-                        parsed_items = module.plugin(self)
-                        print(format_plugin_output(module.friendlyName, module.version, parsed_items))
-                        self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
-                        log.info(f" - Completed; {parsed_items}")
-                        completed_plugins.append(plugin)
-                        break
-                    except Exception as e:
-                        print(format_plugin_output(module.friendlyName, module.version, 'failed'))
-                        self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
-                        log.info(f" - Failed; {e}")
+        def running_status():
+            return rich.spinner.Spinner("dots")
 
-            for potential_path in sys.path:
-                # If a subdirectory exists called 'plugins' at the current path, continue on
-                potential_plugin_path = os.path.join(potential_path, 'plugins')
-                if os.path.isdir(potential_plugin_path):
-                    try:
-                        # Insert the current plugin location to the system path, so we can import plugin modules by name
-                        sys.path.insert(0, potential_plugin_path)
+        def build_plugin_table():
+            table = rich.table.Table(show_header=False, box=None, expand=False)
+            table.add_column(justify="right", min_width=44)
+            table.add_column(justify="center", min_width=30)
+            for row in plugin_rows:
+                table.add_row(*row)
+            return rich.align.Align.center(table)
 
-                        # Get list of available plugins and run them
-                        plugin_listing = os.listdir(potential_plugin_path)
+        def update_plugin_table(live):
+            if live:
+                live.update(build_plugin_table())
 
-                        for custom_plugin in plugin_listing:
-                            if custom_plugin.endswith(".py") and custom_plugin[0] != '_':
-                                custom_plugin = custom_plugin.replace(".py", "")
+        console.rule("Running Plugins", style="green")
+        console.print()
 
-                                if custom_plugin == plugin:
-                                    # Check to see if we've already run this plugin (likely from a different path)
-                                    if plugin in completed_plugins:
-                                        log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
-                                        continue
+        with rich.live.Live(build_plugin_table(), console=console, refresh_per_second=6) as live:
+            for plugin in self.selected_plugins:
 
-                                    log.debug(f" - Loading '{plugin}' [custom plugin]")
-                                    try:
-                                        module = __import__(plugin)
-                                    except ImportError as e:
-                                        log.error(f" - Error: {e}")
-                                        print(format_plugin_output(plugin, "-unknown", 'import failed (see log)'))
-                                        continue
-                                    try:
-                                        log.info(f" - Running '{module.friendlyName}' plugin")
-                                        parsed_items = module.plugin(self)
-                                        print(format_plugin_output(module.friendlyName, module.version, parsed_items))
-                                        self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
-                                        log.info(f" - Completed; {parsed_items}")
-                                        completed_plugins.append(plugin)
-                                    except Exception as e:
-                                        print(format_plugin_output(module.friendlyName, module.version, 'failed'))
-                                        self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
-                                        log.info(f" - Failed; {e}")
-                    except Exception as e:
-                        log.debug(f' - Error loading plugins ({e})')
-                        print('  - Error loading plugins')
-                    finally:
-                        # Remove the current plugin location from the system path, so we don't loop over it again
-                        sys.path.remove(potential_plugin_path)
+                # First check built-in plugins that ship with Hindsight
+                for standard_plugin in pyhindsight.plugins.__all__:
+                    # Check if the standard plugin is the selected_plugin we're looking for
+                    if standard_plugin == plugin:
+                        # Check to see if we've already run this plugin (likely from a different path)
+                        if plugin in completed_plugins:
+                            log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
+                            continue
+
+                        log.info(f" - Loading '{plugin}' [standard plugin]")
+                        try:
+                            module = importlib.import_module(f"pyhindsight.plugins.{plugin}")
+                        except ImportError as e:
+                            log.error(f" - Error: {e}")
+                            plugin_rows.append((format_plugin_name(plugin, "unknown"), rich.text.Text("- import failed -", style="red")))
+                            update_plugin_table(live)
+                            continue
+                        try:
+                            log.info(f" - Running '{module.friendlyName}' plugin")
+                            plugin_rows.append((format_plugin_name(module.friendlyName, module.version), running_status()))
+                            update_plugin_table(live)
+                            parsed_items = module.plugin(self)
+                            plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), format_plugin_result(parsed_items))
+                            update_plugin_table(live)
+                            self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
+                            log.info(f" - Completed; {parsed_items}")
+                            completed_plugins.append(plugin)
+                            break
+                        except Exception as e:
+                            plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), rich.text.Text("- failed -", style="red"))
+                            update_plugin_table(live)
+                            self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
+                            log.info(f" - Failed; {e}")
+
+                for potential_path in sys.path:
+                    # If a subdirectory exists called 'plugins' at the current path, continue on
+                    potential_plugin_path = os.path.join(potential_path, 'plugins')
+                    if os.path.isdir(potential_plugin_path):
+                        try:
+                            # Insert the current plugin location to the system path, so we can import plugin modules by name
+                            sys.path.insert(0, potential_plugin_path)
+
+                            # Get list of available plugins and run them
+                            plugin_listing = os.listdir(potential_plugin_path)
+
+                            for custom_plugin in plugin_listing:
+                                if custom_plugin.endswith(".py") and custom_plugin[0] != '_':
+                                    custom_plugin = custom_plugin.replace(".py", "")
+
+                                    if custom_plugin == plugin:
+                                        # Check to see if we've already run this plugin (likely from a different path)
+                                        if plugin in completed_plugins:
+                                            log.info(f" - Skipping '{plugin}'; a plugin with that name has run already")
+                                            continue
+
+                                        log.debug(f" - Loading '{plugin}' [custom plugin]")
+                                        try:
+                                            module = __import__(plugin)
+                                        except ImportError as e:
+                                            log.error(f" - Error: {e}")
+                                            plugin_rows.append((format_plugin_name(plugin, "unknown"), rich.text.Text("- import failed -", style="red")))
+                                            update_plugin_table(live)
+                                            continue
+                                        try:
+                                            log.info(f" - Running '{module.friendlyName}' plugin")
+                                            plugin_rows.append((format_plugin_name(module.friendlyName, module.version), running_status()))
+                                            update_plugin_table(live)
+                                            parsed_items = module.plugin(self)
+                                            plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), format_plugin_result(parsed_items))
+                                            update_plugin_table(live)
+                                            self.plugin_results[plugin] = [module.friendlyName, module.version, parsed_items]
+                                            log.info(f" - Completed; {parsed_items}")
+                                            completed_plugins.append(plugin)
+                                        except Exception as e:
+                                            plugin_rows[-1] = (format_plugin_name(module.friendlyName, module.version), rich.text.Text("- failed -", style="red"))
+                                            update_plugin_table(live)
+                                            self.plugin_results[plugin] = [module.friendlyName, module.version, 'failed']
+                                            log.info(f" - Failed; {e}")
+                        except Exception as e:
+                            log.debug(f' - Error loading plugins ({e})')
+                            console.print('  - Error loading plugins')
+                        finally:
+                            # Remove the current plugin location from the system path, so we don't loop over it again
+                            sys.path.remove(potential_plugin_path)
 
     def generate_excel(self, output_object):
         import xlsxwriter

@@ -5,14 +5,19 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   scripts=['hindsight.py', 'hindsight_gui.py'],
-  version='20241027',
+  version='20260130',
   description='Browser forensics for Google Chrome/Chromium',
   url='https://github.com/obsidianforensics/hindsight',
   author='Ryan Benson',
-  author_email='ryan@dfir.blog',
+  author_email='ryan@hindsig.ht',
   license='Apache',
   keywords=['chrome', 'forensics', 'dfir', 'google-chrome', 'chromium'],
-  classifiers=[],
+  classifiers=[
+    'Development Status :: 5 - Production/Stable',
+    'License :: OSI Approved :: Apache Software License',
+    'Topic :: Security',
+    'Topic :: System :: Recovery Tools',
+  ],
   install_requires=[
     'bottle>=0.12.18',
     'keyring>=21.2.1',
@@ -22,7 +27,7 @@ setup(
     'xlsxwriter>=3.1',
     'puremagic>=1.11',
     'protobuf>=4.23',
-    'argparse>=1.4.0',
+    'rich>=13.0'
     # 'ccl_chromium_reader @ git+https://github.com/cclgroupltd/ccl_chromium_reader.git'
   ]
 )
