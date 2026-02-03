@@ -261,7 +261,8 @@ class WebBrowser(object):
 
     class CookieItem(HistoryItem):
         def __init__(self, profile, host_key, path, name, value, creation_utc, last_access_utc, secure, http_only,
-                     persistent=None, has_expires=None, expires_utc=None, priority=None):
+                     persistent=None, has_expires=None, expires_utc=None, priority=None, top_frame_site_key=None,
+                     last_update_utc=None):
             super(WebBrowser.CookieItem, self).__init__(
                 'cookie', timestamp=creation_utc, profile=profile, url=host_key, name=name, value=value)
             self.profile = profile
@@ -271,12 +272,14 @@ class WebBrowser(object):
             self.value = value
             self.creation_utc = creation_utc
             self.last_access_utc = last_access_utc
+            self.last_update_utc = last_update_utc
             self.secure = secure
             self.httponly = http_only
             self.persistent = persistent
             self.has_expires = has_expires
             self.expires_utc = expires_utc
             self.priority = priority
+            self.top_frame_site_key = top_frame_site_key
 
     class AutofillItem(HistoryItem):
         def __init__(self, profile, date_created, name, value, count):

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import copy
 import hashlib
 import math
 import os
@@ -640,7 +641,18 @@ class Chrome(WebBrowser):
         log.info(f'Cookie items from {database}:')
 
         # Queries for different versions
-        query = {66: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+        query = {103: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+                            cookies.last_access_utc, cookies.expires_utc, cookies.last_update_utc, 
+                            cookies.is_secure AS secure, cookies.is_httponly AS httponly, 
+                            cookies.is_persistent AS persistent, cookies.has_expires, cookies.priority, 
+                            cookies.encrypted_value, cookies.top_frame_site_key
+                        FROM cookies''',
+                 94: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
+                            cookies.last_access_utc, cookies.expires_utc, cookies.is_secure AS secure, 
+                            cookies.is_httponly AS httponly, cookies.is_persistent AS persistent, 
+                            cookies.has_expires, cookies.priority, cookies.encrypted_value, cookies.top_frame_site_key
+                        FROM cookies''',
+                 66: '''SELECT cookies.host_key, cookies.path, cookies.name, cookies.value, cookies.creation_utc,
                             cookies.last_access_utc, cookies.expires_utc, cookies.is_secure AS secure, 
                             cookies.is_httponly AS httponly, cookies.is_persistent AS persistent, 
                             cookies.has_expires, cookies.priority, cookies.encrypted_value
@@ -661,7 +673,7 @@ class Chrome(WebBrowser):
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly
                         FROM cookies'''}
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
+        # Get the lowest possible version from the version list and decrement it until it finds a matching query
         compatible_version = version[0]
         while compatible_version not in list(query.keys()) and compatible_version > 0:
             compatible_version -= 1
@@ -670,14 +682,14 @@ class Chrome(WebBrowser):
             log.info(f' - Using SQL query for Cookie items for Chrome v{compatible_version}')
             conn = None
             try:
-                # Copy and connect to copy of 'Cookies' SQLite DB
+                # Copy and connect to the copy of 'Cookies' SQLite DB
                 conn = utils.open_sqlite_db(self, path, database)
                 if not conn:
                     self.artifacts_counts[database] = 'Failed'
                     return
                 cursor = conn.cursor()
 
-                # Use highest compatible version SQL to select download data
+                # Use the highest compatible SQL query version to select data
                 cursor.execute(query[compatible_version])
 
                 for row in cursor:
@@ -689,35 +701,43 @@ class Chrome(WebBrowser):
                     else:
                         cookie_value = row.get('value')
 
-                    new_row = Chrome.CookieItem(
+                    # Create a base cookie item with all shared data
+                    base_cookie = Chrome.CookieItem(
                         self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
                         utils.to_datetime(row.get('creation_utc'), self.timezone),
                         utils.to_datetime(row.get('last_access_utc'), self.timezone), row.get('secure'),
                         row.get('httponly'), row.get('persistent'), row.get('has_expires'),
-                        utils.to_datetime(row.get('expires_utc'), self.timezone), row.get('priority'))
+                        utils.to_datetime(row.get('expires_utc'), self.timezone), row.get('priority'),
+                        row.get('top_frame_site_key'))
 
-                    accessed_row = Chrome.CookieItem(
-                        self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                        utils.to_datetime(row.get('creation_utc'), self.timezone),
-                        utils.to_datetime(row.get('last_access_utc'), self.timezone), row.get('secure'),
-                        row.get('httponly'), row.get('persistent'), row.get('has_expires'),
-                        utils.to_datetime(row.get('expires_utc'), self.timezone), row.get('priority'))
+                    base_cookie.url = base_cookie.host_key + base_cookie.path
+                    if base_cookie.top_frame_site_key:
+                        base_cookie.url += f' ({base_cookie.top_frame_site_key})'
 
-                    new_row.url = (new_row.host_key + new_row.path)
-                    accessed_row.url = (accessed_row.host_key + accessed_row.path)
+                    base_cookie.last_update_utc = utils.to_datetime(row.get('last_update_utc'), self.timezone)
+                    zero_timestamp = utils.to_datetime(0, self.timezone)
 
                     # Create the row for when the cookie was created
-                    new_row.row_type = 'cookie (created)'
-                    new_row.timestamp = new_row.creation_utc
-                    results.append(new_row)
+                    created_row = copy.copy(base_cookie)
+                    created_row.row_type = 'cookie (created)'
+                    created_row.timestamp = created_row.creation_utc
+                    results.append(created_row)
 
                     # If the cookie was created and accessed at the same time (only used once), or if the last accessed
                     # time is 0 (happens on iOS), don't create an accessed row
-                    if new_row.creation_utc != new_row.last_access_utc and \
-                            accessed_row.last_access_utc != utils.to_datetime(0, self.timezone):
+                    if base_cookie.last_access_utc not in (base_cookie.creation_utc, zero_timestamp):
+                        accessed_row = copy.copy(base_cookie)
                         accessed_row.row_type = 'cookie (accessed)'
                         accessed_row.timestamp = accessed_row.last_access_utc
                         results.append(accessed_row)
+
+                    # Create row for last update time if it exists and is different from other timestamps
+                    if base_cookie.last_update_utc and base_cookie.last_update_utc != zero_timestamp \
+                            and base_cookie.last_update_utc not in (base_cookie.creation_utc, base_cookie.last_access_utc):
+                        updated_row = copy.copy(base_cookie)
+                        updated_row.row_type = 'cookie (updated)'
+                        updated_row.timestamp = updated_row.last_update_utc
+                        results.append(updated_row)
 
                 self.artifacts_counts[database] = len(results)
                 log.info(f' - Parsed {len(results)} items')
