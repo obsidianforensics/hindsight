@@ -176,7 +176,7 @@ class WebBrowser(object):
         def __init__(
                 self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                 transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
-                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None):
+                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None, opener_visit=None):
             super(WebBrowser.URLItem, self).__init__('url', timestamp=visit_time, profile=profile, url=url, name=title)
             self.profile = profile
             self.url = url
@@ -196,6 +196,7 @@ class WebBrowser(object):
             self.transition_friendly = transition_friendly
             self.is_known_to_sync = is_known_to_sync
             self.originator_cache_guid = originator_cache_guid
+            self.opener_visit = opener_visit
 
     class CacheItem(HistoryItem):
         def __init__(

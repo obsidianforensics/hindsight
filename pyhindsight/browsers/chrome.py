@@ -291,14 +291,19 @@ class Chrome(WebBrowser):
         # Queries for different versions
         query = {107: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time, 
-                            visits.from_visit, visits.visit_duration, visits.transition, visit_source.source, 
-                            visits.id as visit_id
+                            visits.from_visit, visits.opener_visit, visits.visit_duration, visits.transition, 
+                            visit_source.source, visits.id as visit_id
                         FROM urls JOIN visits 
+                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                 95: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                            urls.hidden, visits.visit_time, visits.from_visit, visits.opener_visit, visits.visit_duration,
+                            visits.transition, visit_source.source, visits.id as visit_id
+                        FROM urls JOIN visits
                         ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.id as visit_id
-                        FROM urls JOIN visits 
+                        FROM urls JOIN visits
                         ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
                  30: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, urls.favicon_id, visits.visit_time, visits.from_visit, visits.visit_duration,
@@ -371,7 +376,8 @@ class Chrome(WebBrowser):
                         visit_duration=str(duration),
                         visit_source=row.get('source'),
                         is_known_to_sync=row.get('is_known_to_sync'),
-                        originator_cache_guid=row.get('originator_cache_guid'))
+                        originator_cache_guid=row.get('originator_cache_guid'),
+                        opener_visit=row.get('opener_visit'))
 
                     # Set the row type as determined earlier
                     new_row.row_type = row_type
@@ -3161,14 +3167,14 @@ class Chrome(WebBrowser):
         def __init__(
                 self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                 transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
-                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None):
+                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None, opener_visit=None):
             WebBrowser.URLItem.__init__(
                 self, profile=profile, visit_id=visit_id, url=url, title=title, visit_time=visit_time,
                 last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
                 from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
                 indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
                 transition_friendly=transition_friendly, is_known_to_sync=is_known_to_sync,
-                originator_cache_guid=originator_cache_guid)
+                originator_cache_guid=originator_cache_guid, opener_visit=opener_visit)
 
         def decode_transition(self):
             # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
