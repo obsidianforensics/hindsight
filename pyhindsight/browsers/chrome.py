@@ -2344,18 +2344,8 @@ class Chrome(WebBrowser):
                 origin_id = origin['value'].decode()
                 origin_root_path = os.path.join(fs_root_path, origin_id)
 
-                node_tree = {}
-                backing_files = {}
-                path_nodes = {
-                    '0': {
-                        'name': origin_domain, 'origin_id': origin_id, 'type': 'origin',
-                        'fs_path': os.path.join('File System', origin_id),
-                        'seq': origin['seq'], 'state': origin['state'],
-                        'source_path': origin['origin_file'], 'children': {}
-                    }
-                }
-
                 # Each Origin can have a temporary (t) and persistent (p) storage section.
+                # Process each separately as they have independent file_id numbering.
                 for fs_type in ['t', 'p']:
                     fs_type_path = os.path.join(origin_root_path, fs_type)
                     if not os.path.isdir(fs_type_path):
@@ -2368,6 +2358,18 @@ class Chrome(WebBrowser):
                     fs_paths_path = os.path.join(fs_type_path, 'Paths')
                     if not os.path.isdir(fs_paths_path):
                         continue
+
+                    # Initialize data structures for this fs_type (each has independent file_id numbering)
+                    node_tree = {}
+                    backing_files = {}
+                    path_nodes = {
+                        '0': {
+                            'name': origin_domain, 'origin_id': origin_id, 'type': 'origin',
+                            'fs_path': os.path.join('File System', origin_id),
+                            'seq': origin['seq'], 'state': origin['state'],
+                            'source_path': origin['origin_file'], 'children': {}
+                        }
+                    }
 
                     # The 'Paths' ldbs can have entries of four different types:
                     # // - ("CHILD_OF:|parent_id|:<name>", "|file_id|"),
@@ -2457,37 +2459,37 @@ class Chrome(WebBrowser):
 
                         result_count += 1
 
-                # Build logical paths for the FileSystem
-                for entry_id, node in path_nodes.items():
-                    parent_id = node.get('parent')
-                    if not parent_id:
-                        node_tree[entry_id] = node
+                    # Build logical paths for the FileSystem
+                    for entry_id, node in path_nodes.items():
+                        parent_id = node.get('parent')
+                        if not parent_id:
+                            node_tree[entry_id] = node
+                            continue
+
+                        parent_node = path_nodes.get(parent_id)
+                        if parent_node is None:
+                            log.debug(f' - Missing parent {parent_id} for node {entry_id}; treating as root')
+                            node_tree[entry_id] = node
+                            continue
+
+                        parent_node['children'][entry_id] = node
+
+                    if '0' not in node_tree:
+                        log.debug(' - Missing root node; skipping logical path build for this origin')
                         continue
 
-                    parent_node = path_nodes.get(parent_id)
-                    if parent_node is None:
-                        log.debug(f' - Missing parent {parent_id} for node {entry_id}; treating as root')
-                        node_tree[entry_id] = node
-                        continue
+                    self.build_logical_fs_path(node_tree['0'])
+                    flattened_list = []
+                    self.flatten_nodes_to_list(flattened_list, node_tree['0'])
 
-                    parent_node['children'][entry_id] = node
-
-                if '0' not in node_tree:
-                    log.debug(' - Missing root node; skipping logical path build for this origin')
-                    continue
-
-                self.build_logical_fs_path(node_tree['0'])
-                flattened_list = []
-                self.flatten_nodes_to_list(flattened_list, node_tree['0'])
-
-                for item in flattened_list:
-                    result_list.append(Chrome.FileSystemItem(
-                        profile=self.profile_path, origin=item.get('origin'), key=item.get('logical_path'),
-                        value=item.get('local_path'), seq=item['seq'], state=item['state'],
-                        source_path=str(item['source_path']), last_modified=item.get('modification_time'),
-                        file_exists=item.get('file_exists'), file_size=item.get('file_size'),
-                        magic_results=item.get('magic_results')
-                    ))
+                    for item in flattened_list:
+                        result_list.append(Chrome.FileSystemItem(
+                            profile=self.profile_path, origin=item.get('origin'), key=item.get('logical_path'),
+                            value=item.get('local_path'), seq=item['seq'], state=item['state'],
+                            source_path=str(item['source_path']), last_modified=item.get('modification_time'),
+                            file_exists=item.get('file_exists'), file_size=item.get('file_size'),
+                            magic_results=item.get('magic_results')
+                        ))
 
         log.info(f' - Parsed {len(result_list)} items')
         self.artifacts_counts['File System'] = len(result_list)
