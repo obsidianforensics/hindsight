@@ -2073,7 +2073,8 @@ class Chrome(WebBrowser):
                     continue
 
                 parsed_item = WebBrowser.CacheItem(
-                    profile=str(profile.path), url=cache_item.key.url, request_time=pytz.utc.localize(cache_item.metadata.request_time),
+                    profile=str(profile.path), url=cache_item.key.url,
+                    request_time=utils.to_datetime(pytz.utc.localize(cache_item.metadata.request_time), self.timezone),
                     locations=str({'data': cache_item.data_location, 'metadata': cache_item.metadata_location}),
                     key=cache_item.key, metadata=cache_item.metadata, data=cache_item.data, title=None)
 
