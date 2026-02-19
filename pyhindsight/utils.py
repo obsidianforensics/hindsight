@@ -246,16 +246,31 @@ def read_int64(input_bytes, ptr):
     return value, ptr + 8
 
 
-banner = r'''
+def _get_banner(triangle_char='▼'):
+    return r'''
  _                 _             _     _
-| |    ▼          | |    ▼      | |   | |
+| |    {t}          | |    {t}      | |   | |
 | |__  _ _ __   __| |___ _  __ _| |__ | |_
 | '_ \| | '_ \ / _` / __| |/ _` | '_ \| __|
 | | | | | | | | (_| \__ \ | (_| | | | | |_
-|_| |_|_|_| |_|\__,_|___/_|\__, ▼_| |_|\__|
+|_| |_|_|_| |_|\__,_|___/_|\__, {t}_| |_|\__|
                             __/ |
-     by ryan@hindsig.ht    |___/  v{}
-'''.format(__version__)
+     by ryan@hindsig.ht    |___/  v{v}
+'''.format(t=triangle_char, v=__version__)
+
+
+banner = _get_banner('▼')
+
+
+def _supports_unicode():
+    """Check if stdout encoding supports Unicode characters like ▼."""
+    import sys
+    try:
+        encoding = getattr(sys.stdout, 'encoding', None) or 'utf-8'
+        '▼'.encode(encoding)
+        return True
+    except (UnicodeEncodeError, LookupError):
+        return False
 
 
 def get_rich_banner():
@@ -263,12 +278,16 @@ def get_rich_banner():
     Returns a colored version of the banner using Rich Text.
     - Dim for outline characters
     - White for attribution text
-    - Green for ▼ and . characters
+    - Green for ▼ (or • if Unicode not supported) and . characters
     """
     import rich.text
     import re
 
-    banner_lines = banner.rstrip('\n').split('\n')[1:]  # [1:] to skip first empty line from triple quote
+    # Use cp1252-safe '•' if the console doesn't support Unicode
+    triangle_char = '▼' if _supports_unicode() else '•'
+    current_banner = _get_banner(triangle_char)
+
+    banner_lines = current_banner.rstrip('\n').split('\n')[1:]  # [1:] to skip first empty line from triple quote
     colored_text = rich.text.Text()
 
     for line in banner_lines:
@@ -289,7 +308,7 @@ def get_rich_banner():
                 colored_text.append(line, style="dim")
         else:
             for char in line:
-                if char == '▼':
+                if char in ('▼', '•'):
                     colored_text.append(char, style="green")
                 else:
                     colored_text.append(char, style="dim")
