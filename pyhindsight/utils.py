@@ -101,6 +101,8 @@ def to_datetime(timestamp, timezone=None, quiet=False):
 
     try:
         if isinstance(timestamp, datetime.datetime):
+            if timezone is not None:
+                return timestamp.astimezone(timezone)
             return timestamp
         try:
             timestamp = float(timestamp)

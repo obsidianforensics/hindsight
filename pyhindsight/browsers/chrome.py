@@ -2073,7 +2073,8 @@ class Chrome(WebBrowser):
                     continue
 
                 parsed_item = WebBrowser.CacheItem(
-                    profile=str(profile.path), url=cache_item.key.url, request_time=pytz.utc.localize(cache_item.metadata.request_time),
+                    profile=str(profile.path), url=cache_item.key.url,
+                    request_time=utils.to_datetime(pytz.utc.localize(cache_item.metadata.request_time), self.timezone),
                     locations=str({'data': cache_item.data_location, 'metadata': cache_item.metadata_location}),
                     key=cache_item.key, metadata=cache_item.metadata, data=cache_item.data, title=None)
 
@@ -3030,17 +3031,14 @@ class Chrome(WebBrowser):
                         self.profile_path, 'Cache', row_type='cache',
                         display_key='Cache', display_value='Cache records')
                 
-            if 'GPUCache' in input_listing:
-                run_with_status(
-                    'GPU Cache', 'GPUCache', self.get_cache,
-                    self.profile_path, 'GPUCache', row_type='cache (gpu)',
-                    display_key='GPUCache', display_value='GPU Cache records')
-
-            if 'Media Cache' in input_listing:
-                run_with_status(
-                    'Media Cache', 'Media Cache', self.get_cache,
-                    self.profile_path, 'Media Cache', row_type='cache (media)',
-                    display_key='Media Cache', display_value='Media Cache records')
+            for cache_dir, cache_type in [('GPUCache', 'gpu'), ('Media Cache', 'media'),
+                                            ('DawnCache', 'dawn'), ('DawnWebGPUCache', 'dawn webgpu'),
+                                            ('DawnGraphiteCache', 'dawn graphite')]:
+                if cache_dir in input_listing:
+                    run_with_status(
+                        cache_dir, cache_dir, self.get_cache,
+                        self.profile_path, cache_dir, row_type=f'cache ({cache_type})',
+                        display_key=cache_dir, display_value=f'{cache_dir} records')
 
             if 'Local Storage' in input_listing:
                 run_with_status(
