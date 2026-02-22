@@ -1888,7 +1888,7 @@ class Chrome(WebBrowser):
                                 key=f'{permission_type} '
                                     f'[in {preferences_file}.profile.content_settings.permission_actions]',
                                 value=str(permission_data), interpretation=interpretation)
-                            perm_item.row_type += ' (permission action)'
+                            perm_item.row_type = 'permission action'
                             timestamped_preference_items.append(perm_item)
 
         if prefs.get('extensions'):
@@ -1932,7 +1932,7 @@ class Chrome(WebBrowser):
                         value=str(session_event),
                         interpretation=f'{session_event["type"]} - '
                                        f'{session_types.get(session_event["type"], "Unknown type")}')
-                    pref_item.row_type += ' (session)'
+                    pref_item.row_type = 'session'
                     timestamped_preference_items.append(pref_item)
 
         if prefs.get('signin'):
@@ -1992,12 +1992,29 @@ class Chrome(WebBrowser):
             except Exception as e:
                 log.exception(f' - Exception parsing Preference item: {e})')
 
+        if prefs.get('profile'):
+            if prefs['profile'].get('creation_time'):
+                try:
+                    pref_item = Chrome.PreferenceItem(
+                        self.profile_path, url='',
+                        timestamp=utils.to_datetime(prefs['profile']['creation_time'], self.timezone),
+                        key=f'creation_time [in {preferences_file}.profile]',
+                        value=prefs['profile']['creation_time'], interpretation='')
+                    pref_item.row_type = 'profile creation'
+                    timestamped_preference_items.append(pref_item)
+                except Exception as e:
+                    log.exception(f' - Exception parsing Preference item: {e})')
+
         # There are multiple instances of a preference item with the key as a descriptive name
         # and the value as a timestamp. Try to parse these generically (with a timestamp "floor"
         # to not erroneously parse any integer or boolean values as very small timestamps).
+        # Keys that are explicitly parsed above are skipped here to avoid duplicates.
+        explicitly_parsed_keys = {'profile.creation_time'}
         timestamp_floor = datetime.datetime(2010, 1, 1, 0, 0, tzinfo=datetime.timezone.utc)
 
         def parse_potential_timestamp_preference_value(key_label, raw_value):
+            if key_label in explicitly_parsed_keys:
+                return
             if isinstance(raw_value, (list, dict)):
                 return
 
