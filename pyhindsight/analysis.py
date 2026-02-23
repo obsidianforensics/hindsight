@@ -1059,7 +1059,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 5, item.interpretation, red_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, red_value_format)  # Profile
 
-                elif item.row_type.startswith(("session", "permission action")):
+                elif item.row_type.startswith(("session", "permission action", "profile creation")):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), blue_date_format)  # date
                     w.write_string(row_number, 2, item.url, blue_url_format)  # URL
@@ -1067,15 +1067,6 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, blue_value_format)  # value
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
-
-                elif item.row_type.startswith("profile creation"):
-                    w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
-                    w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)  # date
-                    w.write_string(row_number, 2, item.url, red_url_format)  # URL
-                    w.write_string(row_number, 3, item.name, red_field_format)  # key
-                    w.write_string(row_number, 4, item.value, red_value_format)  # value
-                    w.write(row_number, 5, item.interpretation, red_value_format)  # interpretation
-                    w.write(row_number, 6, item.profile, red_value_format)  # Profile
 
                 elif item.row_type.startswith("preference"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
