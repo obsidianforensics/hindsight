@@ -176,7 +176,8 @@ class WebBrowser(object):
         def __init__(
                 self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                 transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
-                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None, opener_visit=None):
+                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None, opener_visit=None,
+                category_ids=None, entity_ids=None, cluster_id=None, cluster_label=None):
             super(WebBrowser.URLItem, self).__init__('url', timestamp=visit_time, profile=profile, url=url, name=title)
             self.profile = profile
             self.url = url
@@ -197,6 +198,15 @@ class WebBrowser(object):
             self.is_known_to_sync = is_known_to_sync
             self.originator_cache_guid = originator_cache_guid
             self.opener_visit = opener_visit
+            self.category_ids = category_ids
+            self.entity_ids = entity_ids
+            self.category_names = None
+            self.entity_names = None
+            self.categories_str = None
+            self.entities_str = None
+            self.cluster_str = None
+            self.cluster_id = cluster_id
+            self.cluster_label = cluster_label
 
     class CacheItem(HistoryItem):
         def __init__(
