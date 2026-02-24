@@ -65,6 +65,7 @@ class Chrome(WebBrowser):
         self.no_copy = no_copy
         self.temp_dir = temp_dir
         self.hsts_hashes = {}
+        self.kg_entities = {}
         self.originator_guids = originator_guids
 
         if self.originator_guids is None:
@@ -292,14 +293,37 @@ class Chrome(WebBrowser):
         query = {107: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time, 
                             visits.from_visit, visits.opener_visit, visits.visit_duration, visits.transition, 
-                            visit_source.source, visits.id as visit_id
-                        FROM urls JOIN visits 
-                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            visit_source.source, visits.id as visit_id, content_annotations.categories,
+                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
+                        FROM urls 
+                                 JOIN visits ON urls.id = visits.url 
+                                 LEFT JOIN visit_source ON visits.id = visit_source.id
+                                 LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
+                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
+                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                      ''',
                  95: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.opener_visit, visits.visit_duration,
-                            visits.transition, visit_source.source, visits.id as visit_id
-                        FROM urls JOIN visits
-                        ON urls.id = visits.url LEFT JOIN visit_source ON visits.id = visit_source.id''',
+                            visits.transition, visit_source.source, visits.id as visit_id, content_annotations.categories,
+                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
+                        FROM urls 
+                                 JOIN visits ON urls.id = visits.url 
+                                 LEFT JOIN visit_source ON visits.id = visit_source.id
+                                 LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
+                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
+                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                     ''',
+                 94: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                            urls.hidden, visits.visit_time, visits.from_visit, visits.opener_visit, visits.visit_duration,
+                            visits.transition, visit_source.source, visits.id as visit_id, content_annotations.categories,
+                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
+                        FROM urls 
+                                 JOIN visits ON urls.id = visits.url 
+                                 LEFT JOIN visit_source ON visits.id = visit_source.id
+                                 LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
+                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
+                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                     ''',
                  59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.id as visit_id
@@ -377,10 +401,30 @@ class Chrome(WebBrowser):
                         visit_source=row.get('source'),
                         is_known_to_sync=row.get('is_known_to_sync'),
                         originator_cache_guid=row.get('originator_cache_guid'),
-                        opener_visit=row.get('opener_visit'))
+                        opener_visit=row.get('opener_visit'),
+                        cluster_id=row.get('cluster_id'),
+                        cluster_label=row.get('cluster_label')
+                    )
 
                     # Set the row type as determined earlier
                     new_row.row_type = row_type
+
+                    # Parse content annotations
+                    categories = row.get('categories')
+                    new_row.category_ids = [c.strip() for c in categories.split(',') if c.strip()] if categories else None
+                    entities = row.get('entities')
+                    new_row.entity_ids = [e.strip() for e in entities.split(',') if e.strip()] if entities else None
+
+                    # Collect unique KG entity/category IDs for later resolution
+                    # IDs are stored as '/m/01mf0:99' (id:confidence); strip the score for API lookup
+                    if new_row.category_ids:
+                        for cid in new_row.category_ids:
+                            kg_id = cid.rsplit(':', 1)[0] if ':' in cid else cid
+                            self.kg_entities.setdefault(kg_id, None)
+                    if new_row.entity_ids:
+                        for eid in new_row.entity_ids:
+                            kg_id = eid.rsplit(':', 1)[0] if ':' in eid else eid
+                            self.kg_entities.setdefault(kg_id, None)
 
                     # Translate the transition value to human-readable
                     new_row.decode_transition()
@@ -2838,7 +2882,57 @@ class Chrome(WebBrowser):
         self.artifacts_counts['HSTS'] = len(result_list)
         self.parsed_artifacts.extend(result_list)
 
-    def process(self):
+    def resolve_kg_entities(self, api_key):
+        """Resolve Knowledge Graph entity/category IDs to human-readable names via Google's KG API."""
+        if not self.kg_entities or not api_key:
+            if self.kg_entities and not api_key:
+                log.warning('Knowledge Graph entity IDs found but no API key configured; '
+                            'skipping resolution. Add "kg_api_key" to hindsight_config.json to enable.')
+            return
+
+        import urllib.request
+        import urllib.parse
+        import urllib.error
+
+        unresolved_ids = [kid for kid, name in self.kg_entities.items() if name is None]
+        if not unresolved_ids:
+            return
+
+        log.info(f'Resolving {len(unresolved_ids)} Knowledge Graph entity ID(s)')
+
+        # The KG API supports up to 20 IDs per request
+        batch_size = 20
+        for i in range(0, len(unresolved_ids), batch_size):
+            batch = unresolved_ids[i:i + batch_size]
+            params = urllib.parse.urlencode({'key': api_key, 'ids': batch}, doseq=True)
+            url = f'https://kgsearch.googleapis.com/v1/entities:search?{params}'
+
+            try:
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode('utf-8'))
+
+                for element in data.get('itemListElement', []):
+                    result = element.get('result', {})
+                    kg_id = result.get('@id', '').replace('kg:', '')
+                    name = result.get('name')
+                    if kg_id and name and kg_id in self.kg_entities:
+                        self.kg_entities[kg_id] = name
+
+            except urllib.error.HTTPError as e:
+                log.warning(f'KG API HTTP error: {e.code} {e.reason}')
+                break
+            except urllib.error.URLError as e:
+                log.warning(f'KG API connection error: {e.reason}')
+                break
+            except Exception as e:
+                log.warning(f'KG API error: {e}')
+                break
+
+        resolved_count = sum(1 for v in self.kg_entities.values() if v is not None)
+        log.info(f'Resolved {resolved_count}/{len(self.kg_entities)} Knowledge Graph entity ID(s)')
+
+    def process(self, api_keys=None):
         supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies',
                                'Login Data', 'Login Data For Account'
                                'Extension Cookies', 'Network Action Predictor', 'DIPS']
@@ -3167,6 +3261,35 @@ class Chrome(WebBrowser):
         # have a cardiac arrest on the non-unicode binary data.
         self.cached_key = None
 
+        # Resolve Knowledge Graph entity IDs to human-readable names
+        if api_keys is None:
+            api_keys = {}
+        self.resolve_kg_entities(api_keys.get('kg_api_key'))
+
+        # Enrich URLItems with resolved KG names and build display strings
+        def _resolve_ids(id_list):
+            """Convert list of 'kg_id:weight' strings to 'name (weight)' display strings."""
+            items = []
+            for raw in id_list:
+                if ':' in raw:
+                    kg_id, weight = raw.rsplit(':', 1)
+                else:
+                    kg_id, weight = raw, ''
+                name = self.kg_entities.get(kg_id) or kg_id
+                items.append(f'{name} ({weight})' if weight else name)
+            return ', '.join(items)
+
+        for artifact in self.parsed_artifacts:
+            if isinstance(artifact, Chrome.URLItem):
+                if artifact.category_ids:
+                    artifact.categories_str = _resolve_ids(artifact.category_ids)
+                if artifact.entity_ids:
+                    artifact.entities_str = _resolve_ids(artifact.entity_ids)
+                if artifact.cluster_label and artifact.cluster_id:
+                    artifact.cluster_str = f'{artifact.cluster_label} ({artifact.cluster_id})'
+                elif artifact.cluster_id:
+                    artifact.cluster_str = str(artifact.cluster_id)
+
         self.parsed_artifacts.sort()
         self.parsed_storage.sort()
 
@@ -3179,18 +3302,6 @@ class Chrome(WebBrowser):
                 log.error(f'Exception deleting temporary directory: {e}')
 
     class URLItem(WebBrowser.URLItem):
-        def __init__(
-                self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
-                transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
-                transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None, opener_visit=None):
-            WebBrowser.URLItem.__init__(
-                self, profile=profile, visit_id=visit_id, url=url, title=title, visit_time=visit_time,
-                last_visit_time=last_visit_time, visit_count=visit_count, typed_count=typed_count,
-                from_visit=from_visit, transition=transition, hidden=hidden, favicon_id=favicon_id,
-                indexed=indexed, visit_duration=visit_duration, visit_source=visit_source,
-                transition_friendly=transition_friendly, is_known_to_sync=is_known_to_sync,
-                originator_cache_guid=originator_cache_guid, opener_visit=opener_visit)
-
         def decode_transition(self):
             # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
             transition_friendly = {

@@ -424,6 +424,9 @@ class AnalysisSession(object):
         if __version__:
             self.hindsight_version = __version__
 
+        # Load API keys from config file
+        self.api_keys = self.load_api_keys()
+
         # Try to import modules for different output formats, adding to self.available_output_format array if successful
         try:
             import xlsxwriter
@@ -458,6 +461,28 @@ class AnalysisSession(object):
         except ImportError:
             self.available_decrypts['linux'] = 0
             self.available_decrypts['mac'] = 0
+
+    @staticmethod
+    def load_api_keys():
+        """Load API keys from hindsight_config.json.
+
+        Searches the current working directory and the project root for a config file.
+        Returns a dict of key names to values (e.g. {'kg_api_key': 'ABC123'}).
+        """
+        config_locations = [
+            os.path.join(os.getcwd(), 'hindsight_config.json'),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hindsight_config.json'),
+        ]
+        for config_path in config_locations:
+            if os.path.isfile(config_path):
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                    log.info(f'Loaded config from {config_path}')
+                    return config
+                except (json.JSONDecodeError, OSError) as e:
+                    log.warning(f'Error reading config file {config_path}: {e}')
+        return {}
 
     @staticmethod
     def sum_dict_counts(dict1, dict2):
@@ -610,7 +635,7 @@ class AnalysisSession(object):
                                           cache_path=self.cache_path, timezone=self.timezone,
                                           no_copy=self.no_copy, temp_dir=self.temp_dir,
                                           originator_guids=self.originator_guids)
-                browser_analysis.process()
+                browser_analysis.process(api_keys=self.api_keys)
                 self.parsed_artifacts.extend(browser_analysis.parsed_artifacts)
                 self.parsed_storage.extend(browser_analysis.parsed_storage)
                 self.parsed_extension_data.extend(browser_analysis.parsed_extension_data)
@@ -883,9 +908,9 @@ class AnalysisSession(object):
 
         # Title bar
         w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
-        w.merge_range('I1:P1', 'URL Specific', center_header_format)
-        w.merge_range('Q1:S1', 'Download Specific', center_header_format)
-        w.merge_range('T1:V1', 'Cache Specific', center_header_format)
+        w.merge_range('I1:S1', 'URL Specific', center_header_format)
+        w.merge_range('T1:V1', 'Download Specific', center_header_format)
+        w.merge_range('W1:Y1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, 'Type', header_format)
@@ -904,20 +929,23 @@ class AnalysisSession(object):
         w.write(1, 13, 'Typed Count', header_format)
         w.write(1, 14, 'URL Hidden', header_format)
         w.write(1, 15, 'Transition', header_format)
-        w.write(1, 16, 'Interrupt Reason', header_format)
-        w.write(1, 17, 'Danger Type', header_format)
-        w.write(1, 18, 'Opened?', header_format)
-        w.write(1, 19, 'ETag', header_format)
-        w.write(1, 20, 'Last Modified', header_format)
-        w.write(1, 21, 'All HTTP Headers', header_format)
+        w.write(1, 16, 'Categories', header_format)
+        w.write(1, 17, 'Entities', header_format)
+        w.write(1, 18, 'Cluster', header_format)
+        w.write(1, 19, 'Interrupt Reason', header_format)
+        w.write(1, 20, 'Danger Type', header_format)
+        w.write(1, 21, 'Opened?', header_format)
+        w.write(1, 22, 'ETag', header_format)
+        w.write(1, 23, 'Last Modified', header_format)
+        w.write(1, 24, 'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
         w.set_column('B:B', 21)  # Date
         w.set_column('C:C', 60)  # URL
         w.set_column('D:D', 25)  # Title / Name / Status
-        w.set_column('E:E', 80)  # Data / Value / Path
-        w.set_column('F:F', 60)  # Interpretation
+        w.set_column('E:E', 60)  # Data / Value / Path
+        w.set_column('F:F', 40)  # Interpretation
         w.set_column('G:G', 12)  # Profile
         w.set_column('H:H', 10)  # Source
 
@@ -925,20 +953,23 @@ class AnalysisSession(object):
         w.set_column('L:L', 14)  # Visit Duration
         w.set_column('M:O', 6)   # Visit Count, Typed Count, Hidden
         w.set_column('P:P', 12)  # Transition
+        w.set_column('Q:Q', 18)  # Categories
+        w.set_column('R:R', 18)  # Entities
+        w.set_column('S:S', 15)  # Cluster
 
         # Download Specific
-        w.set_column('Q:Q', 12)  # Interrupt Reason
-        w.set_column('R:R', 24)  # Danger Type
-        w.set_column('S:S', 12)  # Opened
+        w.set_column('T:T', 12)  # Interrupt Reason
+        w.set_column('U:U', 24)  # Danger Type
+        w.set_column('V:V', 12)  # Opened
 
         # Common between Downloads and Cache
-        w.set_column('T:T', 12)  # ETag
-        w.set_column('U:U', 27)  # Last Modified
+        w.set_column('W:W', 12)  # ETag
+        w.set_column('X:X', 27)  # Last Modified
 
         # Cache Specific
-        w.set_column('V:V', 30)  # HTTP Headers
+        w.set_column('Y:Y', 30)  # HTTP Headers
 
-        # Start at the row after the headers, and begin writing out the items in parsed_artifacts
+        # Start at the row after the headers and begin writing out the items in parsed_artifacts
         row_number = 2
         for item in sorted(self.parsed_artifacts):
             try:
@@ -947,7 +978,7 @@ class AnalysisSession(object):
                     w.write(row_number, 1, friendly_date(item.timestamp), black_date_format)  # date
                     w.write_string(row_number, 2, item.url, black_url_format)  # URL
                     w.write_string(row_number, 3, item.name, black_field_format)  # Title
-                    w.write(row_number, 4, "", black_value_format)  # Indexed Content
+                    w.write(row_number, 4, "", black_value_format)  # Data / Value / Path
                     w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
                     w.write(row_number, 6, item.profile, black_type_format)  # Profile
                     w.write(row_number, 7, item.visit_source, black_type_format)
@@ -959,6 +990,9 @@ class AnalysisSession(object):
                     w.write(row_number, 13, item.typed_count, black_flag_format)
                     w.write(row_number, 14, item.hidden, black_flag_format)
                     w.write(row_number, 15, item.transition_friendly, black_trans_format)
+                    w.write(row_number, 16, item.categories_str or "", black_value_format)  # Categories
+                    w.write(row_number, 17, item.entities_str or "", black_value_format)  # Entities
+                    w.write(row_number, 18, item.cluster_str or "", black_value_format)  # Cluster
 
                 elif item.row_type.startswith("media"):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
@@ -991,16 +1025,16 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, green_value_format)  # download path
                     w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
                     w.write(row_number, 6, item.profile, green_type_format)  # Profile
-                    w.write(row_number, 16, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
-                    w.write(row_number, 17, item.danger_type_friendly, green_value_format)  # danger type
+                    w.write(row_number, 19, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
+                    w.write(row_number, 20, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
                         open_friendly = 'Yes'
                     elif item.opened == 0:
                         open_friendly = 'No'
-                    w.write_string(row_number, 18, open_friendly, green_value_format)  # opened
-                    w.write(row_number, 19, item.etag, green_value_format)  # ETag
-                    w.write(row_number, 20, item.last_modified, green_value_format)  # Last Modified
+                    w.write_string(row_number, 21, open_friendly, green_value_format)  # opened
+                    w.write(row_number, 22, item.etag, green_value_format)  # ETag
+                    w.write(row_number, 23, item.last_modified, green_value_format)  # Last Modified
 
                 elif item.row_type.startswith("bookmark folder"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -1037,9 +1071,9 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.locations, gray_value_format)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
-                    w.write(row_number, 19, item.etag, gray_value_format)  # ETag
-                    w.write(row_number, 20, item.last_modified, gray_value_format)  # Last Modified
-                    w.write(row_number, 21, item.http_headers_str, gray_value_format)  # headers
+                    w.write(row_number, 22, item.etag, gray_value_format)  # ETag
+                    w.write(row_number, 23, item.last_modified, gray_value_format)  # Last Modified
+                    w.write(row_number, 24, item.http_headers_str, gray_value_format)  # headers
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1096,7 +1130,7 @@ class AnalysisSession(object):
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
-        w.autofilter(1, 0, row_number, 21)  # Add autofilter
+        w.autofilter(1, 0, row_number, 24)  # Add autofilter
         w.filter_column('B', 'Timestamp > 1970-01-02')
 
         ##############################
