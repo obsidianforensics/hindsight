@@ -1284,6 +1284,40 @@ class Chrome(WebBrowser):
         log.info(f' - Parsed {len(results)} Session Storage items')
         self.parsed_storage.extend(results)
 
+    @staticmethod
+    def resolve_indexeddb_blob_refs(record, origin):
+        """Walk an IndexedDB record value and replace BlobIndex objects with descriptive strings
+        that include the blob file path and metadata.
+        """
+        BlobIndex = ccl_chromium_reader.ccl_chromium_indexeddb.ccl_blink_value_deserializer.BlobIndex
+        blob_base = f'{origin}.indexeddb.blob'
+
+        def _resolve(obj):
+            if isinstance(obj, BlobIndex):
+                try:
+                    info = record.resolve_blob_index(obj)
+                    blob_path = os.path.join(
+                        blob_base, f'{record.db_id}',
+                        f'{info.blob_number >> 8:02x}', f'{info.blob_number:x}')
+                    parts = [blob_path]
+                    if info.mime_type:
+                        parts.append(info.mime_type)
+                    if info.size is not None:
+                        parts.append(f'{info.size} bytes')
+                    if info.file_name:
+                        parts.append(info.file_name)
+                    return f'[Blob: {"; ".join(parts)}]'
+                except Exception:
+                    return f'[Blob: unresolved index {obj.index_id}]'
+            elif isinstance(obj, dict):
+                return {k: _resolve(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_resolve(v) for v in obj]
+            else:
+                return obj
+
+        return _resolve(record.value)
+
     def get_indexeddb(self, path, dir_name):
         results = []
 
@@ -1330,10 +1364,17 @@ class Chrome(WebBrowser):
                                 if record.is_live:
                                     record_state = 'Live'
 
+                                record_source_path = storage_directory
+                                if record.external_value_path:
+                                    record_source_path = os.path.join(
+                                        f'{origin}.indexeddb.blob', record.external_value_path)
+
+                                record_value = self.resolve_indexeddb_blob_refs(record, origin)
+
                                 results.append(Chrome.IndexedDBItem(
-                                    self.profile_path, origin, str(record.key.value), str(record.value),
+                                    self.profile_path, origin, str(record.key.value), str(record_value),
                                     int(record.ldb_seq_no), database=f"{record.database_name}.{obj_store_name}",
-                                    state=record_state, source_path=storage_directory))
+                                    state=record_state, source_path=record_source_path))
                         except FileNotFoundError as e:
                             log.error(f' - File ({e}) not found while processing {database}')
 
