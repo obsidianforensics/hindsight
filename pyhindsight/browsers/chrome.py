@@ -2149,6 +2149,98 @@ class Chrome(WebBrowser):
 
         self.preferences.append({'data': results, 'presentation': presentation})
 
+    def get_platform_notifications(self, path, dir_name):
+        try:
+            from ccl_chromium_reader.ccl_chromium_notifications import NotificationReader
+        except ImportError as e:
+            log.exception(f' - Exception importing ccl_chromium_notifications: {e}')
+            self.artifacts_counts['Platform Notifications'] = 'Failed'
+            return
+
+        result_list = []
+        log.info('Platform Notifications:')
+        pn_root_path = os.path.join(path, dir_name)
+        log.info(f' - Reading from {pn_root_path}')
+
+        try:
+            with NotificationReader(pathlib.Path(pn_root_path)) as reader:
+                for notification in reader.read_notifications():
+                    try:
+                        # CCL returns naive UTC datetimes; mark as UTC before timezone conversion
+                        creation_time = notification.creation_time.replace(
+                            tzinfo=datetime.timezone.utc)
+                        timestamp = utils.to_datetime(creation_time, self.timezone)
+
+                        # Build structured value with available fields (excluding title, shown in key)
+                        value_parts = []
+                        if notification.body:
+                            value_parts.append(f'Body: {notification.body}')
+                        if notification.icon:
+                            value_parts.append(f'Icon: {notification.icon}')
+                        if notification.image:
+                            value_parts.append(f'Image: {notification.image}')
+                        if notification.badge:
+                            value_parts.append(f'Badge: {notification.badge}')
+                        if notification.closed_reason is not None:
+                            value_parts.append(f'Closed Reason: {notification.closed_reason.name}')
+                        if notification.timestamp:
+                            value_parts.append(f'App Timestamp: {notification.timestamp}')
+                        if notification.time_until_first_click_millis:
+                            value_parts.append(f'First Click: {notification.time_until_first_click_millis}ms')
+                        if notification.time_until_last_click_millis:
+                            value_parts.append(f'Last Click: {notification.time_until_last_click_millis}ms')
+                        if notification.time_until_close_millis:
+                            value_parts.append(f'Close Time: {notification.time_until_close_millis}ms')
+                        if notification.actions:
+                            actions_str = '; '.join(
+                                f'{a.title} ({a.action})' for a in notification.actions if a.title)
+                            if actions_str:
+                                value_parts.append(f'Actions: {actions_str}')
+                        if notification.data is not None:
+                            value_parts.append(f'Data: {notification.data}')
+
+                        value = '\n'.join(value_parts)
+
+                        pn_record = Chrome.SiteSetting(
+                            self.profile_path, url=notification.origin,
+                            timestamp=timestamp,
+                            key=notification.title or '',
+                            value=value, interpretation='')
+                        pn_record.row_type = 'notification (shown)'
+                        result_list.append(pn_record)
+
+                        # Create click event records from first/last click offsets
+                        click_times = set()
+                        if notification.time_until_first_click_millis:
+                            click_times.add(notification.time_until_first_click_millis)
+                        if notification.time_until_last_click_millis:
+                            click_times.add(notification.time_until_last_click_millis)
+
+                        for click_ms in click_times:
+                            click_timestamp = utils.to_datetime(
+                                creation_time + datetime.timedelta(milliseconds=click_ms),
+                                self.timezone)
+                            click_record = Chrome.SiteSetting(
+                                self.profile_path, url=notification.origin,
+                                timestamp=click_timestamp,
+                                key=notification.title or '',
+                                value=value, interpretation='')
+                            click_record.row_type = 'notification (clicked)'
+                            result_list.append(click_record)
+
+                    except Exception as e:
+                        log.warning(f' - Exception parsing notification: {e}')
+
+        except Exception as e:
+            log.warning(f' - Could not open {pn_root_path} as LevelDB; {e}')
+            self.artifacts_counts['Platform Notifications'] = 'Failed'
+            return
+
+        log.info(f' - Parsed {len(result_list)} items')
+        self.artifacts_counts['Platform Notifications'] = len(result_list)
+        self.parsed_artifacts.extend(result_list)
+
+
     def get_cache(self, path, dir_name, row_type=None):
         # Set up empty return array
         results = []
@@ -3215,6 +3307,12 @@ class Chrome(WebBrowser):
                     'File System', 'File System', self.get_file_system,
                     self.profile_path, 'File System',
                     display_key='File System', display_value='File System items')
+
+            if 'Platform Notifications' in input_listing:
+                run_with_status(
+                    'Platform Notifications', 'Platform Notifications', self.get_platform_notifications,
+                    self.profile_path, 'Platform Notifications',
+                    display_key='Platform Notifications', display_value='Platform Notification records')
 
             # Browser Extensions
             current_group = "Browser Extensions"
