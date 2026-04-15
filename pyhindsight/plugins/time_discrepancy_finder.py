@@ -28,7 +28,7 @@ parsedItems = 0
 
 def plugin(analysis_session=None):
     from pyhindsight.utils import to_datetime
-    import pytz
+    import datetime
     import re
     if analysis_session is None:
         return
@@ -78,7 +78,7 @@ def plugin(analysis_session=None):
                         if site[list(site.keys())[0]]['name'] == item.name:
                             m = re.search(site[list(site.keys())[0]]['regex'], item.value)
                             if m:
-                                server = to_datetime(m.group(1), pytz.utc)
+                                server = to_datetime(m.group(1), datetime.timezone.utc)
                                 local = item.timestamp
                                 delta = abs(server - local)
                                 item.interpretation = 'Server-side Timestamp: {} | Local Timestamp: {} | ' \
@@ -89,7 +89,7 @@ def plugin(analysis_session=None):
                 for site in url_set:
                     m = re.search(site, item.url)
                     if m:
-                        server = to_datetime(m.group(1), pytz.utc)
+                        server = to_datetime(m.group(1), datetime.timezone.utc)
                         local = item.timestamp
                         delta = abs(server - local)
                         item.interpretation = 'Server-side Timestamp: {} | Local Timestamp: {} | ' \

@@ -23,11 +23,11 @@ setup(
     'keyring>=21.2.1',
     'pycryptodomex>=3.9.7',
     # 'pypiwin32>=219',
-    'pytz>=2021.3',
     'xlsxwriter>=3.1',
     'puremagic>=1.11',
     'protobuf>=4.23',
-    'rich>=13.0'
+    'rich>=13.0',
+    'tzdata>=2024.1'
     # 'ccl_chromium_reader @ git+https://github.com/cclgroupltd/ccl_chromium_reader.git'
   ]
 )

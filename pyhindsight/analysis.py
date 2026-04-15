@@ -3,10 +3,10 @@ import importlib
 import json
 import logging
 import os
-import pytz
 import sqlite3
 import sys
 import time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pyhindsight import __version__
 from pyhindsight.browsers.chrome import Chrome
@@ -666,19 +666,15 @@ class AnalysisSession(object):
         if self.selected_output_format is None:
             self.selected_output_format = self.available_output_formats[-1]
 
-        if 'pytz' in sys.modules:
-            # If the timezone exists, and is a string, we need to convert it to a tzinfo object
-            if self.timezone is not None and isinstance(self.timezone, str):
-                try:
-                    self.timezone = pytz.timezone(self.timezone)
-                except pytz.exceptions.UnknownTimeZoneError:
-                    print("Couldn't understand timezone; using UTC.")
-                    self.timezone = pytz.timezone('UTC')
-
-            elif self.timezone is None:
-                self.timezone = pytz.timezone('UTC')
-        else:
-            self.timezone = None
+        # If the timezone exists as a string, convert it to a tzinfo object
+        if self.timezone is not None and isinstance(self.timezone, str):
+            try:
+                self.timezone = ZoneInfo(self.timezone)
+            except ZoneInfoNotFoundError:
+                log.warning("Couldn't understand timezone; using UTC.")
+                self.timezone = datetime.timezone.utc
+        elif self.timezone is None:
+            self.timezone = datetime.timezone.utc
 
         log.debug("Options: " + str(self.__dict__))
 
