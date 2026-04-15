@@ -133,6 +133,10 @@ def to_datetime(timestamp, timezone=None, quiet=False):
         elif 2500000000000 > timestamp > 1280000000000:  # 2049 > ts > 2010
             new_timestamp = datetime.datetime.fromtimestamp(timestamp / 1000, datetime.UTC)
 
+        # Webkit milliseconds (14 digits)
+        elif 15000000000000 > timestamp > 12906777600000:  # 2076 > ts > 2009
+            new_timestamp = datetime.datetime.fromtimestamp((timestamp / 1000) - 11644473600, datetime.UTC)
+
         # Webkit seconds (11 digits)
         elif 15000000000 > timestamp >= 12900000000:  # 2076 > ts > 2009
             new_timestamp = datetime.datetime.fromtimestamp(timestamp - 11644473600, datetime.UTC)
