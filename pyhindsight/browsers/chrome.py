@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import copy
 import hashlib
+from contextlib import contextmanager
 import math
 import os
 import pathlib
@@ -285,6 +286,54 @@ class Chrome(WebBrowser):
 
         self.version = possible_versions
 
+    @contextmanager
+    def _execute_compatible_query(self, path, database, query, version, artifact_name, count_key=None):
+        """Open *database*, find the highest compatible query version, execute it with schema fallback, yield cursor.
+
+        Yields None (and logs) on any failure so callers can do ``if cursor is None: return``.
+        The DB connection is always closed on exit.
+        """
+        if count_key is None:
+            count_key = database
+
+        compatible_version = version[0]
+        while compatible_version not in query and compatible_version > 0:
+            compatible_version -= 1
+
+        if compatible_version == 0:
+            log.warning(f' - No compatible query version found for {artifact_name}')
+            yield None
+            return
+
+        log.info(f' - Using SQL query for {artifact_name} for Chrome v{compatible_version}')
+
+        conn = utils.open_sqlite_db(self, path, database)
+        if not conn:
+            self.artifacts_counts[count_key] = 'Failed'
+            yield None
+            return
+
+        try:
+            cursor = conn.cursor()
+            # Try versions from highest compatible downward to handle schema gaps (e.g. missing columns in Guest Profiles)
+            sorted_versions = sorted([v for v in query if v <= compatible_version], reverse=True)
+            for attempt_version in sorted_versions:
+                try:
+                    cursor.execute(query[attempt_version])
+                    if attempt_version != compatible_version:
+                        log.info(f' - Fell back to SQL query for {artifact_name} for Chrome v{attempt_version}')
+                    break
+                except sqlite3.OperationalError as e:
+                    log.warning(f' - Query for {artifact_name} v{attempt_version} failed ({e}); trying lower version')
+            else:
+                log.error(f' - No compatible query found for {artifact_name}; skipping')
+                self.artifacts_counts[count_key] = 'Failed'
+                yield None
+                return
+            yield cursor
+        finally:
+            conn.close()
+
     def get_history(self, path, history_file, version, row_type):
         results = []
 
@@ -357,100 +406,72 @@ class Chrome(WebBrowser):
                             visits.id as visit_id
                         FROM urls, visits WHERE urls.id = visits.url'''}
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        with self._execute_compatible_query(path, history_file, query, version, 'History items') as cursor:
+            if cursor is None:
+                return
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for History items for Chrome {compatible_version}')
-            conn = None
-            try:
-                # Copy and connect to copy of 'History' SQLite DB
-                conn = utils.open_sqlite_db(self, path, history_file)
-                if not conn:
-                    self.artifacts_counts[history_file] = 'Failed'
-                    return
-                cursor = conn.cursor()
+            for row in cursor:
+                duration = None
+                if row.get('visit_duration'):
+                    duration = datetime.timedelta(microseconds=row.get('visit_duration'))
 
-                # Use the highest compatible version SQL to select data
-                try:
-                    cursor.execute(query[compatible_version])
-                except Exception as e:
-                    log.error(f' - Error querying {history_file}: {e}')
-                    self.artifacts_counts[history_file] = 'Failed'
-                    return
+                new_row = Chrome.URLItem(
+                    profile=self.profile_path,
+                    visit_id=row.get('visit_id'),
+                    url=row.get('url'),
+                    title=row.get('title'),
+                    visit_time=utils.to_datetime(row.get('visit_time'), self.timezone),
+                    last_visit_time=utils.to_datetime(row.get('last_visit_time'), self.timezone),
+                    visit_count=row.get('visit_count'),
+                    typed_count=row.get('typed_count'),
+                    from_visit=row.get('from_visit'),
+                    transition=row.get('transition'),
+                    hidden=row.get('hidden'),
+                    favicon_id=row.get('favicon_id'),
+                    indexed=row.get('is_indexed'),
+                    visit_duration=str(duration),
+                    visit_source=row.get('source'),
+                    is_known_to_sync=row.get('is_known_to_sync'),
+                    originator_cache_guid=row.get('originator_cache_guid'),
+                    opener_visit=row.get('opener_visit'),
+                    cluster_id=row.get('cluster_id'),
+                    cluster_label=row.get('cluster_label'),
+                    response_code=row.get('response_code'),
+                    tab_id=row.get('tab_id'),
+                    window_id=row.get('window_id'),
+                )
 
-                for row in cursor:
-                    duration = None
-                    if row.get('visit_duration'):
-                        duration = datetime.timedelta(microseconds=row.get('visit_duration'))
+                # Set the row type as determined earlier
+                new_row.row_type = row_type
 
-                    new_row = Chrome.URLItem(
-                        profile=self.profile_path,
-                        visit_id=row.get('visit_id'),
-                        url=row.get('url'),
-                        title=row.get('title'),
-                        visit_time=utils.to_datetime(row.get('visit_time'), self.timezone),
-                        last_visit_time=utils.to_datetime(row.get('last_visit_time'), self.timezone),
-                        visit_count=row.get('visit_count'),
-                        typed_count=row.get('typed_count'),
-                        from_visit=row.get('from_visit'),
-                        transition=row.get('transition'),
-                        hidden=row.get('hidden'),
-                        favicon_id=row.get('favicon_id'),
-                        indexed=row.get('is_indexed'),
-                        visit_duration=str(duration),
-                        visit_source=row.get('source'),
-                        is_known_to_sync=row.get('is_known_to_sync'),
-                        originator_cache_guid=row.get('originator_cache_guid'),
-                        opener_visit=row.get('opener_visit'),
-                        cluster_id=row.get('cluster_id'),
-                        cluster_label=row.get('cluster_label'),
-                        response_code=row.get('response_code'),
-                        tab_id=row.get('tab_id'),
-                        window_id=row.get('window_id'),
-                    )
+                # Parse content annotations
+                categories = row.get('categories')
+                new_row.category_ids = [c.strip() for c in categories.split(',') if c.strip()] if categories else None
+                entities = row.get('entities')
+                new_row.entity_ids = [e.strip() for e in entities.split(',') if e.strip()] if entities else None
 
-                    # Set the row type as determined earlier
-                    new_row.row_type = row_type
+                # Collect unique KG entity/category IDs for later resolution
+                # IDs are stored as '/m/01mf0:99' (id:confidence); strip the score for API lookup
+                if new_row.category_ids:
+                    for cid in new_row.category_ids:
+                        kg_id = cid.rsplit(':', 1)[0] if ':' in cid else cid
+                        self.kg_entities.setdefault(kg_id, None)
+                if new_row.entity_ids:
+                    for eid in new_row.entity_ids:
+                        kg_id = eid.rsplit(':', 1)[0] if ':' in eid else eid
+                        self.kg_entities.setdefault(kg_id, None)
 
-                    # Parse content annotations
-                    categories = row.get('categories')
-                    new_row.category_ids = [c.strip() for c in categories.split(',') if c.strip()] if categories else None
-                    entities = row.get('entities')
-                    new_row.entity_ids = [e.strip() for e in entities.split(',') if e.strip()] if entities else None
+                # Translate the transition value to human-readable
+                new_row.decode_transition()
 
-                    # Collect unique KG entity/category IDs for later resolution
-                    # IDs are stored as '/m/01mf0:99' (id:confidence); strip the score for API lookup
-                    if new_row.category_ids:
-                        for cid in new_row.category_ids:
-                            kg_id = cid.rsplit(':', 1)[0] if ':' in cid else cid
-                            self.kg_entities.setdefault(kg_id, None)
-                    if new_row.entity_ids:
-                        for eid in new_row.entity_ids:
-                            kg_id = eid.rsplit(':', 1)[0] if ':' in eid else eid
-                            self.kg_entities.setdefault(kg_id, None)
+                # Translate the numeric visit_source.source code to human-readable
+                new_row.decode_source()
 
-                    # Translate the transition value to human-readable
-                    new_row.decode_transition()
+                results.append(new_row)
 
-                    # Translate the numeric visit_source.source code to human-readable
-                    new_row.decode_source()
-
-                    # Add the new row to the results array
-                    results.append(new_row)
-
-                self.artifacts_counts[history_file] = len(results)
-                log.info(f' - Parsed {len(results)} items')
-                self.parsed_artifacts.extend(results)
-
-            except Exception as e:
-                self.artifacts_counts[history_file] = 'Failed'
-                log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
-            finally:
-                if conn is not None:
-                    conn.close()
+        self.artifacts_counts[history_file] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_media_history(self, path, history_file, version, row_type):
         results = []
@@ -464,70 +485,40 @@ class Chrome(WebBrowser):
                         FROM playback LEFT JOIN playbackSession 
                             ON playback.last_updated_time_s = playbackSession.last_updated_time_s'''}
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        with self._execute_compatible_query(path, history_file, query, version, 'Media History items') as cursor:
+            if cursor is None:
+                return
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for Media History items for Chrome {compatible_version}')
-            conn = None
-            try:
-                # Copy and connect to copy of 'Media History' SQLite DB
-                conn = utils.open_sqlite_db(self, path, history_file)
-                if not conn:
-                    self.artifacts_counts[history_file] = 'Failed'
-                    return
-                cursor = conn.cursor()
+            for row in cursor:
+                duration = None
+                if row.get('duration_ms'):
+                    # Check is duration value is reasonable; some have been equivalent of 300 million years
+                    if row.get('duration_ms') < 2600000:
+                        duration = str(datetime.timedelta(milliseconds=row.get('duration_ms')))[:-3]
 
-                # Use highest compatible version SQL to select download data
-                try:
-                    cursor.execute(query[compatible_version])
-                except Exception as e:
-                    log.error(f" - Error querying '{history_file}': {e}")
-                    self.artifacts_counts[history_file] = 'Failed'
-                    return
+                position = None
+                if row.get('position_ms'):
+                    position = str(datetime.timedelta(milliseconds=row.get('position_ms')))[:-3]
 
-                for row in cursor:
-                    duration = None
-                    if row.get('duration_ms'):
-                        # Check is duration value is reasonable; some have been equivalent of 300 million years
-                        if row.get('duration_ms') < 2600000:
-                            duration = str(datetime.timedelta(milliseconds=row.get('duration_ms')))[:-3]
+                watch_time = ' 0:00:00'
+                if row.get('watch_time_s'):
+                    watch_time = ' ' + str(datetime.timedelta(seconds=row.get('watch_time_s')))
 
-                    position = None
-                    if row.get('position_ms'):
-                        position = str(datetime.timedelta(milliseconds=row.get('position_ms')))[:-3]
+                row_title = ''
+                if row.get('title'):
+                    row_title = row.get('title')
 
-                    watch_time = ' 0:00:00'
-                    if row.get('watch_time_s'):
-                        watch_time = ' ' + str(datetime.timedelta(seconds=row.get('watch_time_s')))
+                new_row = Chrome.MediaItem(
+                    self.profile_path, row.get('url'), row_title,
+                    utils.to_datetime(row.get('last_updated_time_s'), self.timezone), position,
+                    duration, row.get('source_title'), watch_time, row.get('has_video'), row.get('has_audio'))
 
-                    row_title = ''
-                    if row.get('title'):
-                        row_title = row.get('title')
+                new_row.row_type = row_type
+                results.append(new_row)
 
-                    new_row = Chrome.MediaItem(
-                        self.profile_path, row.get('url'), row_title,
-                        utils.to_datetime(row.get('last_updated_time_s'), self.timezone), position,
-                        duration, row.get('source_title'), watch_time, row.get('has_video'), row.get('has_audio'))
-
-                    # Set the row type as determined earlier
-                    new_row.row_type = row_type
-
-                    # Add the new row to the results array
-                    results.append(new_row)
-
-                self.artifacts_counts[history_file] = len(results)
-                log.info(f' - Parsed {len(results)} items')
-                self.parsed_artifacts.extend(results)
-
-            except Exception as e:
-                self.artifacts_counts[history_file] = 'Failed'
-                log.error(f' - Exception parsing {os.path.join(path, history_file)}; {e}')
-            finally:
-                if conn is not None:
-                    conn.close()
+        self.artifacts_counts[history_file] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_downloads(self, path, database, version, row_type):
         # Set up empty return array
@@ -554,79 +545,49 @@ class Chrome(WebBrowser):
                             downloads.state, downloads.full_path, downloads.start_time
                         FROM downloads'''}
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        with self._execute_compatible_query(
+                path, database, query, version, 'Download items',
+                count_key=database + '_downloads') as cursor:
+            if cursor is None:
+                return
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for Download items for Chrome v{compatible_version}')
-            conn = None
-            try:
-                # Copy and connect to copy of 'History' SQLite DB
-                conn = utils.open_sqlite_db(self, path, database)
-                if not conn:
-                    self.artifacts_counts[database + '_downloads'] = 'Failed'
-                    return
-                cursor = conn.cursor()
-
-                # Use the highest compatible version SQL to select download data
+            for row in cursor:
                 try:
-                    cursor.execute(query[compatible_version])
-                except sqlite3.OperationalError as e:
-                    log.warning(f' - Exception while executing query; {e}')
-                    self.artifacts_counts[database + '_downloads'] = 'Failed'
-                    return
+                    # TODO: collapse download chain into one entry per download
+                    new_row = Chrome.DownloadItem(
+                        self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
+                        row.get('total_bytes'), row.get('state'), row.get('full_path'),
+                        utils.to_datetime(row.get('start_time'), self.timezone),
+                        utils.to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
+                        row.get('current_path'), row.get('opened'), row.get('danger_type'),
+                        row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
+                        row.get('chain_index'))
+                except:
+                    log.exception(' - Exception processing record; skipped.')
+                    continue
 
-                for row in cursor:
-                    try:
-                        # TODO: collapse download chain into one entry per download
-                        new_row = Chrome.DownloadItem(
-                            self.profile_path, row.get('id'), row.get('url'), row.get('received_bytes'),
-                            row.get('total_bytes'), row.get('state'), row.get('full_path'),
-                            utils.to_datetime(row.get('start_time'), self.timezone),
-                            utils.to_datetime(row.get('end_time'), self.timezone), row.get('target_path'),
-                            row.get('current_path'), row.get('opened'), row.get('danger_type'),
-                            row.get('interrupt_reason'), row.get('etag'), row.get('last_modified'),
-                            row.get('chain_index'))
-                    except:
-                        log.exception(' - Exception processing record; skipped.')
-                        continue
+                new_row.decode_interrupt_reason()
+                new_row.decode_danger_type()
+                new_row.decode_download_state()
+                new_row.timestamp = new_row.start_time
+                new_row.create_friendly_status()
 
-                    new_row.decode_interrupt_reason()
-                    new_row.decode_danger_type()
-                    new_row.decode_download_state()
-                    new_row.timestamp = new_row.start_time
+                if new_row.full_path is not None:
+                    new_row.value = new_row.full_path
+                elif new_row.current_path is not None:
+                    new_row.value = new_row.current_path
+                elif new_row.target_path is not None:
+                    new_row.value = new_row.target_path
+                else:
+                    new_row.value = 'Error retrieving download location'
+                    log.error(f' - Error retrieving download location for download "{new_row.url}"')
 
-                    new_row.create_friendly_status()
+                new_row.row_type = row_type
+                results.append(new_row)
 
-                    if new_row.full_path is not None:
-                        new_row.value = new_row.full_path
-                    elif new_row.current_path is not None:
-                        new_row.value = new_row.current_path
-                    elif new_row.target_path is not None:
-                        new_row.value = new_row.target_path
-                    else:
-                        new_row.value = 'Error retrieving download location'
-                        log.error(f' - Error retrieving download location for download "{new_row.url}"')
-
-                    new_row.row_type = row_type
-                    results.append(new_row)
-
-                self.artifacts_counts[database + '_downloads'] = len(results)
-                log.info(f' - Parsed {len(results)} items')
-                self.parsed_artifacts.extend(results)
-
-            except IOError:
-                self.artifacts_counts[database + '_downloads'] = 'Failed'
-                log.error(f' - Couldn\'t open {os.path.join(path, database)}')
-
-            except sqlite3.OperationalError as e:
-                self.artifacts_counts[database + '_downloads'] = 'Failed'
-                log.error(f' - Couldn\'t read "downloads" from {os.path.join(path, database)}; {e}')
-            finally:
-                if conn is not None:
-                    conn.close()
+        self.artifacts_counts[database + '_downloads'] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def decrypt_cookie(self, encrypted_value):
         """Decryption based on work by Nathan Henrie and Jordan Wright as well as Chromium source:
@@ -729,82 +690,60 @@ class Chrome(WebBrowser):
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly
                         FROM cookies'''}
 
-        # Get the lowest possible version from the version list and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        with self._execute_compatible_query(path, database, query, version, 'Cookie items') as cursor:
+            if cursor is None:
+                return
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for Cookie items for Chrome v{compatible_version}')
-            conn = None
-            try:
-                # Copy and connect to the copy of 'Cookies' SQLite DB
-                conn = utils.open_sqlite_db(self, path, database)
-                if not conn:
-                    self.artifacts_counts[database] = 'Failed'
-                    return
-                cursor = conn.cursor()
-
-                # Use the highest compatible SQL query version to select data
-                cursor.execute(query[compatible_version])
-
-                for row in cursor:
-                    if row.get('encrypted_value') is not None:
-                        if len(row.get('encrypted_value')) >= 2:
-                            cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
-                        else:
-                            cookie_value = row.get('value')
+            for row in cursor:
+                if row.get('encrypted_value') is not None:
+                    if len(row.get('encrypted_value')) >= 2:
+                        cookie_value = self.decrypt_cookie(row.get('encrypted_value'))
                     else:
                         cookie_value = row.get('value')
+                else:
+                    cookie_value = row.get('value')
 
-                    # Create a base cookie item with all shared data
-                    base_cookie = Chrome.CookieItem(
-                        self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
-                        utils.to_datetime(row.get('creation_utc'), self.timezone),
-                        utils.to_datetime(row.get('last_access_utc'), self.timezone), row.get('secure'),
-                        row.get('httponly'), row.get('persistent'), row.get('has_expires'),
-                        utils.to_datetime(row.get('expires_utc'), self.timezone), row.get('priority'),
-                        row.get('top_frame_site_key'))
+                # Create a base cookie item with all shared data
+                base_cookie = Chrome.CookieItem(
+                    self.profile_path, row.get('host_key'), row.get('path'), row.get('name'), cookie_value,
+                    utils.to_datetime(row.get('creation_utc'), self.timezone),
+                    utils.to_datetime(row.get('last_access_utc'), self.timezone), row.get('secure'),
+                    row.get('httponly'), row.get('persistent'), row.get('has_expires'),
+                    utils.to_datetime(row.get('expires_utc'), self.timezone), row.get('priority'),
+                    row.get('top_frame_site_key'))
 
-                    base_cookie.url = base_cookie.host_key + base_cookie.path
-                    if base_cookie.top_frame_site_key:
-                        base_cookie.url += f' ({base_cookie.top_frame_site_key})'
+                base_cookie.url = base_cookie.host_key + base_cookie.path
+                if base_cookie.top_frame_site_key:
+                    base_cookie.url += f' ({base_cookie.top_frame_site_key})'
 
-                    base_cookie.last_update_utc = utils.to_datetime(row.get('last_update_utc'), self.timezone)
-                    zero_timestamp = utils.to_datetime(0, self.timezone)
+                base_cookie.last_update_utc = utils.to_datetime(row.get('last_update_utc'), self.timezone)
+                zero_timestamp = utils.to_datetime(0, self.timezone)
 
-                    # Create the row for when the cookie was created
-                    created_row = copy.copy(base_cookie)
-                    created_row.row_type = 'cookie (created)'
-                    created_row.timestamp = created_row.creation_utc
-                    results.append(created_row)
+                # Create the row for when the cookie was created
+                created_row = copy.copy(base_cookie)
+                created_row.row_type = 'cookie (created)'
+                created_row.timestamp = created_row.creation_utc
+                results.append(created_row)
 
-                    # If the cookie was created and accessed at the same time (only used once), or if the last accessed
-                    # time is 0 (happens on iOS), don't create an accessed row
-                    if base_cookie.last_access_utc not in (base_cookie.creation_utc, zero_timestamp):
-                        accessed_row = copy.copy(base_cookie)
-                        accessed_row.row_type = 'cookie (accessed)'
-                        accessed_row.timestamp = accessed_row.last_access_utc
-                        results.append(accessed_row)
+                # If the cookie was created and accessed at the same time (only used once), or if the last accessed
+                # time is 0 (happens on iOS), don't create an accessed row
+                if base_cookie.last_access_utc not in (base_cookie.creation_utc, zero_timestamp):
+                    accessed_row = copy.copy(base_cookie)
+                    accessed_row.row_type = 'cookie (accessed)'
+                    accessed_row.timestamp = accessed_row.last_access_utc
+                    results.append(accessed_row)
 
-                    # Create row for last update time if it exists and is different from other timestamps
-                    if base_cookie.last_update_utc and base_cookie.last_update_utc != zero_timestamp \
-                            and base_cookie.last_update_utc not in (base_cookie.creation_utc, base_cookie.last_access_utc):
-                        updated_row = copy.copy(base_cookie)
-                        updated_row.row_type = 'cookie (updated)'
-                        updated_row.timestamp = updated_row.last_update_utc
-                        results.append(updated_row)
+                # Create row for last update time if it exists and is different from other timestamps
+                if base_cookie.last_update_utc and base_cookie.last_update_utc != zero_timestamp \
+                        and base_cookie.last_update_utc not in (base_cookie.creation_utc, base_cookie.last_access_utc):
+                    updated_row = copy.copy(base_cookie)
+                    updated_row.row_type = 'cookie (updated)'
+                    updated_row.timestamp = updated_row.last_update_utc
+                    results.append(updated_row)
 
-                self.artifacts_counts[database] = len(results)
-                log.info(f' - Parsed {len(results)} items')
-                self.parsed_artifacts.extend(results)
-
-            except Exception as e:
-                self.artifacts_counts[database] = 'Failed'
-                log.error(f' - Could not open {os.path.join(path, database)}')
-            finally:
-                if conn is not None:
-                    conn.close()
+        self.artifacts_counts[database] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_login_data(self, path, database, version):
         # Set up empty return array
@@ -821,117 +760,77 @@ class Chrome(WebBrowser):
                  6:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
                             password_value, date_created, blacklisted_by_user FROM logins'''}
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        with self._execute_compatible_query(path, database, query, version, 'Login items') as cursor:
+            if cursor is None:
+                return
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for Login items for Chrome v{compatible_version}')
+            for row in cursor:
+                if row.get('blacklisted_by_user') == 1:
+                    never_save_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('origin_url'), name=row.get('username_element'),
+                        value='', count=row.get('times_used'),
+                        interpretation='User chose to "Never save password" for this site')
+                    never_save_row.row_type = 'login (never save)'
+                    results.append(never_save_row)
 
-            conn = None
-            try:
-                # Copy and connect to copy of 'Login Data' SQLite DB
-                conn = utils.open_sqlite_db(self, path, database)
-                if not conn:
-                    self.artifacts_counts[database] = 'Failed'
-                    return
-                cursor = conn.cursor()
+                elif row.get('username_value'):
+                    interpretation_str = 'User chose to save the credentials entered'
+                    if row.get('times_used') and row.get('times_used') > 0:
+                        interpretation_str += f' (times used: {row.get("times_used")})'
 
-                # Use the highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                    username_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('origin_url'), name=row.get('username_element'),
+                        value=row.get('username_value'), count=row.get('times_used'),
+                        interpretation=interpretation_str)
+                    username_row.row_type = 'login (saved credentials)'
+                    results.append(username_row)
 
-                for row in cursor:
-                    if row.get('blacklisted_by_user') == 1:
-                        never_save_row = Chrome.LoginItem(
-                            self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                            url=row.get('origin_url'), name=row.get('username_element'),
-                            value='', count=row.get('times_used'),
-                            interpretation='User chose to "Never save password" for this site')
-                        never_save_row.row_type = 'login (never save)'
-                        results.append(never_save_row)
-
-                    elif row.get('username_value'):
-                        interpretation_str = 'User chose to save the credentials entered'
+                    # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
+                    if row.get('date_last_used') and int(row.get('date_last_used')) > 13100000000000000:
+                        interpretation_str = 'User tried to log in with this username (may or may not have succeeded)'
                         if row.get('times_used') and row.get('times_used') > 0:
-                            interpretation_str += f' (times used: {row.get("times_used")})'
+                            interpretation_str += f'; times used: {row.get("times_used")})'
 
                         username_row = Chrome.LoginItem(
-                            self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                            self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
                             url=row.get('origin_url'), name=row.get('username_element'),
                             value=row.get('username_value'), count=row.get('times_used'),
                             interpretation=interpretation_str)
-                        username_row.row_type = 'login (saved credentials)'
+                        username_row.row_type = 'login (username)'
                         results.append(username_row)
 
-                        # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
-                        if row.get('date_last_used') and int(row.get('date_last_used')) > 13100000000000000:
-                            interpretation_str = 'User tried to log in with this username (may or may not have succeeded)'
-                            if row.get('times_used') and row.get('times_used') > 0:
-                                interpretation_str += f'; times used: {row.get("times_used")})'
+                if row.get('password_value') is not None and self.available_decrypts['windows'] == 1:
+                    try:
+                        # Windows is all I've had time to test; Ubuntu uses built-in password manager
+                        password = win32crypt.CryptUnprotectData(
+                            row.get('password_value').decode(), None, None, None, 0)[1]
+                    except:
+                        password = self.decrypt_cookie(row.get('password_value'))
 
-                            username_row = Chrome.LoginItem(
-                                self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
-                                url=row.get('origin_url'), name=row.get('username_element'),
-                                value=row.get('username_value'), count=row.get('times_used'),
-                                interpretation=interpretation_str)
-                            username_row.row_type = 'login (username)'
-                            results.append(username_row)
+                    password_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        url=row.get('origin_url'), name=row.get('password_element'),
+                        value=password, count=row.get('times_used'),
+                        interpretation='User chose to save the credentials entered')
+                    password_row.row_type = 'login (password)'
+                    results.append(password_row)
 
-                    if row.get('password_value') is not None and self.available_decrypts['windows'] == 1:
-                        try:
-                            # Windows is all I've had time to test; Ubuntu uses built-in password manager
-                            password = win32crypt.CryptUnprotectData(
-                                row.get('password_value').decode(), None, None, None, 0)[1]
-                        except:
-                            password = self.decrypt_cookie(row.get('password_value'))
+        # Queries for "stats" table for different versions
+        query = {48: '''SELECT origin_domain, username_value, dismissal_count, update_time FROM stats'''}
 
-                        password_row = Chrome.LoginItem(
-                            self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                            url=row.get('origin_url'), name=row.get('password_element'),
-                            value=password, count=row.get('times_used'),
-                            interpretation='User chose to save the credentials entered')
-                        password_row.row_type = 'login (password)'
-                        results.append(password_row)
-            finally:
-                if conn is not None:
-                    conn.close()
-
-            # Queries for "stats" table for different versions
-            query = {48: '''SELECT origin_domain, username_value, dismissal_count, update_time FROM stats'''}
-
-            # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-            compatible_version = version[0]
-            while compatible_version not in list(query.keys()) and compatible_version > 0:
-                compatible_version -= 1
-
-            if compatible_version != 0:
-                log.info(f' - Using SQL query for Login Stat items for Chrome v{compatible_version}')
-
-                conn = None
-                try:
-                    # Copy and connect to copy of 'Login Data' SQLite DB
-                    conn = utils.open_sqlite_db(self, path, database)
-                    if not conn:
-                        self.artifacts_counts[database] = 'Failed'
-                        return
-                    cursor = conn.cursor()
-
-                    # Use the highest compatible version SQL to select download data
-                    cursor.execute(query[compatible_version])
-
-                    for row in cursor:
-                        stats_row = Chrome.LoginItem(
-                            self.profile_path, utils.to_datetime(row.get('update_time'), self.timezone),
-                            url=row.get('origin_domain'), name='',
-                            value=row.get('username_value'), count=row.get('dismissal_count'),
-                            interpretation=f'User declined to save the password for this site '
-                                           f'(dismissal count: {row.get("dismissal_count")})')
-                        stats_row.row_type = 'login (declined save)'
-                        results.append(stats_row)
-                finally:
-                    if conn is not None:
-                        conn.close()
+        with self._execute_compatible_query(path, database, query, version, 'Login Stat items') as cursor:
+            if cursor is not None:
+                for row in cursor:
+                    stats_row = Chrome.LoginItem(
+                        self.profile_path, utils.to_datetime(row.get('update_time'), self.timezone),
+                        url=row.get('origin_domain'), name='',
+                        value=row.get('username_value'), count=row.get('dismissal_count'),
+                        interpretation=f'User declined to save the password for this site '
+                                       f'(dismissal count: {row.get("dismissal_count")})')
+                    stats_row.row_type = 'login (declined save)'
+                    results.append(stats_row)
 
         self.artifacts_counts['Login Data'] = len(results)
         log.info(f' - Parsed {len(results)} items')
@@ -949,49 +848,28 @@ class Chrome(WebBrowser):
                  2: '''SELECT autofill_dates.date_created, autofill.name, autofill.value, autofill.count
                         FROM autofill, autofill_dates WHERE autofill.pair_id = autofill_dates.pair_id'''}
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        with self._execute_compatible_query(
+                path, database, query, version, 'Autofill items', count_key='Autofill') as cursor:
+            if cursor is None:
+                return
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for Autofill items for Chrome v{compatible_version}')
-            conn = None
-            try:
-                # Copy and connect to copy of 'Web Data' SQLite DB
-                conn = utils.open_sqlite_db(self, path, database)
-                if not conn:
-                    self.artifacts_counts['Autofill'] = 'Failed'
-                    return
-                cursor = conn.cursor()
+            for row in cursor:
+                autofill_value = row.get('value')
+                if isinstance(autofill_value, bytes):
+                    autofill_value = '<encrypted>'
 
-                # Use highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                results.append(Chrome.AutofillItem(
+                    self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                    row.get('name'), autofill_value, row.get('count')))
 
-                for row in cursor:
-                    autofill_value = row.get('value')
-                    if isinstance(autofill_value, bytes):
-                        autofill_value = '<encrypted>'
-
+                if row.get('date_last_used') and row.get('count') > 1:
                     results.append(Chrome.AutofillItem(
-                        self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
+                        self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
                         row.get('name'), autofill_value, row.get('count')))
 
-                    if row.get('date_last_used') and row.get('count') > 1:
-                        results.append(Chrome.AutofillItem(
-                            self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
-                            row.get('name'), autofill_value, row.get('count')))
-
-                self.artifacts_counts['Autofill'] = len(results)
-                log.info(f' - Parsed {len(results)} items')
-                self.parsed_artifacts.extend(results)
-
-            except Exception as e:
-                self.artifacts_counts['Autofill'] = 'Failed'
-                log.error(f' - Could not open {os.path.join(path, database)}: {e}')
-            finally:
-                if conn is not None:
-                    conn.close()
+        self.artifacts_counts['Autofill'] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_dips(self, path, database, version):
         # Set up empty return array
@@ -1019,52 +897,31 @@ class Chrome(WebBrowser):
                          FROM bounces'''
                  }
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        columns = ['first_bounce_time', 'first_site_storage_time', 'first_stateful_bounce_time',
+                   'first_user_interaction_time', 'first_user_activation_time', 'last_bounce_time',
+                   'last_site_storage_time', 'last_stateful_bounce_time', 'last_user_activation_time',
+                   'last_user_interaction_time', 'first_web_authn_assertion_time',
+                   'last_web_authn_assertion_time']
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for DIPS items for Chrome v{compatible_version}')
-            conn = None
-            try:
-                # Copy and connect to copy of 'DIPS' SQLite DB
-                conn = utils.open_sqlite_db(self, path, database)
-                if not conn:
-                    self.artifacts_counts['DIPS'] = 'Failed'
-                    return
-                cursor = conn.cursor()
+        with self._execute_compatible_query(
+                path, database, query, version, 'DIPS items', count_key='DIPS') as cursor:
+            if cursor is None:
+                return
 
-                columns = ['first_bounce_time', 'first_site_storage_time', 'first_stateful_bounce_time',
-                           'first_user_interaction_time', 'first_user_activation_time', 'last_bounce_time',
-                           'last_site_storage_time', 'last_stateful_bounce_time', 'last_user_activation_time',
-                           'last_user_interaction_time', 'first_web_authn_assertion_time',
-                           'last_web_authn_assertion_time']
+            for row in cursor:
+                for column in columns:
+                    if not row.get(column):
+                        continue
 
-                # Use the highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                    dips_record = Chrome.SiteSetting(
+                        self.profile_path, row['site'], utils.to_datetime(row.get(column), self.timezone),
+                        column, '', '')
+                    dips_record.row_type = 'site setting (dips)'
+                    results.append(dips_record)
 
-                for row in cursor:
-                    for column in columns:
-                        if not row.get(column):
-                            continue
-
-                        dips_record = Chrome.SiteSetting(
-                            self.profile_path, row['site'], utils.to_datetime(row.get(column), self.timezone),
-                            column, '', '')
-                        dips_record.row_type = 'site setting (dips)'
-                        results.append(dips_record)
-
-                self.artifacts_counts['DIPS'] = len(results)
-                log.info(f' - Parsed {len(results)} items')
-                self.parsed_artifacts.extend(results)
-
-            except Exception as e:
-                self.artifacts_counts['DIPS'] = 'Failed'
-                log.error(f' - Could not open {os.path.join(path, database)}: {e}')
-            finally:
-                if conn is not None:
-                    conn.close()
+        self.artifacts_counts['DIPS'] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_dips_popups(self, path, database, version):
         # Set up empty return array
@@ -1076,48 +933,27 @@ class Chrome(WebBrowser):
         query = {117: '''SELECT opener_site, popup_site, last_popup_time FROM popups''',
                  133: '''SELECT opener_site, popup_site, last_popup_time, is_authentication_interaction FROM popups'''}
 
-        # Get the lowest possible version from the version list, and decrement it until it finds a matching query
-        compatible_version = version[0]
-        while compatible_version not in list(query.keys()) and compatible_version > 0:
-            compatible_version -= 1
+        with self._execute_compatible_query(
+                path, database, query, version, 'DIPS Popup items', count_key='DIPS Popups') as cursor:
+            if cursor is None:
+                return
 
-        if compatible_version != 0:
-            log.info(f' - Using SQL query for DIPS items for Chrome v{compatible_version}')
-            conn = None
-            try:
-                # Copy and connect to copy of 'DIPS' SQLite DB
-                conn = utils.open_sqlite_db(self, path, database)
-                if not conn:
-                    self.artifacts_counts['DIPS Popups'] = 'Failed'
-                    return
-                cursor = conn.cursor()
+            for row in cursor:
+                if row.get('is_authentication_interaction'):
+                    name = 'Opened an authentication popup on:'
+                else:
+                    name = 'Opened a popup on:'
 
-                # Use the highest compatible version SQL to select download data
-                cursor.execute(query[compatible_version])
+                dips_popup_record = Chrome.SiteSetting(
+                    self.profile_path, row['opener_site'],
+                    utils.to_datetime(row.get('last_popup_time'), self.timezone),
+                    name, row['popup_site'], '')
+                dips_popup_record.row_type = 'site setting (dips)'
+                results.append(dips_popup_record)
 
-                for row in cursor:
-                    if row.get('is_authentication_interaction'):
-                        name = 'Opened an authentication popup on:'
-                    else:
-                        name = 'Opened a popup on:'
-
-                    dips_popup_record = Chrome.SiteSetting(
-                        self.profile_path, row['opener_site'],
-                        utils.to_datetime(row.get('last_popup_time'), self.timezone),
-                        name, row['popup_site'], '')
-                    dips_popup_record.row_type = 'site setting (dips)'
-                    results.append(dips_popup_record)
-
-                self.artifacts_counts['DIPS Popups'] = len(results)
-                log.info(f' - Parsed {len(results)} items')
-                self.parsed_artifacts.extend(results)
-
-            except Exception as e:
-                self.artifacts_counts['DIPS Popups'] = 'Failed'
-                log.error(f' - Could not open {os.path.join(path, database)}: {e}')
-            finally:
-                if conn is not None:
-                    conn.close()
+        self.artifacts_counts['DIPS Popups'] = len(results)
+        log.info(f' - Parsed {len(results)} items')
+        self.parsed_artifacts.extend(results)
 
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
@@ -2357,6 +2193,8 @@ class Chrome(WebBrowser):
 
                     for exception_type, exception_data in prefs['profile']['content_settings']['exceptions'].items():
                         try:
+                            if not isinstance(exception_data, dict):
+                                continue
                             for origin, pref_data in exception_data.items():
                                 if pref_data.get('last_modified') and pref_data.get('last_modified') != '0':
                                     row_type_suffix = ' (modified)'
