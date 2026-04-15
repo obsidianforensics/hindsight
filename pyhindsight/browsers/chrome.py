@@ -5,6 +5,7 @@ import math
 import os
 import pathlib
 import sqlite3
+import struct
 import sys
 import datetime
 import re
@@ -294,11 +295,13 @@ class Chrome(WebBrowser):
                             urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time, 
                             visits.from_visit, visits.opener_visit, visits.visit_duration, visits.transition, 
                             visit_source.source, visits.id as visit_id, content_annotations.categories,
-                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
+                            content_annotations.entities, context_annotations.response_code, context_annotations.tab_id,
+                            context_annotations.window_id, clusters_and_visits.cluster_id, clusters.label AS cluster_label
                         FROM urls 
                                  JOIN visits ON urls.id = visits.url 
                                  LEFT JOIN visit_source ON visits.id = visit_source.id
                                  LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
+                                 LEFT JOIN context_annotations ON context_annotations.visit_id = visits.id
                                  LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
                                  LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
                       ''',
@@ -403,7 +406,10 @@ class Chrome(WebBrowser):
                         originator_cache_guid=row.get('originator_cache_guid'),
                         opener_visit=row.get('opener_visit'),
                         cluster_id=row.get('cluster_id'),
-                        cluster_label=row.get('cluster_label')
+                        cluster_label=row.get('cluster_label'),
+                        response_code=row.get('response_code'),
+                        tab_id=row.get('tab_id'),
+                        window_id=row.get('window_id'),
                     )
 
                     # Set the row type as determined earlier
@@ -1229,6 +1235,480 @@ class Chrome(WebBrowser):
         self.artifacts_counts['Local Storage'] = len(results)
         log.info(f' - Parsed {len(results)} items from {len(filtered_listing)} files')
         self.parsed_storage.extend(results)
+
+    def get_sessions(self, path, dir_name):
+        results = []
+
+        from ccl_chromium_reader.ccl_chromium_snss2 import SnssFile, SnssFileType, NavigationEntry
+        from ccl_chromium_reader.serialization_formats.ccl_easy_chromium_pickle import EasyPickleIterator
+        from pyhindsight.lib.page_state import parse_page_state
+
+        sessions_path = os.path.join(path, dir_name)
+        log.info('Sessions (SNSS):')
+        log.info(f' - Reading from {sessions_path}')
+
+        if not os.path.isdir(sessions_path):
+            log.error(f' - {sessions_path} is not a directory')
+            self.artifacts_counts['Sessions'] = 'Failed'
+            return
+
+        def webkit_ts(microseconds):
+            """Convert a Webkit/Windows epoch microsecond timestamp to a timezone-aware datetime."""
+            if microseconds == 0:
+                return utils.to_datetime(0, self.timezone)
+            ts = datetime.datetime(1601, 1, 1, tzinfo=datetime.timezone.utc) \
+                + datetime.timedelta(microseconds=microseconds)
+            return utils.to_datetime(ts, self.timezone)
+
+        # Session file command IDs (SessionRestoreIdType)
+        SESSION_TAB_CLOSED = 16
+        SESSION_WINDOW_CLOSED = 17
+        SESSION_LAST_ACTIVE_TIME = 21
+
+        # Tab restore file command IDs (TabRestoreIdType)
+        TAB_SELECTED_NAV_IN_TAB = 4
+        TAB_WINDOW = 9
+
+        WINDOW_SHOW_STATES = {1: 'Normal', 2: 'Minimized', 3: 'Maximized', 5: 'Fullscreen'}
+        WINDOW_TYPES = {0: 'Normal', 1: 'App', 2: 'App Popup', 3: 'DevTools'}
+
+        # Session structure: maps built from structural commands (Session_* files only)
+        # These are used to enrich NavigationEntry and timestamped event records
+        session_tabs = {}      # tab_id -> {window_id, index, pinned, selected_nav_index, group_token, ...}
+        session_windows = {}   # window_id -> {type, bounds, show_state, selected_tab_index, ...}
+        session_tab_groups = {}  # group_token -> {title, color, collapsed}
+        session_active_window = None
+
+        # Structural pass: read raw commands from Session_* files to build tab/window metadata
+        for filename in sorted(os.listdir(sessions_path)):
+            if not filename.startswith('Session_'):
+                continue
+            file_path = os.path.join(sessions_path, filename)
+            try:
+                with open(file_path, 'rb') as f:
+                    f.read(8)  # skip header
+                    while True:
+                        length_raw = f.read(2)
+                        if not length_raw or len(length_raw) < 2:
+                            break
+                        length = struct.unpack('<H', length_raw)[0]
+                        data = f.read(length)
+                        if len(data) < length:
+                            break
+                        cmd_id = data[0]
+                        p = data[1:]
+
+                        if cmd_id == 0 and len(p) >= 8:      # SetTabWindow: window_id, tab_id
+                            window_id = struct.unpack('<I', p[0:4])[0]
+                            tab_id = struct.unpack('<I', p[4:8])[0]
+                            session_tabs.setdefault(tab_id, {})['window_id'] = window_id
+                            session_windows.setdefault(window_id, {})
+
+                        elif cmd_id == 2 and len(p) >= 8:    # SetTabIndexInWindow: tab_id, index
+                            tab_id = struct.unpack('<I', p[0:4])[0]
+                            session_tabs.setdefault(tab_id, {})['index'] = struct.unpack('<i', p[4:8])[0]
+
+                        elif cmd_id == 7 and len(p) >= 8:    # SetSelectedNavigationIndex: tab_id, index
+                            tab_id = struct.unpack('<I', p[0:4])[0]
+                            session_tabs.setdefault(tab_id, {})['selected_nav_index'] = struct.unpack('<i', p[4:8])[0]
+
+                        elif cmd_id == 8 and len(p) >= 8:    # SetSelectedTabInIndex: window_id, index
+                            window_id = struct.unpack('<I', p[0:4])[0]
+                            session_windows.setdefault(window_id, {})['selected_tab_index'] = struct.unpack('<i', p[4:8])[0]
+
+                        elif cmd_id == 9 and len(p) >= 8:    # SetWindowType: window_id, type
+                            window_id = struct.unpack('<I', p[0:4])[0]
+                            session_windows.setdefault(window_id, {})['type'] = WINDOW_TYPES.get(
+                                struct.unpack('<i', p[4:8])[0], str(struct.unpack('<i', p[4:8])[0]))
+
+                        elif cmd_id == 12 and len(p) >= 8:   # SetPinnedState: tab_id, pinned
+                            tab_id = struct.unpack('<I', p[0:4])[0]
+                            session_tabs.setdefault(tab_id, {})['pinned'] = struct.unpack('<I', p[4:8])[0] != 0
+
+                        elif cmd_id == 13:                    # SetExtensionAppID (pickle): tab_id, extension_id
+                            try:
+                                with EasyPickleIterator(p) as pk:
+                                    tab_id = pk.read_int32()
+                                    ext_id = pk.read_string()
+                                    session_tabs.setdefault(tab_id, {})['extension_app_id'] = ext_id
+                            except Exception:
+                                pass
+
+                        elif cmd_id == 14 and len(p) >= 24:   # SetWindowBounds3: window_id, x, y, w, h, show_state
+                            window_id = struct.unpack('<I', p[0:4])[0]
+                            x, y, w, h, state = struct.unpack('<iiiii', p[4:24])
+                            win = session_windows.setdefault(window_id, {})
+                            win['bounds'] = f'{w}x{h} at ({x},{y})'
+                            win['show_state'] = WINDOW_SHOW_STATES.get(state, str(state))
+
+                        elif cmd_id == 15:                    # SetWindowAppName (pickle): window_id, app_name
+                            try:
+                                with EasyPickleIterator(p) as pk:
+                                    window_id = pk.read_int32()
+                                    session_windows.setdefault(window_id, {})['app_name'] = pk.read_string()
+                            except Exception:
+                                pass
+
+                        elif cmd_id == 20 and len(p) >= 4:    # SetActiveWindow: window_id
+                            session_active_window = struct.unpack('<I', p[0:4])[0]
+
+                        elif cmd_id == 25 and len(p) >= 21:   # SetTabGroup: tab_id, group_token_hi, group_token_lo, has_group
+                            tab_id = struct.unpack('<I', p[0:4])[0]
+                            ghi = struct.unpack('<Q', p[4:12])[0]
+                            glo = struct.unpack('<Q', p[12:20])[0]
+                            has_group = p[20] != 0
+                            if has_group:
+                                session_tabs.setdefault(tab_id, {})['group_token'] = f'{ghi:016x}{glo:016x}'
+                            else:
+                                session_tabs.setdefault(tab_id, {}).pop('group_token', None)
+
+                        elif cmd_id == 27:                    # SetTabGroupMetadata2 (pickle)
+                            try:
+                                with EasyPickleIterator(p) as pk:
+                                    ghi = pk.read_uint64()
+                                    glo = pk.read_uint64()
+                                    title = pk.read_string16()
+                                    color = pk.read_uint32()
+                                    collapsed = pk.read_bool()
+                                    token = f'{ghi:016x}{glo:016x}'
+                                    session_tab_groups[token] = {'title': title, 'color': color, 'collapsed': collapsed}
+                            except Exception:
+                                pass
+
+                        elif cmd_id == 29:                    # SetTabUserAgentOverride2 (pickle)
+                            try:
+                                with EasyPickleIterator(p) as pk:
+                                    tab_id = pk.read_int32()
+                                    ua = pk.read_string()
+                                    if ua:
+                                        session_tabs.setdefault(tab_id, {})['user_agent_override'] = ua
+                            except Exception:
+                                pass
+
+            except Exception as e:
+                log.debug(f' - Error reading structural commands from {filename}: {e}')
+
+        log.info(f' - Session structure: {len(session_windows)} windows, {len(session_tabs)} tabs, '
+                 f'{len(session_tab_groups)} tab groups')
+
+        def get_tab_context(tab_id):
+            """Build a list of context strings for a tab from the session structure.
+            Window ID and Tab ID are excluded since they have dedicated columns."""
+            parts = []
+            tab = session_tabs.get(tab_id)
+            if not tab:
+                return parts
+
+            if tab.get('index') is not None:
+                sel = session_windows.get(tab.get('window_id'), {}).get('selected_tab_index')
+                tab_desc = f'Tab Index: {tab["index"]}'
+                if sel is not None and sel == tab['index']:
+                    tab_desc += ' [Selected]'
+                parts.append(tab_desc)
+
+            if tab.get('pinned'):
+                parts.append('Pinned')
+
+            group_token = tab.get('group_token')
+            if group_token and group_token in session_tab_groups:
+                group = session_tab_groups[group_token]
+                parts.append(f'Tab Group: {group["title"]}')
+
+            if tab.get('extension_app_id'):
+                parts.append(f'Extension: {tab["extension_app_id"]}')
+
+            if tab.get('user_agent_override'):
+                parts.append(f'UA Override: {tab["user_agent_override"][:50]}')
+
+            return parts
+
+        # Track exact duplicates across all session files; key is all meaningful content fields
+        seen_nav_entries = set()
+
+        for filename in sorted(os.listdir(sessions_path)):
+            if filename.startswith('Session_'):
+                file_type = SnssFileType.Session
+                nav_row_type = 'session (navigation)'
+            elif filename.startswith('Tabs_'):
+                file_type = SnssFileType.Tab
+                nav_row_type = 'session (tab navigation)'
+            else:
+                continue
+
+            file_path = os.path.join(sessions_path, filename)
+
+            # Pass 1: Use CCL to parse NavigationEntry commands
+            try:
+                with open(file_path, 'rb') as f:
+                    snss_file = SnssFile(file_type, f)
+                    for command in snss_file.iter_session_commands():
+                        if not isinstance(command, NavigationEntry):
+                            continue
+
+                        if command.timestamp:
+                            timestamp = command.timestamp.replace(tzinfo=datetime.timezone.utc)
+                            timestamp = utils.to_datetime(timestamp, self.timezone)
+                        else:
+                            timestamp = utils.to_datetime(0, self.timezone)
+
+                        # Build value parts in order: nav index, tab context, short fields, then long URL fields
+                        value_parts = []
+                        url_parts = []  # long URL-based fields go last
+
+                        # 1. Navigation index (back/forward position in tab)
+                        if command.index is not None:
+                            sel_nav = session_tabs.get(command.session_id, {}).get('selected_nav_index')
+                            nav_desc = f'Nav Index: {command.index}'
+                            if sel_nav is not None and sel_nav == command.index:
+                                nav_desc += ' [Current]'
+                            value_parts.append(nav_desc)
+
+                        # 2. Tab context (tab index, pinned, group, extension, UA)
+                        if command.session_id is not None:
+                            value_parts.extend(get_tab_context(command.session_id))
+
+                        # 3. Short fields
+                        if command.has_post_data:
+                            value_parts.append(f'Has POST Data: {command.has_post_data}')
+
+                        # 4. Parse PageState for form data, POST bodies, iframes, etc.
+                        parsed_ps = None
+                        if command.page_state_raw:
+                            try:
+                                parsed_ps = parse_page_state(command.page_state_raw)
+                                if parsed_ps and parsed_ps.top_frame:
+                                    tf = parsed_ps.top_frame
+                                    if tf.form_elements:
+                                        form_items = []
+                                        for fe in tf.form_elements[:10]:
+                                            if not fe.values or not any(v.strip() for v in fe.values):
+                                                continue  # skip fields with no meaningful values
+                                            label = fe.name or '(unnamed)'
+                                            form_items.append(f'{label} [{fe.type}]: {fe.values[0][:50]}')
+                                        if form_items:
+                                            value_parts.append(f'Form Data: {"; ".join(form_items)}')
+                                    if tf.http_body and tf.http_body.elements:
+                                        body_parts = []
+                                        for el in tf.http_body.elements:
+                                            if el.element_type == 0 and el.data:
+                                                body_parts.append(f'POST({len(el.data)} bytes)')
+                                            elif el.element_type == 1 and el.file_path:
+                                                body_parts.append(f'File: {el.file_path}')
+                                        if body_parts:
+                                            value_parts.append(f'HTTP Body: {"; ".join(body_parts)}')
+                                        if tf.http_body.contains_passwords:
+                                            value_parts.append('Contains Passwords: True')
+                                    if tf.children:
+                                        value_parts.append(f'Iframes: {len(tf.children)}')
+                                    if tf.initiator_origin:
+                                        value_parts.append(f'Initiator: {tf.initiator_origin}')
+                                if parsed_ps.referenced_files:
+                                    ref_files = [f for f in parsed_ps.referenced_files if f]
+                                    if ref_files:
+                                        value_parts.append(f'Referenced Files: {"; ".join(ref_files)}')
+                            except Exception as e:
+                                log.debug(f' - Error parsing PageState for {command.url[:50]}: {e}')
+
+                        # 5. Long URL fields at the end
+                        if command.referrer_url:
+                            url_parts.append(f'Referrer: {command.referrer_url}')
+                        if command.original_request_url:
+                            url_parts.append(f'Original URL: {command.original_request_url}')
+
+                        value_parts.extend(url_parts)
+
+                        item = Chrome.SessionItem(
+                            self.profile_path,
+                            url=command.url,
+                            title=command.title,
+                            timestamp=timestamp,
+                            session_id=command.session_id,
+                            nav_index=command.index,
+                            transition_type_raw=command.transition_type.value,
+                            referrer_url=command.referrer_url,
+                            original_request_url=command.original_request_url,
+                            http_status=command.http_status,
+                            has_post_data=command.has_post_data,
+                            source_path=file_path,
+                            page_state=parsed_ps)
+                        item.row_type = nav_row_type
+                        item.value = ' | '.join(value_parts)
+                        item.decode_transition()
+
+                        dedup_key = (
+                            command.url,
+                            command.title,
+                            timestamp,
+                            command.session_id,
+                            command.index,
+                            command.transition_type.value,
+                            command.referrer_url,
+                            command.original_request_url,
+                            command.http_status,
+                            command.has_post_data,
+                        )
+                        if dedup_key in seen_nav_entries:
+                            continue
+                        seen_nav_entries.add(dedup_key)
+
+                        results.append(item)
+
+            except Exception as e:
+                log.warning(f' - Error reading {filename} (NavigationEntry pass): {e}')
+
+            # Pass 2: Read raw SNSS commands for timestamped events CCL doesn't parse
+            try:
+                with open(file_path, 'rb') as f:
+                    f.read(8)  # skip SNSS header
+                    while True:
+                        length_raw = f.read(2)
+                        if not length_raw or len(length_raw) < 2:
+                            break
+                        length = struct.unpack('<H', length_raw)[0]
+                        data = f.read(length)
+                        if len(data) < length:
+                            break
+
+                        cmd_id = data[0]
+                        payload = data[1:]
+
+                        if file_type == SnssFileType.Session:
+                            # TabClosed (16): uint32 tab_id + pad(4) + int64 close_time
+                            if cmd_id == SESSION_TAB_CLOSED and len(payload) >= 16:
+                                tab_id = struct.unpack('<I', payload[0:4])[0]
+                                close_time = struct.unpack('<q', payload[8:16])[0]
+                                if close_time == 0:
+                                    continue
+                                item = Chrome.SessionItem(
+                                    self.profile_path, url='', title='',
+                                    timestamp=webkit_ts(close_time), session_id=tab_id,
+                                    source_path=file_path)
+                                item.row_type = 'session (tab closed)'
+                                results.append(item)
+
+                            # WindowClosed (17): uint32 window_id + pad(4) + int64 close_time
+                            elif cmd_id == SESSION_WINDOW_CLOSED and len(payload) >= 16:
+                                window_id = struct.unpack('<I', payload[0:4])[0]
+                                close_time = struct.unpack('<q', payload[8:16])[0]
+                                if close_time == 0:
+                                    continue
+                                item = Chrome.SessionItem(
+                                    self.profile_path, url='', title='',
+                                    timestamp=webkit_ts(close_time), source_path=file_path)
+                                item.row_type = 'session (window closed)'
+                                # For window events, session_id holds the window_id
+                                item.session_id = window_id
+                                results.append(item)
+
+                            # LastActiveTime (21): uint32 tab_id + pad(4) + int64 last_active_time
+                            elif cmd_id == SESSION_LAST_ACTIVE_TIME and len(payload) >= 16:
+                                tab_id = struct.unpack('<I', payload[0:4])[0]
+                                active_time = struct.unpack('<q', payload[8:16])[0]
+                                if active_time == 0:
+                                    continue
+                                item = Chrome.SessionItem(
+                                    self.profile_path, url='', title='',
+                                    timestamp=webkit_ts(active_time), session_id=tab_id,
+                                    source_path=file_path)
+                                item.row_type = 'session (tab last active)'
+                                results.append(item)
+
+                        elif file_type == SnssFileType.Tab:
+                            # SelectedNavigationInTab (4): uint32 tab_id + int32 index + int64 timestamp
+                            if cmd_id == TAB_SELECTED_NAV_IN_TAB and len(payload) >= 16:
+                                tab_id = struct.unpack('<I', payload[0:4])[0]
+                                nav_index = struct.unpack('<i', payload[4:8])[0]
+                                close_time = struct.unpack('<q', payload[8:16])[0]
+                                if close_time == 0:
+                                    continue
+                                item = Chrome.SessionItem(
+                                    self.profile_path, url='', title='',
+                                    timestamp=webkit_ts(close_time), session_id=tab_id,
+                                    nav_index=nav_index, source_path=file_path)
+                                item.row_type = 'session (closed tab)'
+                                item.value = f'Navigation Index: {nav_index}'
+                                results.append(item)
+
+                            # Window (9): Pickle with window metadata + close timestamp
+                            elif cmd_id == TAB_WINDOW and len(payload) >= 8:
+                                try:
+                                    with EasyPickleIterator(payload) as p:
+                                        window_id = p.read_int32()
+                                        selected_tab = p.read_int32()
+                                        num_tabs = p.read_int32()
+                                        close_time = p.read_int64()
+                                        x = p.read_int32()
+                                        y = p.read_int32()
+                                        w = p.read_int32()
+                                        h = p.read_int32()
+                                        show_state = p.read_int32()
+                                        workspace = p.read_string()
+                                        win_type = p.read_int32()
+
+                                    if close_time == 0:
+                                        continue
+
+                                    show_state_str = WINDOW_SHOW_STATES.get(show_state, str(show_state))
+                                    win_type_str = WINDOW_TYPES.get(win_type, str(win_type))
+
+                                    value_parts = [
+                                        f'Tabs: {num_tabs}',
+                                        f'Selected Tab: {selected_tab}',
+                                        f'Bounds: {w}x{h} at ({x},{y})',
+                                        f'State: {show_state_str}',
+                                        f'Type: {win_type_str}',
+                                    ]
+
+                                    item = Chrome.SessionItem(
+                                        self.profile_path, url='', title='',
+                                        timestamp=webkit_ts(close_time), source_path=file_path)
+                                    # For window events, store window_id as session_id for the Window ID column
+                                    item.session_id = window_id
+                                    item.row_type = 'session (closed window)'
+                                    item.value = ' | '.join(value_parts)
+                                    results.append(item)
+                                except Exception as e:
+                                    log.debug(f' - Error parsing Window command in {filename}: {e}')
+
+            except Exception as e:
+                log.warning(f' - Error reading {filename} (raw command pass): {e}')
+
+        # Build tab navigation stacks from NavigationEntry results
+        # tab_nav_stacks: tab_id -> {nav_index: (url, title, timestamp)} (latest entry per index)
+        tab_nav_stacks = {}
+        for item in results:
+            if item.session_id is not None and item.url and item.nav_index is not None \
+                    and 'navigation' in getattr(item, 'row_type', ''):
+                stack = tab_nav_stacks.setdefault(item.session_id, {})
+                # Keep the latest entry for each nav_index (by timestamp)
+                existing = stack.get(item.nav_index)
+                if existing is None or item.timestamp > existing[2]:
+                    stack[item.nav_index] = (item.url, item.title or '', item.timestamp)
+
+        # Derive current URL per tab from selected_nav_index
+        tab_current_urls = {}
+        for tab_id, stack in tab_nav_stacks.items():
+            sel = session_tabs.get(tab_id, {}).get('selected_nav_index')
+            if sel is not None and sel in stack:
+                tab_current_urls[tab_id] = (stack[sel][0], stack[sel][1])
+            elif stack:
+                # Fallback: use the highest index
+                max_idx = max(stack.keys())
+                tab_current_urls[tab_id] = (stack[max_idx][0], stack[max_idx][1])
+
+        # Store session structure for Excel output
+        self.session_structure = {
+            'windows': session_windows,
+            'tabs': session_tabs,
+            'tab_groups': session_tab_groups,
+            'active_window': session_active_window,
+            'tab_current_urls': tab_current_urls,
+            'tab_nav_stacks': tab_nav_stacks,
+        }
+
+        log.info(f' - Parsed {len(results)} Session items')
+        self.artifacts_counts['Sessions'] = len(results)
+        self.parsed_artifacts.extend(results)
 
     def get_session_storage(self, path, dir_name):
         results = []
@@ -3069,7 +3549,7 @@ class Chrome(WebBrowser):
         supported_databases = ['History', 'Archived History', 'Media History', 'Web Data', 'Cookies',
                                'Login Data', 'Login Data For Account'
                                'Extension Cookies', 'Network Action Predictor', 'DIPS']
-        supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications', 'Network']
+        supported_subdirs = ['Local Storage', 'Extensions', 'File System', 'Platform Notifications', 'Network', 'Sessions']
         supported_jsons = ['Bookmarks', 'TransportSecurity']  # , 'Preferences']
         supported_items = supported_databases + supported_subdirs + supported_jsons
         log.debug(f'Supported items: {supported_items}')
@@ -3241,6 +3721,12 @@ class Chrome(WebBrowser):
                     'Bookmarks', 'Bookmarks', self.get_bookmarks,
                     self.profile_path, 'Bookmarks', self.version,
                     display_key='Bookmarks', display_value='Bookmark records')
+
+            if 'Sessions' in input_listing:
+                run_with_status(
+                    'Sessions', 'Sessions', self.get_sessions,
+                    self.profile_path, 'Sessions',
+                    display_key='Sessions', display_value='Session (SNSS) records')
 
             # Website Storage
             current_group = "Website Storage"
@@ -3442,94 +3928,7 @@ class Chrome(WebBrowser):
 
     class URLItem(WebBrowser.URLItem):
         def decode_transition(self):
-            # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
-            transition_friendly = {
-                0: 'link',                 # User got to this page by clicking a link on another page.
-                1: 'typed',                # User got this page by typing the URL in the URL bar.  This should not be
-                                           #  used for cases where the user selected a choice that didn't look at all
-                                           #  like a URL; see GENERATED below.
-                                           # We also use this for other 'explicit' navigation actions.
-                2: 'auto bookmark',        # User got to this page through a suggestion in the UI, for example
-                                           #  through the destinations page.
-                3: 'auto subframe',        # This is a subframe navigation. This is any content that is automatically
-                                           #  loaded in a non-toplevel frame. For example, if a page consists of
-                                           #  several frames containing ads, those ad URLs will have this transition
-                                           #  type. The user may not even realize the content in these pages is a
-                                           #  separate frame, so may not care about the URL (see MANUAL below).
-                4: 'manual subframe',      # For subframe navigations that are explicitly requested by the user and
-                                           #  generate new navigation entries in the back/forward list. These are
-                                           #  probably more important than frames that were automatically loaded in
-                                           #  the background because the user probably cares about the fact that this
-                                           #  link was loaded.
-                5: 'generated',            # User got to this page by typing in the URL bar and selecting an entry
-                                           #  that did not look like a URL.  For example, a match might have the URL
-                                           #  of a Google search result page, but appear like 'Search Google for ...'.
-                                           #  These are not quite the same as TYPED navigations because the user
-                                           #  didn't type or see the destination URL.
-                                           #  See also KEYWORD.
-                6: 'start page',           # This is a toplevel navigation. This is any content that is automatically
-                                           #  loaded in a toplevel frame.  For example, opening a tab to show the ASH
-                                           #  screen saver, opening the devtools window, opening the NTP after the safe
-                                           #  browsing warning, opening web-based dialog boxes are examples of
-                                           #  AUTO_TOPLEVEL navigations.
-                7: 'form submit',          # The user filled out values in a form and submitted it. NOTE that in
-                                           #  some situations submitting a form does not result in this transition
-                                           #  type. This can happen if the form uses script to submit the contents.
-                8: 'reload',               # The user 'reloaded' the page, either by hitting the reload button or by
-                                           #  hitting enter in the address bar.  NOTE: This is distinct from the
-                                           #  concept of whether a particular load uses 'reload semantics' (i.e.
-                                           #  bypasses cached data).  For this reason, lots of code needs to pass
-                                           #  around the concept of whether a load should be treated as a 'reload'
-                                           #  separately from their tracking of this transition type, which is mainly
-                                           #  used for proper scoring for consumers who care about how frequently a
-                                           #  user typed/visited a particular URL.
-                                           #  SessionRestore and undo tab close use this transition type too.
-                9: 'keyword',              # The url was generated from a replaceable keyword other than the default
-                                           #  search provider. If the user types a keyword (which also applies to
-                                           #  tab-to-search) in the omnibox this qualifier is applied to the transition
-                                           #  type of the generated url. TemplateURLModel then may generate an
-                                           #  additional visit with a transition type of KEYWORD_GENERATED against the
-                                           #  url 'http://' + keyword. For example, if you do a tab-to-search against
-                                           #  wikipedia the generated url has a transition qualifer of KEYWORD, and
-                                           #  TemplateURLModel generates a visit for 'wikipedia.org' with a transition
-                                           #  type of KEYWORD_GENERATED.
-                10: 'keyword generated'    # Corresponds to a visit generated for a keyword. See description of
-                                           #  KEYWORD for more details.
-            }
-
-            qualifiers_friendly = {
-                0x00800000: 'Blocked',                # A managed user attempted to visit a URL but was blocked.
-                0x01000000: 'Forward or Back',        # User used the Forward or Back button to navigate among browsing
-                                                      #  history.
-                0x02000000: 'From Address Bar',       # User used the address bar to trigger this navigation.
-                0x04000000: 'Home Page',              # User is navigating to the home page.
-                0x08000000: 'From API',               # The transition originated from an external application; the
-                                                      #  exact definition of this is embedder dependent.
-                0x10000000: 'Navigation Chain Start', # The beginning of a navigation chain.
-                0x20000000: 'Navigation Chain End',   # The last transition in a redirect chain.
-                0x40000000: 'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page
-                0x80000000: 'Server Redirect'         # Redirects sent from the server by HTTP headers. It might be nice
-                                                      #  to break this out into 2 types in the future, permanent or
-                                                      #  temporary, if we can get that information from WebKit.
-                }
-
-            raw = self.transition
-            # If the transition has already been translated to a string, just use that
-            if isinstance(raw, str):
-                self.transition_friendly = raw
-                return
-
-            core_mask = 0xff
-            code = raw & core_mask
-
-            if code in list(transition_friendly.keys()):
-                self.transition_friendly = transition_friendly[code] + '; '
-
-            for qualifier in qualifiers_friendly:
-                if raw & qualifier == qualifier:
-                    if not self.transition_friendly:
-                        self.transition_friendly = ""
-                    self.transition_friendly += qualifiers_friendly[qualifier] + '; '
+            self.transition_friendly = utils.decode_page_transition(self.transition)
 
         def decode_source(self):
             # https://source.chromium.org/chromium/chromium/src/+/master:components/history/core/browser/history_types.h

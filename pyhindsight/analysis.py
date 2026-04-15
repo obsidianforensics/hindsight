@@ -96,6 +96,82 @@ class HindsightEncoder(json.JSONEncoder):
 
             return item
 
+        if isinstance(obj, Chrome.SessionItem):
+            item = HindsightEncoder.base_encoder(obj)
+            item['source_long'] = 'Chrome Sessions'
+
+            row_type = item.get('row_type', '')
+            if 'closed' in row_type and 'navigation' not in row_type:
+                item['timestamp_desc'] = 'Close Time'
+                item['data_type'] = f'chrome:session:{row_type.split("(")[1].rstrip(")").replace(" ", "_")}'
+                item['message'] = f'{row_type}: {item.get("value", "")}'
+            elif 'last active' in row_type:
+                item['timestamp_desc'] = 'Last Active Time'
+                item['data_type'] = 'chrome:session:tab_last_active'
+                item['message'] = f'{row_type}: {item.get("value", "")}'
+            else:
+                item['timestamp_desc'] = 'Navigation Time'
+                item['data_type'] = 'chrome:session:navigation'
+                item['message'] = f"{item.get('url', '')} ({item.get('title', '')})"
+
+            # Serialize page_state as structured JSON for JSONL output
+            if item.get('page_state') and item['page_state'].top_frame:
+                ps = item['page_state']
+                tf = ps.top_frame
+                ps_dict = {'version': ps.version}
+
+                if ps.referenced_files:
+                    ps_dict['referenced_files'] = ps.referenced_files
+
+                frame_dict = {}
+                if tf.url:
+                    frame_dict['url'] = tf.url
+                if tf.referrer:
+                    frame_dict['referrer'] = tf.referrer
+                if tf.state_object:
+                    frame_dict['state_object'] = tf.state_object
+                if tf.scroll_offset_x or tf.scroll_offset_y:
+                    frame_dict['scroll_offset'] = {'x': tf.scroll_offset_x, 'y': tf.scroll_offset_y}
+                if tf.page_scale_factor and tf.page_scale_factor != 1.0:
+                    frame_dict['page_scale_factor'] = tf.page_scale_factor
+                if tf.initiator_origin:
+                    frame_dict['initiator_origin'] = tf.initiator_origin
+                if tf.form_elements:
+                    frame_dict['form_elements'] = [
+                        {'name': fe.name, 'type': fe.type, 'values': fe.values}
+                        for fe in tf.form_elements
+                    ]
+                if tf.http_body:
+                    body_dict = {
+                        'contains_passwords': tf.http_body.contains_passwords,
+                        'http_content_type': tf.http_body.http_content_type,
+                    }
+                    elements = []
+                    for el in tf.http_body.elements:
+                        if el.element_type == 0 and el.data:
+                            elements.append({'type': 'data', 'data': el.data.decode('utf-8', errors='replace')})
+                        elif el.element_type == 1:
+                            elements.append({'type': 'file', 'path': el.file_path,
+                                             'offset': el.file_offset, 'length': el.file_length})
+                        elif el.element_type == 2:
+                            elements.append({'type': 'blob', 'uuid': el.blob_uuid})
+                    if elements:
+                        body_dict['elements'] = elements
+                    frame_dict['http_body'] = body_dict
+                if tf.children:
+                    frame_dict['children'] = [
+                        {'url': c.url, 'referrer': c.referrer, 'initiator_origin': c.initiator_origin}
+                        for c in tf.children if c.url
+                    ]
+
+                ps_dict['top_frame'] = frame_dict
+                item['page_state'] = ps_dict
+            elif 'page_state' in item:
+                del item['page_state']
+
+            del(item['row_type'], item['name'])
+            return item
+
         if isinstance(obj, Chrome.DownloadItem):
             item = HindsightEncoder.base_encoder(obj)
 
@@ -645,6 +721,13 @@ class AnalysisSession(object):
                 self.version.extend(browser_analysis.version)
                 self.display_version = browser_analysis.display_version
                 self.preferences.extend(browser_analysis.preferences)
+                if hasattr(browser_analysis, 'session_structure'):
+                    if not hasattr(self, 'session_structures'):
+                        self.session_structures = []
+                    self.session_structures.append({
+                        'profile': found_profile_path,
+                        **browser_analysis.session_structure
+                    })
 
                 for item in browser_analysis.__dict__:
                     if isinstance(browser_analysis.__dict__[item], dict):
@@ -908,9 +991,9 @@ class AnalysisSession(object):
 
         # Title bar
         w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
-        w.merge_range('I1:S1', 'URL Specific', center_header_format)
-        w.merge_range('T1:V1', 'Download Specific', center_header_format)
-        w.merge_range('W1:Y1', 'Cache Specific', center_header_format)
+        w.merge_range('I1:V1', 'URL Visit Specific', center_header_format)
+        w.merge_range('W1:Y1', 'Download Specific', center_header_format)
+        w.merge_range('Z1:AB1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, 'Type', header_format)
@@ -932,12 +1015,15 @@ class AnalysisSession(object):
         w.write(1, 16, 'Categories', header_format)
         w.write(1, 17, 'Entities', header_format)
         w.write(1, 18, 'Cluster', header_format)
-        w.write(1, 19, 'Interrupt Reason', header_format)
-        w.write(1, 20, 'Danger Type', header_format)
-        w.write(1, 21, 'Opened?', header_format)
-        w.write(1, 22, 'ETag', header_format)
-        w.write(1, 23, 'Last Modified', header_format)
-        w.write(1, 24, 'All HTTP Headers', header_format)
+        w.write(1, 19, 'Window ID', header_format)
+        w.write(1, 20, 'Tab ID', header_format)
+        w.write(1, 21, 'Response Code', header_format)
+        w.write(1, 22, 'Interrupt Reason', header_format)
+        w.write(1, 23, 'Danger Type', header_format)
+        w.write(1, 24, 'Opened?', header_format)
+        w.write(1, 25, 'ETag', header_format)
+        w.write(1, 26, 'Last Modified', header_format)
+        w.write(1, 27, 'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -949,28 +1035,32 @@ class AnalysisSession(object):
         w.set_column('G:G', 12)  # Profile
         w.set_column('H:H', 10)  # Source
 
-        # URL Specific
+        # URL Visit Specific
         w.set_column('L:L', 14)  # Visit Duration
         w.set_column('M:O', 6)   # Visit Count, Typed Count, Hidden
         w.set_column('P:P', 12)  # Transition
         w.set_column('Q:Q', 18)  # Categories
         w.set_column('R:R', 18)  # Entities
         w.set_column('S:S', 15)  # Cluster
+        w.set_column('T:T', 12)  # Window ID
+        w.set_column('U:U', 12)  # Tab ID
+        w.set_column('V:V', 12)  # Response Code
 
         # Download Specific
-        w.set_column('T:T', 12)  # Interrupt Reason
-        w.set_column('U:U', 24)  # Danger Type
-        w.set_column('V:V', 12)  # Opened
+        w.set_column('W:W', 12)  # Interrupt Reason
+        w.set_column('X:X', 24)  # Danger Type
+        w.set_column('Y:Y', 12)  # Opened
 
         # Common between Downloads and Cache
-        w.set_column('W:W', 12)  # ETag
-        w.set_column('X:X', 27)  # Last Modified
+        w.set_column('Z:Z', 12)  # ETag
+        w.set_column('AA:AA', 27)  # Last Modified
 
         # Cache Specific
-        w.set_column('Y:Y', 30)  # HTTP Headers
+        w.set_column('AB:AB', 30)  # HTTP Headers
 
         # Start at the row after the headers and begin writing out the items in parsed_artifacts
         row_number = 2
+        seen_session_form_data = set()  # dedup key: (url, name, type, value)
         for item in sorted(self.parsed_artifacts):
             try:
                 if item.row_type.startswith("url"):
@@ -993,6 +1083,12 @@ class AnalysisSession(object):
                     w.write(row_number, 16, item.categories_str or "", black_value_format)  # Categories
                     w.write(row_number, 17, item.entities_str or "", black_value_format)  # Entities
                     w.write(row_number, 18, item.cluster_str or "", black_value_format)  # Cluster
+                    if getattr(item, 'window_id', None) is not None:
+                        w.write(row_number, 19, item.window_id, black_value_format)  # Window ID
+                    if getattr(item, 'tab_id', None) is not None:
+                        w.write(row_number, 20, item.tab_id, black_value_format)  # Tab ID
+                    if getattr(item, 'response_code', None) is not None:
+                        w.write(row_number, 21, item.response_code, black_value_format)  # Response Code
 
                 elif item.row_type.startswith("media"):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
@@ -1025,16 +1121,16 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, green_value_format)  # download path
                     w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
                     w.write(row_number, 6, item.profile, green_type_format)  # Profile
-                    w.write(row_number, 19, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
-                    w.write(row_number, 20, item.danger_type_friendly, green_value_format)  # danger type
+                    w.write(row_number, 22, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
+                    w.write(row_number, 23, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
                         open_friendly = 'Yes'
                     elif item.opened == 0:
                         open_friendly = 'No'
-                    w.write_string(row_number, 21, open_friendly, green_value_format)  # opened
-                    w.write(row_number, 22, item.etag, green_value_format)  # ETag
-                    w.write(row_number, 23, item.last_modified, green_value_format)  # Last Modified
+                    w.write_string(row_number, 24, open_friendly, green_value_format)  # opened
+                    w.write(row_number, 25, item.etag, green_value_format)  # ETag
+                    w.write(row_number, 26, item.last_modified, green_value_format)  # Last Modified
 
                 elif item.row_type.startswith("bookmark folder"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -1071,9 +1167,9 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.locations, gray_value_format)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
-                    w.write(row_number, 22, item.etag, gray_value_format)  # ETag
-                    w.write(row_number, 23, item.last_modified, gray_value_format)  # Last Modified
-                    w.write(row_number, 24, item.http_headers_str, gray_value_format)  # headers
+                    w.write(row_number, 25, item.etag, gray_value_format)  # ETag
+                    w.write(row_number, 26, item.last_modified, gray_value_format)  # Last Modified
+                    w.write(row_number, 27, item.http_headers_str, gray_value_format)  # headers
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1093,7 +1189,98 @@ class AnalysisSession(object):
                     w.write_string(row_number, 5, item.interpretation, red_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, red_value_format)  # Profile
 
-                elif item.row_type.startswith(("session", "permission action", "profile creation", "notification")):
+                elif item.row_type.startswith("session"):
+                    w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
+                    w.write(row_number, 1, friendly_date(item.timestamp), blue_date_format)  # date
+                    w.write_string(row_number, 2, item.url or '', blue_url_format)  # URL
+                    w.write_string(row_number, 3, item.name or '', blue_field_format)  # title
+                    w.write_string(row_number, 4, item.value or '', blue_value_format)  # value
+                    w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
+                    w.write(row_number, 6, item.profile, blue_value_format)  # Profile
+                    w.write(row_number, 15, getattr(item, 'transition_type', ''), blue_field_format)  # Transition
+                    # Session-specific: Window ID, Tab ID, Response Code
+                    session_id = getattr(item, 'session_id', None)
+                    http_status = getattr(item, 'http_status', None)
+                    if http_status is not None:
+                        w.write(row_number, 21, http_status, blue_value_format)  # Response Code
+
+                    is_window_event = 'window' in item.row_type
+                    if session_id is not None:
+                        if is_window_event:
+                            w.write(row_number, 19, session_id, blue_value_format)  # Window ID
+                        else:
+                            w.write(row_number, 20, session_id, blue_value_format)  # Tab ID
+                            # Look up window_id from session structure
+                            if hasattr(self, 'session_structures') and self.session_structures:
+                                for sess in self.session_structures:
+                                    tab_meta = sess.get('tabs', {}).get(session_id)
+                                    if tab_meta and tab_meta.get('window_id') is not None:
+                                        w.write(row_number, 19, tab_meta['window_id'], blue_value_format)
+                                        break
+
+                    # Emit additional red "session (form data)" rows for interesting form elements
+                    interesting_form_types = ('text', 'textarea', 'password', 'file', 'search', 'email', 'url')
+                    page_state = getattr(item, 'page_state', None)
+                    if page_state and page_state.top_frame and page_state.top_frame.form_elements:
+                        for fe in page_state.top_frame.form_elements:
+                            if fe.type not in interesting_form_types:
+                                continue
+                            if not fe.values or not any(v.strip() for v in fe.values):
+                                continue
+                            form_name = fe.name or '(unnamed)'
+                            form_value = fe.values[0]
+                            # Deduplicate: skip if same URL + name + value + timestamp already emitted
+                            dedup_key = (item.url, form_name, fe.type, form_value, friendly_date(item.timestamp))
+                            if dedup_key in seen_session_form_data:
+                                continue
+                            seen_session_form_data.add(dedup_key)
+                            row_number += 1
+                            w.write_string(row_number, 0, 'session (form data)', red_type_format)
+                            w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)
+                            w.write_string(row_number, 2, item.url or '', red_url_format)
+                            w.write_string(row_number, 3, f'{form_name} [{fe.type}]', red_field_format)
+                            w.write_string(row_number, 4, form_value, red_value_format)
+                            w.write(row_number, 6, item.profile, red_type_format)
+
+                        # Also check child iframes for file uploads
+                        if page_state and page_state.top_frame and page_state.top_frame.children:
+                            for child in page_state.top_frame.children:
+                                if not child or not child.form_elements:
+                                    continue
+                                for fe in child.form_elements:
+                                    if fe.type != 'file' or not fe.values or not any(v.strip() for v in fe.values):
+                                        continue
+                                    form_value = fe.values[0]
+                                    dedup_key = (item.url, '(iframe file)', 'file', form_value, friendly_date(item.timestamp))
+                                    if dedup_key in seen_session_form_data:
+                                        continue
+                                    seen_session_form_data.add(dedup_key)
+                                    row_number += 1
+                                    w.write_string(row_number, 0, 'session (form data)', red_type_format)
+                                    w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)
+                                    w.write_string(row_number, 2, child.url or item.url or '', red_url_format)
+                                    w.write_string(row_number, 3, f'(iframe file) [file]', red_field_format)
+                                    w.write_string(row_number, 4, form_value, red_value_format)
+                                    w.write(row_number, 6, item.profile, red_type_format)
+
+                        # Emit referenced_files as emphasis rows (file paths referenced by the page)
+                        if page_state and page_state.referenced_files:
+                            for ref_file in page_state.referenced_files:
+                                if not ref_file or not ref_file.strip():
+                                    continue
+                                dedup_key = (item.url, '(referenced file)', 'file', ref_file, friendly_date(item.timestamp))
+                                if dedup_key in seen_session_form_data:
+                                    continue
+                                seen_session_form_data.add(dedup_key)
+                                row_number += 1
+                                w.write_string(row_number, 0, 'session (form data)', red_type_format)
+                                w.write(row_number, 1, friendly_date(item.timestamp), red_date_format)
+                                w.write_string(row_number, 2, item.url or '', red_url_format)
+                                w.write_string(row_number, 3, '(referenced file) [file]', red_field_format)
+                                w.write_string(row_number, 4, ref_file, red_value_format)
+                                w.write(row_number, 6, item.profile, red_type_format)
+
+                elif item.row_type.startswith(("permission action", "profile creation", "notification")):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
                     w.write(row_number, 1, friendly_date(item.timestamp), blue_date_format)  # date
                     w.write_string(row_number, 2, item.url, blue_url_format)  # URL
@@ -1130,7 +1317,7 @@ class AnalysisSession(object):
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
-        w.autofilter(1, 0, row_number, 24)  # Add autofilter
+        w.autofilter(1, 0, row_number, 27)  # Add autofilter
         w.filter_column('B', 'Timestamp > 1970-01-02')
 
         ##############################
@@ -1423,6 +1610,146 @@ class AnalysisSession(object):
 
             except Exception as e:
                 log.warning(f"Exception occurred while writing Preferences page: {e}")
+
+        #########################################
+        # Session Reconstruction worksheet
+        #########################################
+        if hasattr(self, 'session_structures') and self.session_structures:
+            WINDOW_SHOW_STATES = {1: 'Normal', 2: 'Minimized', 3: 'Maximized', 5: 'Fullscreen'}
+            WINDOW_TYPES = {0: 'Normal', 1: 'App', 2: 'App Popup', 3: 'DevTools'}
+
+            try:
+                sess_ws = workbook.add_worksheet(get_unique_sheet_name('Sessions'))
+
+                # Title bar
+                sess_ws.merge_range('A1:I1', f'Hindsight Internet History Forensics (v{__version__})'
+                                    ' - Session Reconstruction', title_header_format)
+
+                # Column headers
+                sess_ws.write(1, 0, 'Window', header_format)
+                sess_ws.write(1, 1, 'Tab Index', header_format)
+                sess_ws.write(1, 2, 'Tab ID', header_format)
+                sess_ws.write(1, 3, 'Nav Index', header_format)
+                sess_ws.write(1, 4, 'URL', header_format)
+                sess_ws.write(1, 5, 'Title', header_format)
+                sess_ws.write(1, 6, 'Properties', header_format)
+                sess_ws.write(1, 7, 'Tab Group', header_format)
+                sess_ws.write(1, 8, 'Profile', header_format)
+
+                # Column widths
+                sess_ws.set_column('A:A', 35)  # Window
+                sess_ws.set_column('B:B', 10)  # Tab Index
+                sess_ws.set_column('C:C', 12)  # Tab ID
+                sess_ws.set_column('D:D', 10)  # Nav Index
+                sess_ws.set_column('E:E', 70)  # URL
+                sess_ws.set_column('F:F', 40)  # Title
+                sess_ws.set_column('G:G', 30)  # Properties
+                sess_ws.set_column('H:H', 20)  # Tab Group
+                sess_ws.set_column('I:I', 30)  # Profile
+
+                window_header_format = workbook.add_format({
+                    'font_color': 'white', 'bg_color': '#4472C4', 'bold': True})
+                selected_tab_format = workbook.add_format({
+                    'font_color': 'black', 'bg_color': '#D9E2F3', 'bold': True})
+                pinned_format = workbook.add_format({
+                    'font_color': '#4472C4', 'italic': True})
+                nav_history_format = workbook.add_format({
+                    'font_color': 'gray', 'indent': 2})
+                nav_current_format = workbook.add_format({
+                    'font_color': 'black', 'indent': 2, 'bold': True})
+
+                row_number = 2
+                for session in self.session_structures:
+                    windows = session.get('windows', {})
+                    tabs = session.get('tabs', {})
+                    tab_groups = session.get('tab_groups', {})
+                    active_window = session.get('active_window')
+                    tab_current_urls = session.get('tab_current_urls', {})
+                    tab_nav_stacks = session.get('tab_nav_stacks', {})
+                    profile = session.get('profile', '')
+
+                    # Sort windows: active first, then by ID
+                    sorted_windows = sorted(windows.items(),
+                                            key=lambda x: (x[0] != active_window, x[0]))
+
+                    for window_id, win in sorted_windows:
+                        # Window header row
+                        win_type = win.get('type', '?')
+                        win_state = win.get('show_state', '?')
+                        win_bounds = win.get('bounds', '')
+                        active_str = ' [Active]' if window_id == active_window else ''
+                        app_name = f' - {win["app_name"]}' if win.get('app_name') else ''
+                        window_desc = f'Window {window_id}: {win_type}{app_name} | {win_state} | {win_bounds}{active_str}'
+
+                        sess_ws.merge_range(row_number, 0, row_number, 8, window_desc, window_header_format)
+                        row_number += 1
+
+                        # Get tabs in this window, sorted by index
+                        window_tabs = [(tid, t) for tid, t in tabs.items() if t.get('window_id') == window_id]
+                        window_tabs.sort(key=lambda x: x[1].get('index', 999))
+                        selected_tab_index = win.get('selected_tab_index')
+
+                        for tab_id, tab in window_tabs:
+                            tab_index = tab.get('index', '')
+                            is_selected = tab_index == selected_tab_index
+                            is_pinned = tab.get('pinned', False)
+                            fmt = selected_tab_format if is_selected else (pinned_format if is_pinned else black_type_format)
+
+                            # Get the current URL for this tab
+                            url, title = tab_current_urls.get(tab_id, ('', ''))
+                            sel_nav = tab.get('selected_nav_index', '')
+
+                            # Properties
+                            props = []
+                            if is_selected:
+                                props.append('Selected')
+                            if is_pinned:
+                                props.append('Pinned')
+                            if tab.get('extension_app_id'):
+                                props.append(f'Ext: {tab["extension_app_id"]}')
+                            if tab.get('user_agent_override'):
+                                props.append('UA Override')
+                            props_str = ', '.join(props)
+
+                            # Tab group
+                            group_str = ''
+                            gt = tab.get('group_token')
+                            if gt and gt in tab_groups:
+                                group_str = tab_groups[gt].get('title', '')
+
+                            # Write the tab's current page row
+                            sess_ws.write(row_number, 0, '', fmt)
+                            sess_ws.write(row_number, 1, tab_index, fmt)
+                            sess_ws.write(row_number, 2, tab_id, fmt)
+                            sess_ws.write(row_number, 3, sel_nav, fmt)
+                            sess_ws.write_string(row_number, 4, url[:500] if url else '', fmt)
+                            sess_ws.write_string(row_number, 5, title[:200] if title else '', fmt)
+                            sess_ws.write_string(row_number, 6, props_str, fmt)
+                            sess_ws.write_string(row_number, 7, group_str, fmt)
+                            sess_ws.write_string(row_number, 8, profile, fmt)
+                            row_number += 1
+
+                            # Write back/forward navigation stack as sub-rows
+                            nav_stack = tab_nav_stacks.get(tab_id, {})
+                            if len(nav_stack) > 1:
+                                for nav_idx in sorted(nav_stack.keys()):
+                                    nav_url, nav_title, _ = nav_stack[nav_idx]
+                                    is_current = (nav_idx == sel_nav)
+                                    nav_fmt = nav_current_format if is_current else nav_history_format
+                                    current_marker = '<< current' if is_current else ''
+                                    sess_ws.write(row_number, 3, nav_idx, nav_fmt)
+                                    sess_ws.write_string(row_number, 4, nav_url[:500] if nav_url else '', nav_fmt)
+                                    sess_ws.write_string(row_number, 5, nav_title[:200] if nav_title else '', nav_fmt)
+                                    sess_ws.write_string(row_number, 6, current_marker, nav_fmt)
+                                    row_number += 1
+
+                        row_number += 1  # blank row between windows
+
+                # Formatting
+                sess_ws.freeze_panes(2, 0)
+
+            except Exception as e:
+                log.warning(f"Exception occurred while writing Sessions page: {e}")
 
         workbook.close()
 
