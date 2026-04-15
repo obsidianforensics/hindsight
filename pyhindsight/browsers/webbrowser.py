@@ -177,7 +177,8 @@ class WebBrowser(object):
                 self, profile, visit_id, url, title, visit_time, last_visit_time, visit_count, typed_count, from_visit,
                 transition, hidden, favicon_id, indexed=None, visit_duration=None, visit_source=None,
                 transition_friendly=None, is_known_to_sync=None, originator_cache_guid=None, opener_visit=None,
-                category_ids=None, entity_ids=None, cluster_id=None, cluster_label=None):
+                category_ids=None, entity_ids=None, cluster_id=None, cluster_label=None,
+                response_code=None, tab_id=None, window_id=None):
             super(WebBrowser.URLItem, self).__init__('url', timestamp=visit_time, profile=profile, url=url, name=title)
             self.profile = profile
             self.url = url
@@ -207,6 +208,9 @@ class WebBrowser(object):
             self.cluster_str = None
             self.cluster_id = cluster_id
             self.cluster_label = cluster_label
+            self.response_code = response_code
+            self.tab_id = tab_id
+            self.window_id = window_id
 
     class CacheItem(HistoryItem):
         def __init__(
@@ -384,6 +388,32 @@ class WebBrowser(object):
             self.watch_time = watch_time
             self.has_video = has_video
             self.has_audio = has_audio
+
+    class SessionItem(HistoryItem):
+        def __init__(
+                self, profile, url, title, timestamp, session_id=None, nav_index=None,
+                transition_type=None, transition_type_raw=None, referrer_url=None,
+                original_request_url=None, http_status=None, has_post_data=None,
+                source_path=None, page_state=None):
+            super(WebBrowser.SessionItem, self).__init__(
+                'session (navigation)', timestamp=timestamp, profile=profile, url=url,
+                name=title, value=transition_type)
+            self.profile = profile
+            self.url = url
+            self.title = title
+            self.session_id = session_id
+            self.nav_index = nav_index
+            self.transition_type = transition_type
+            self.transition_type_raw = transition_type_raw
+            self.referrer_url = referrer_url
+            self.original_request_url = original_request_url
+            self.http_status = http_status
+            self.has_post_data = has_post_data
+            self.source_path = source_path
+            self.page_state = page_state
+
+        def decode_transition(self):
+            self.transition_type = utils.decode_page_transition(self.transition_type_raw)
 
     class StorageItem(object):
         def __init__(self, item_type, profile, origin, key, value=None, seq=None, state=None, source_path=None,

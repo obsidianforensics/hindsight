@@ -159,6 +159,109 @@ def to_datetime(timestamp, timezone=None, quiet=False):
         return datetime.datetime.fromtimestamp(0, datetime.UTC)
 
 
+def decode_page_transition(raw):
+    """Decode a Chrome page transition integer into a human-readable string.
+
+    Args:
+        raw: Integer transition value (core type in lower 8 bits, qualifiers in upper bits).
+
+    Returns:
+        String like 'typed; From Address Bar; ' or None if raw is None.
+    """
+    if raw is None:
+        return None
+
+    # If the transition has already been translated to a string, just use that
+    if isinstance(raw, str):
+        return raw
+
+    # Source: http://src.chromium.org/svn/trunk/src/content/public/common/page_transition_types_list.h
+    transition_friendly = {
+        0: 'link',                 # User got to this page by clicking a link on another page.
+        1: 'typed',                # User got this page by typing the URL in the URL bar.  This should not be
+                                   #  used for cases where the user selected a choice that didn't look at all
+                                   #  like a URL; see GENERATED below.
+                                   # We also use this for other 'explicit' navigation actions.
+        2: 'auto bookmark',        # User got to this page through a suggestion in the UI, for example
+                                   #  through the destinations page.
+        3: 'auto subframe',        # This is a subframe navigation. This is any content that is automatically
+                                   #  loaded in a non-toplevel frame. For example, if a page consists of
+                                   #  several frames containing ads, those ad URLs will have this transition
+                                   #  type. The user may not even realize the content in these pages is a
+                                   #  separate frame, so may not care about the URL (see MANUAL below).
+        4: 'manual subframe',      # For subframe navigations that are explicitly requested by the user and
+                                   #  generate new navigation entries in the back/forward list. These are
+                                   #  probably more important than frames that were automatically loaded in
+                                   #  the background because the user probably cares about the fact that this
+                                   #  link was loaded.
+        5: 'generated',            # User got to this page by typing in the URL bar and selecting an entry
+                                   #  that did not look like a URL.  For example, a match might have the URL
+                                   #  of a Google search result page, but appear like 'Search Google for ...'.
+                                   #  These are not quite the same as TYPED navigations because the user
+                                   #  didn't type or see the destination URL.
+                                   #  See also KEYWORD.
+        6: 'start page',           # This is a toplevel navigation. This is any content that is automatically
+                                   #  loaded in a toplevel frame.  For example, opening a tab to show the ASH
+                                   #  screen saver, opening the devtools window, opening the NTP after the safe
+                                   #  browsing warning, opening web-based dialog boxes are examples of
+                                   #  AUTO_TOPLEVEL navigations.
+        7: 'form submit',          # The user filled out values in a form and submitted it. NOTE that in
+                                   #  some situations submitting a form does not result in this transition
+                                   #  type. This can happen if the form uses script to submit the contents.
+        8: 'reload',               # The user 'reloaded' the page, either by hitting the reload button or by
+                                   #  hitting enter in the address bar.  NOTE: This is distinct from the
+                                   #  concept of whether a particular load uses 'reload semantics' (i.e.
+                                   #  bypasses cached data).  For this reason, lots of code needs to pass
+                                   #  around the concept of whether a load should be treated as a 'reload'
+                                   #  separately from their tracking of this transition type, which is mainly
+                                   #  used for proper scoring for consumers who care about how frequently a
+                                   #  user typed/visited a particular URL.
+                                   #  SessionRestore and undo tab close use this transition type too.
+        9: 'keyword',              # The url was generated from a replaceable keyword other than the default
+                                   #  search provider. If the user types a keyword (which also applies to
+                                   #  tab-to-search) in the omnibox this qualifier is applied to the transition
+                                   #  type of the generated url. TemplateURLModel then may generate an
+                                   #  additional visit with a transition type of KEYWORD_GENERATED against the
+                                   #  url 'http://' + keyword. For example, if you do a tab-to-search against
+                                   #  wikipedia the generated url has a transition qualifer of KEYWORD, and
+                                   #  TemplateURLModel generates a visit for 'wikipedia.org' with a transition
+                                   #  type of KEYWORD_GENERATED.
+        10: 'keyword generated'    # Corresponds to a visit generated for a keyword. See description of
+                                   #  KEYWORD for more details.
+    }
+
+    qualifiers_friendly = {
+        0x00800000: 'Blocked',                # A managed user attempted to visit a URL but was blocked.
+        0x01000000: 'Forward or Back',        # User used the Forward or Back button to navigate among browsing
+                                              #  history.
+        0x02000000: 'From Address Bar',       # User used the address bar to trigger this navigation.
+        0x04000000: 'Home Page',              # User is navigating to the home page.
+        0x08000000: 'From API',               # The transition originated from an external application; the
+                                              #  exact definition of this is embedder dependent.
+        0x10000000: 'Navigation Chain Start', # The beginning of a navigation chain.
+        0x20000000: 'Navigation Chain End',   # The last transition in a redirect chain.
+        0x40000000: 'Client Redirect',        # Redirects caused by JavaScript or a meta refresh tag on the page
+        0x80000000: 'Server Redirect'         # Redirects sent from the server by HTTP headers. It might be nice
+                                              #  to break this out into 2 types in the future, permanent or
+                                              #  temporary, if we can get that information from WebKit.
+    }
+
+    core_mask = 0xff
+    code = raw & core_mask
+
+    result = None
+    if code in list(transition_friendly.keys()):
+        result = transition_friendly[code] + '; '
+
+    for qualifier in qualifiers_friendly:
+        if raw & qualifier == qualifier:
+            if not result:
+                result = ""
+            result += qualifiers_friendly[qualifier] + '; '
+
+    return result
+
+
 def friendly_date(timestamp):
     if isinstance(timestamp, (str, int)):
         return to_datetime(timestamp).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
