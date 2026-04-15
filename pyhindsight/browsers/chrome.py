@@ -15,7 +15,6 @@ import logging
 import shutil
 import puremagic
 import base64
-import pytz
 import ccl_chromium_reader
 import rich.console
 import rich.live
@@ -29,7 +28,7 @@ import rich.text
 from pyhindsight.browsers.webbrowser import WebBrowser
 from pyhindsight import utils
 
-# Try to import optionally modules - do nothing on failure, as status is tracked elsewhere
+# Try to import optional modules - do nothing on failure, as status is tracked elsewhere
 try:
     import win32crypt
 except ImportError:
@@ -2586,7 +2585,7 @@ class Chrome(WebBrowser):
 
                 parsed_item = WebBrowser.CacheItem(
                     profile=str(profile.path), url=cache_item.key.url,
-                    request_time=utils.to_datetime(pytz.utc.localize(cache_item.metadata.request_time), self.timezone),
+                    request_time=utils.to_datetime(cache_item.metadata.request_time.replace(tzinfo=datetime.timezone.utc), self.timezone),
                     locations=str({'data': cache_item.data_location, 'metadata': cache_item.metadata_location}),
                     key=cache_item.key, metadata=cache_item.metadata, data=cache_item.data, title=None)
 

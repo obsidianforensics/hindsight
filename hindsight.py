@@ -28,12 +28,7 @@ import rich.spinner
 import rich.table
 import rich.text
 
-# Try to import module for timezone support
-try:
-    import pytz
-except ImportError:
-    print(f'Could not import module \'pytz\'; all timestamps in XLSX output '
-          f'will be in examiner local time ({time.tzname[time.daylight]}).')
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 def get_base_dir():
@@ -111,15 +106,10 @@ The Chrome Profile folder default locations are:
 
     if args.timezone:
         try:
-            __import__('pytz')
-        except ImportError:
-            args.timezone = None
-        else:
-            try:
-                args.timezone = pytz.timezone(args.timezone)
-            except pytz.exceptions.UnknownTimeZoneError:
-                print("Couldn't understand timezone; using UTC.")
-                args.timezone = pytz.timezone('UTC')
+            args.timezone = ZoneInfo(args.timezone)
+        except ZoneInfoNotFoundError:
+            print("Couldn't understand timezone; using UTC.")
+            args.timezone = datetime.timezone.utc
 
     # Disable decryption on Linux unless explicitly enabled and supported
     if args.decrypt == 'linux' and analysis_session.available_decrypts['linux'] == 1:
