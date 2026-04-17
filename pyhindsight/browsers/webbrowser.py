@@ -158,6 +158,7 @@ class WebBrowser(object):
             self.name = name
             self.value = value
             self.interpretation = interpretation
+            self.source_item = None
 
         def __lt__(self, other):
             if not self.timestamp.tzinfo and other.timestamp.tzinfo:
