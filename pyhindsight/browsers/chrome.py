@@ -339,41 +339,46 @@ class Chrome(WebBrowser):
         log.info(f'History items from {history_file}')
 
         # Queries for different versions
-        query = {107: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                            urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time, 
-                            visits.from_visit, visits.opener_visit, visits.visit_duration, visits.transition, 
+        _cluster_subquery = (
+            "(SELECT cav.visit_id, "
+            "GROUP_CONCAT(CASE WHEN c.label IS NOT NULL AND c.label != '' "
+            "THEN c.label || ' (' || cav.cluster_id || ')' "
+            "ELSE CAST(cav.cluster_id AS TEXT) END, ', ') AS cluster_str "
+            "FROM clusters_and_visits cav LEFT JOIN clusters c ON c.cluster_id = cav.cluster_id "
+            "GROUP BY cav.visit_id) cav ON cav.visit_id = visits.id"
+        )
+        query = {107: f'''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                            urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time,
+                            visits.from_visit, visits.opener_visit, visits.visit_duration, visits.transition,
                             visit_source.source, visits.id as visit_id, content_annotations.categories,
                             content_annotations.entities, context_annotations.response_code, context_annotations.tab_id,
-                            context_annotations.window_id, clusters_and_visits.cluster_id, clusters.label AS cluster_label
-                        FROM urls 
-                                 JOIN visits ON urls.id = visits.url 
+                            context_annotations.window_id, cav.cluster_str
+                        FROM urls
+                                 JOIN visits ON urls.id = visits.url
                                  LEFT JOIN visit_source ON visits.id = visit_source.id
                                  LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
                                  LEFT JOIN context_annotations ON context_annotations.visit_id = visits.id
-                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
-                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                                 LEFT JOIN {_cluster_subquery}
                       ''',
-                 95: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                 95: f'''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.opener_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.id as visit_id, content_annotations.categories,
-                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
-                        FROM urls 
-                                 JOIN visits ON urls.id = visits.url 
+                            content_annotations.entities, cav.cluster_str
+                        FROM urls
+                                 JOIN visits ON urls.id = visits.url
                                  LEFT JOIN visit_source ON visits.id = visit_source.id
                                  LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
-                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
-                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                                 LEFT JOIN {_cluster_subquery}
                      ''',
-                 94: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                 94: f'''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.opener_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.id as visit_id, content_annotations.categories,
-                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
-                        FROM urls 
-                                 JOIN visits ON urls.id = visits.url 
+                            content_annotations.entities, cav.cluster_str
+                        FROM urls
+                                 JOIN visits ON urls.id = visits.url
                                  LEFT JOIN visit_source ON visits.id = visit_source.id
                                  LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
-                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
-                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                                 LEFT JOIN {_cluster_subquery}
                      ''',
                  59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
@@ -458,6 +463,8 @@ class Chrome(WebBrowser):
                     for eid in new_row.entity_ids:
                         kg_id = eid.rsplit(':', 1)[0] if ':' in eid else eid
                         self.kg_entities.setdefault(kg_id, None)
+
+                new_row.cluster_str = row.get('cluster_str')
 
                 # Translate the transition value to human-readable
                 new_row.decode_transition()
@@ -3806,10 +3813,6 @@ class Chrome(WebBrowser):
                     artifact.categories_str = _resolve_ids(artifact.category_ids)
                 if artifact.entity_ids:
                     artifact.entities_str = _resolve_ids(artifact.entity_ids)
-                if artifact.cluster_label and artifact.cluster_id:
-                    artifact.cluster_str = f'{artifact.cluster_label} ({artifact.cluster_id})'
-                elif artifact.cluster_id:
-                    artifact.cluster_str = str(artifact.cluster_id)
 
         self.parsed_artifacts.sort()
         self.parsed_storage.sort()
