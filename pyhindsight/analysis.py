@@ -1000,7 +1000,7 @@ class AnalysisSession(object):
         w.write(1, 5, 'Interpretation', header_format)
         w.write(1, 6, 'Profile', header_format)
         w.write(1, 7, 'Source Item', header_format)
-        w.write(1, 8, 'Source', header_format)
+        w.write(1, 8, 'Visit Source', header_format)
         w.write(1, 9, 'Visit ID', header_format)
         w.write(1, 10, 'From Visit', header_format)
         w.write(1, 11, 'Opener Visit', header_format)
@@ -1029,9 +1029,9 @@ class AnalysisSession(object):
         w.set_column('D:D', 25)  # Title / Name / Status
         w.set_column('E:E', 60)  # Data / Value / Path
         w.set_column('F:F', 40)  # Interpretation
-        w.set_column('G:G', 12)  # Profile
-        w.set_column('H:H', 30)  # Source Item
-        w.set_column('I:I', 10)  # Source
+        w.set_column('G:G', 20)  # Profile
+        w.set_column('H:H', 20)  # Source Item
+        w.set_column('I:I', 14)  # Visit Source
 
         # URL Visit Specific
         w.set_column('M:M', 14)  # Visit Duration
@@ -1070,7 +1070,7 @@ class AnalysisSession(object):
                     w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
                     w.write(row_number, 6, item.profile, black_type_format)  # Profile
                     w.write(row_number, 7, item.source_item or '', black_type_format)  # Source Item
-                    w.write(row_number, 8, item.visit_source, black_type_format)  # Source
+                    w.write(row_number, 8, item.visit_source, black_type_format)  # Visit Source
                     w.write(row_number, 9, item.visit_id, black_flag_format)
                     w.write(row_number, 10, item.from_visit, black_flag_format)
                     w.write(row_number, 11, item.opener_visit, black_flag_format)
@@ -1777,7 +1777,8 @@ class AnalysisSession(object):
             c = output_db.cursor()
             c.execute(
                 'CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, '
-                'interpretation TEXT, profile TEXT, source TEXT, visit_id INT, from_visit INT, opener_visit INT, '
+                'interpretation TEXT, profile TEXT, source_item TEXT, visit_source TEXT, '
+                'visit_id INT, from_visit INT, opener_visit INT, '
                 'visit_duration TEXT, visit_count INT, typed_count INT, url_hidden INT, transition TEXT, '
                 'interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, last_modified TEXT, http_headers TEXT)')
 
@@ -1819,12 +1820,14 @@ class AnalysisSession(object):
             for item in self.parsed_artifacts:
                 if item.row_type.startswith('url'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source, '
-                        'visit_id, from_visit, opener_visit, visit_duration, visit_count, typed_count, url_hidden, transition) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source_item, '
+                        'visit_source, visit_id, from_visit, opener_visit, visit_duration, visit_count, typed_count, '
+                        'url_hidden, transition) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
-                         item.profile, item.visit_source, item.visit_id, item.from_visit, item.opener_visit,
-                         item.visit_duration, item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+                         item.profile, item.source_item, item.visit_source, item.visit_id, item.from_visit,
+                         item.opener_visit, item.visit_duration, item.visit_count, item.typed_count, item.hidden,
+                         item.transition_friendly))
 
                 elif item.row_type.startswith('media'):
                     if item.source_title:
@@ -1835,77 +1838,77 @@ class AnalysisSession(object):
                         media_message = f'Watched{item.watch_time} '\
                                         f'[has_video: {item.has_video}; has_audio: {item.has_audio}]'
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.title,
-                         media_message, item.interpretation, item.profile))
+                         media_message, item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('autofill'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation,
-                         item.profile))
+                         item.profile, item.source_item))
 
                 elif item.row_type.startswith('download'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, '
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item, '
                         'interrupt_reason, danger_type, opened, etag, last_modified) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
-                         item.interpretation, item.profile, item.interrupt_reason_friendly, item.danger_type_friendly,
-                         item.opened, item.etag, item.last_modified))
+                         item.interpretation, item.profile, item.source_item, item.interrupt_reason_friendly,
+                         item.danger_type_friendly, item.opened, item.etag, item.last_modified))
 
                 elif item.row_type.startswith('bookmark folder'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('bookmark'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('cookie'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('local storage'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('cache'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, '
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item, '
                         'etag, last_modified, http_headers)'
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.data_summary,
-                         item.locations, item.interpretation, item.profile, item.etag, item.last_modified,
-                         item.http_headers_str))
+                         item.locations, item.interpretation, item.profile, item.source_item,
+                         item.etag, item.last_modified, item.http_headers_str))
 
                 elif item.row_type.startswith('login'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith(('preference', 'site setting', 'notification', 'session', 'permission action', 'profile creation')):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
             for item in self.parsed_storage:
                 if item.row_type.startswith('local'):
