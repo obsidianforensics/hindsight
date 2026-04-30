@@ -986,10 +986,10 @@ class AnalysisSession(object):
         ################################
 
         # Title bar
-        w.merge_range('A1:H1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
-        w.merge_range('I1:V1', 'URL Visit Specific', center_header_format)
-        w.merge_range('W1:Y1', 'Download Specific', center_header_format)
-        w.merge_range('Z1:AB1', 'Cache Specific', center_header_format)
+        w.merge_range('A1:I1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
+        w.merge_range('J1:W1', 'URL Visit Specific', center_header_format)
+        w.merge_range('X1:Z1', 'Download Specific', center_header_format)
+        w.merge_range('AA1:AC1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, 'Type', header_format)
@@ -999,27 +999,28 @@ class AnalysisSession(object):
         w.write(1, 4, 'Data / Value / Path', header_format)
         w.write(1, 5, 'Interpretation', header_format)
         w.write(1, 6, 'Profile', header_format)
-        w.write(1, 7, 'Source', header_format)
-        w.write(1, 8, 'Visit ID', header_format)
-        w.write(1, 9, 'From Visit', header_format)
-        w.write(1, 10, 'Opener Visit', header_format)
-        w.write(1, 11, 'Visit Duration', header_format)
-        w.write(1, 12, 'Visit Count', header_format)
-        w.write(1, 13, 'Typed Count', header_format)
-        w.write(1, 14, 'URL Hidden', header_format)
-        w.write(1, 15, 'Transition', header_format)
-        w.write(1, 16, 'Categories', header_format)
-        w.write(1, 17, 'Entities', header_format)
-        w.write(1, 18, 'Cluster', header_format)
-        w.write(1, 19, 'Window ID', header_format)
-        w.write(1, 20, 'Tab ID', header_format)
-        w.write(1, 21, 'Response Code', header_format)
-        w.write(1, 22, 'Interrupt Reason', header_format)
-        w.write(1, 23, 'Danger Type', header_format)
-        w.write(1, 24, 'Opened?', header_format)
-        w.write(1, 25, 'ETag', header_format)
-        w.write(1, 26, 'Last Modified', header_format)
-        w.write(1, 27, 'All HTTP Headers', header_format)
+        w.write(1, 7, 'Source Item', header_format)
+        w.write(1, 8, 'Visit Source', header_format)
+        w.write(1, 9, 'Visit ID', header_format)
+        w.write(1, 10, 'From Visit', header_format)
+        w.write(1, 11, 'Opener Visit', header_format)
+        w.write(1, 12, 'Visit Duration', header_format)
+        w.write(1, 13, 'Visit Count', header_format)
+        w.write(1, 14, 'Typed Count', header_format)
+        w.write(1, 15, 'URL Hidden', header_format)
+        w.write(1, 16, 'Transition', header_format)
+        w.write(1, 17, 'Categories', header_format)
+        w.write(1, 18, 'Entities', header_format)
+        w.write(1, 19, 'Cluster', header_format)
+        w.write(1, 20, 'Window ID', header_format)
+        w.write(1, 21, 'Tab ID', header_format)
+        w.write(1, 22, 'Response Code', header_format)
+        w.write(1, 23, 'Interrupt Reason', header_format)
+        w.write(1, 24, 'Danger Type', header_format)
+        w.write(1, 25, 'Opened?', header_format)
+        w.write(1, 26, 'ETag', header_format)
+        w.write(1, 27, 'Last Modified', header_format)
+        w.write(1, 28, 'All HTTP Headers', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -1028,31 +1029,32 @@ class AnalysisSession(object):
         w.set_column('D:D', 25)  # Title / Name / Status
         w.set_column('E:E', 60)  # Data / Value / Path
         w.set_column('F:F', 40)  # Interpretation
-        w.set_column('G:G', 12)  # Profile
-        w.set_column('H:H', 10)  # Source
+        w.set_column('G:G', 20)  # Profile
+        w.set_column('H:H', 20)  # Source Item
+        w.set_column('I:I', 14)  # Visit Source
 
         # URL Visit Specific
-        w.set_column('L:L', 14)  # Visit Duration
-        w.set_column('M:O', 6)   # Visit Count, Typed Count, Hidden
-        w.set_column('P:P', 12)  # Transition
-        w.set_column('Q:Q', 18)  # Categories
-        w.set_column('R:R', 18)  # Entities
-        w.set_column('S:S', 15)  # Cluster
-        w.set_column('T:T', 12)  # Window ID
-        w.set_column('U:U', 12)  # Tab ID
-        w.set_column('V:V', 12)  # Response Code
+        w.set_column('M:M', 14)  # Visit Duration
+        w.set_column('N:P', 6)   # Visit Count, Typed Count, Hidden
+        w.set_column('Q:Q', 12)  # Transition
+        w.set_column('R:R', 18)  # Categories
+        w.set_column('S:S', 18)  # Entities
+        w.set_column('T:T', 15)  # Cluster
+        w.set_column('U:U', 12)  # Window ID
+        w.set_column('V:V', 12)  # Tab ID
+        w.set_column('W:W', 12)  # Response Code
 
         # Download Specific
-        w.set_column('W:W', 12)  # Interrupt Reason
-        w.set_column('X:X', 24)  # Danger Type
-        w.set_column('Y:Y', 12)  # Opened
+        w.set_column('X:X', 12)  # Interrupt Reason
+        w.set_column('Y:Y', 24)  # Danger Type
+        w.set_column('Z:Z', 12)  # Opened
 
         # Common between Downloads and Cache
-        w.set_column('Z:Z', 12)  # ETag
-        w.set_column('AA:AA', 27)  # Last Modified
+        w.set_column('AA:AA', 12)  # ETag
+        w.set_column('AB:AB', 27)  # Last Modified
 
         # Cache Specific
-        w.set_column('AB:AB', 30)  # HTTP Headers
+        w.set_column('AC:AC', 30)  # HTTP Headers
 
         # Start at the row after the headers and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -1067,24 +1069,25 @@ class AnalysisSession(object):
                     w.write(row_number, 4, "", black_value_format)  # Data / Value / Path
                     w.write(row_number, 5, item.interpretation, black_value_format)  # Interpretation
                     w.write(row_number, 6, item.profile, black_type_format)  # Profile
-                    w.write(row_number, 7, item.visit_source, black_type_format)
-                    w.write(row_number, 8, item.visit_id, black_flag_format)
-                    w.write(row_number, 9, item.from_visit, black_flag_format)
-                    w.write(row_number, 10, item.opener_visit, black_flag_format)
-                    w.write(row_number, 11, item.visit_duration, black_flag_format)
-                    w.write(row_number, 12, item.visit_count, black_flag_format)
-                    w.write(row_number, 13, item.typed_count, black_flag_format)
-                    w.write(row_number, 14, item.hidden, black_flag_format)
-                    w.write(row_number, 15, item.transition_friendly, black_trans_format)
-                    w.write(row_number, 16, item.categories_str or "", black_value_format)  # Categories
-                    w.write(row_number, 17, item.entities_str or "", black_value_format)  # Entities
-                    w.write(row_number, 18, item.cluster_str or "", black_value_format)  # Cluster
+                    w.write(row_number, 7, item.source_item or '', black_type_format)  # Source Item
+                    w.write(row_number, 8, item.visit_source, black_type_format)  # Visit Source
+                    w.write(row_number, 9, item.visit_id, black_flag_format)
+                    w.write(row_number, 10, item.from_visit, black_flag_format)
+                    w.write(row_number, 11, item.opener_visit, black_flag_format)
+                    w.write(row_number, 12, item.visit_duration, black_flag_format)
+                    w.write(row_number, 13, item.visit_count, black_flag_format)
+                    w.write(row_number, 14, item.typed_count, black_flag_format)
+                    w.write(row_number, 15, item.hidden, black_flag_format)
+                    w.write(row_number, 16, item.transition_friendly, black_trans_format)
+                    w.write(row_number, 17, item.categories_str or "", black_value_format)  # Categories
+                    w.write(row_number, 18, item.entities_str or "", black_value_format)  # Entities
+                    w.write(row_number, 19, item.cluster_str or "", black_value_format)  # Cluster
                     if getattr(item, 'window_id', None) is not None:
-                        w.write(row_number, 19, item.window_id, black_value_format)  # Window ID
+                        w.write(row_number, 20, item.window_id, black_value_format)  # Window ID
                     if getattr(item, 'tab_id', None) is not None:
-                        w.write(row_number, 20, item.tab_id, black_value_format)  # Tab ID
+                        w.write(row_number, 21, item.tab_id, black_value_format)  # Tab ID
                     if getattr(item, 'response_code', None) is not None:
-                        w.write(row_number, 21, item.response_code, black_value_format)  # Response Code
+                        w.write(row_number, 22, item.response_code, black_value_format)  # Response Code
 
                 elif item.row_type.startswith("media"):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
@@ -1101,6 +1104,7 @@ class AnalysisSession(object):
                     w.write(row_number, 4, media_message, blue_value_format)
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # Interpretation
                     w.write(row_number, 6, item.profile, blue_type_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', blue_type_format)  # Source Item
 
                 elif item.row_type.startswith("autofill"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -1108,6 +1112,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.name, red_field_format)  # autofill field
                     w.write_string(row_number, 4, item.value, red_value_format)  # autofill value
                     w.write(row_number, 6, item.profile, red_type_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', red_type_format)  # Source Item
 
                 elif item.row_type.startswith("download"):
                     w.write_string(row_number, 0, item.row_type, green_type_format)  # record_type
@@ -1117,16 +1122,17 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, green_value_format)  # download path
                     w.write_string(row_number, 5, "", green_field_format)  # Interpretation (chain?)
                     w.write(row_number, 6, item.profile, green_type_format)  # Profile
-                    w.write(row_number, 22, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
-                    w.write(row_number, 23, item.danger_type_friendly, green_value_format)  # danger type
+                    w.write(row_number, 7, item.source_item or '', green_type_format)  # Source Item
+                    w.write(row_number, 23, item.interrupt_reason_friendly, green_value_format)  # interrupt reason
+                    w.write(row_number, 24, item.danger_type_friendly, green_value_format)  # danger type
                     open_friendly = ""
                     if item.opened == 1:
                         open_friendly = 'Yes'
                     elif item.opened == 0:
                         open_friendly = 'No'
-                    w.write_string(row_number, 24, open_friendly, green_value_format)  # opened
-                    w.write(row_number, 25, item.etag, green_value_format)  # ETag
-                    w.write(row_number, 26, item.last_modified, green_value_format)  # Last Modified
+                    w.write_string(row_number, 25, open_friendly, green_value_format)  # opened
+                    w.write(row_number, 26, item.etag, green_value_format)  # ETag
+                    w.write(row_number, 27, item.last_modified, green_value_format)  # Last Modified
 
                 elif item.row_type.startswith("bookmark folder"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -1134,6 +1140,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
                     w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
                     w.write(row_number, 6, item.profile, red_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', red_value_format)  # Source Item
 
                 elif item.row_type.startswith("bookmark"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -1142,6 +1149,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 3, item.name, red_value_format)  # bookmark name
                     w.write_string(row_number, 4, item.value, red_value_format)  # bookmark folder
                     w.write(row_number, 6, item.profile, red_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', red_value_format)  # Source Item
 
                 elif item.row_type.startswith("cookie"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1151,6 +1159,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', gray_value_format)  # Source Item
 
                 elif item.row_type.startswith("cache"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1163,9 +1172,10 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.locations, gray_value_format)
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
-                    w.write(row_number, 25, item.etag, gray_value_format)  # ETag
-                    w.write(row_number, 26, item.last_modified, gray_value_format)  # Last Modified
-                    w.write(row_number, 27, item.http_headers_str, gray_value_format)  # headers
+                    w.write(row_number, 7, item.source_item or '', gray_value_format)  # Source Item
+                    w.write(row_number, 26, item.etag, gray_value_format)  # ETag
+                    w.write(row_number, 27, item.last_modified, gray_value_format)  # Last Modified
+                    w.write(row_number, 28, item.http_headers_str, gray_value_format)  # headers
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1175,6 +1185,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, gray_value_format)  # cookie value
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # cookie interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', gray_value_format)  # Source Item
 
                 elif item.row_type.startswith("login"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -1184,6 +1195,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, red_value_format)  # username or pw value
                     w.write_string(row_number, 5, item.interpretation, red_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, red_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', red_value_format)  # Source Item
 
                 elif item.row_type.startswith("session"):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
@@ -1193,25 +1205,26 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value or '', blue_value_format)  # value
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
-                    w.write(row_number, 15, getattr(item, 'transition_type', ''), blue_field_format)  # Transition
+                    w.write(row_number, 7, item.source_item or '', blue_value_format)  # Source Item
+                    w.write(row_number, 16, getattr(item, 'transition_type', ''), blue_field_format)  # Transition
                     # Session-specific: Window ID, Tab ID, Response Code
                     session_id = getattr(item, 'session_id', None)
                     http_status = getattr(item, 'http_status', None)
                     if http_status is not None:
-                        w.write(row_number, 21, http_status, blue_value_format)  # Response Code
+                        w.write(row_number, 22, http_status, blue_value_format)  # Response Code
 
                     is_window_event = 'window' in item.row_type
                     if session_id is not None:
                         if is_window_event:
-                            w.write(row_number, 19, session_id, blue_value_format)  # Window ID
+                            w.write(row_number, 20, session_id, blue_value_format)  # Window ID
                         else:
-                            w.write(row_number, 20, session_id, blue_value_format)  # Tab ID
+                            w.write(row_number, 21, session_id, blue_value_format)  # Tab ID
                             # Look up window_id from session structure
                             if hasattr(self, 'session_structures') and self.session_structures:
                                 for sess in self.session_structures:
                                     tab_meta = sess.get('tabs', {}).get(session_id)
                                     if tab_meta and tab_meta.get('window_id') is not None:
-                                        w.write(row_number, 19, tab_meta['window_id'], blue_value_format)
+                                        w.write(row_number, 20, tab_meta['window_id'], blue_value_format)
                                         break
 
                     # Emit additional red "session (form data)" rows for interesting form elements
@@ -1237,6 +1250,7 @@ class AnalysisSession(object):
                             w.write_string(row_number, 3, f'{form_name} [{fe.type}]', red_field_format)
                             w.write_string(row_number, 4, form_value, red_value_format)
                             w.write(row_number, 6, item.profile, red_type_format)
+                            w.write(row_number, 7, item.source_item or '', red_type_format)  # Source Item
 
                         # Also check child iframes for file uploads
                         if page_state and page_state.top_frame and page_state.top_frame.children:
@@ -1258,6 +1272,7 @@ class AnalysisSession(object):
                                     w.write_string(row_number, 3, f'(iframe file) [file]', red_field_format)
                                     w.write_string(row_number, 4, form_value, red_value_format)
                                     w.write(row_number, 6, item.profile, red_type_format)
+                                    w.write(row_number, 7, item.source_item or '', red_type_format)  # Source Item
 
                         # Emit referenced_files as emphasis rows (file paths referenced by the page)
                         if page_state and page_state.referenced_files:
@@ -1275,6 +1290,7 @@ class AnalysisSession(object):
                                 w.write_string(row_number, 3, '(referenced file) [file]', red_field_format)
                                 w.write_string(row_number, 4, ref_file, red_value_format)
                                 w.write(row_number, 6, item.profile, red_type_format)
+                                w.write(row_number, 7, item.source_item or '', red_type_format)  # Source Item
 
                 elif item.row_type.startswith(("permission action", "profile creation", "notification")):
                     w.write_string(row_number, 0, item.row_type, blue_type_format)  # record_type
@@ -1284,6 +1300,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, blue_value_format)  # value
                     w.write(row_number, 5, item.interpretation, blue_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, blue_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', blue_value_format)  # Source Item
 
                 elif item.row_type.startswith("preference"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1293,6 +1310,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, gray_value_format)  # value
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', gray_value_format)  # Source Item
 
                 elif item.row_type.startswith("site setting"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -1302,6 +1320,7 @@ class AnalysisSession(object):
                     w.write_string(row_number, 4, item.value, gray_value_format)  # username or pw value
                     w.write(row_number, 5, item.interpretation, gray_value_format)  # interpretation
                     w.write(row_number, 6, item.profile, gray_value_format)  # Profile
+                    w.write(row_number, 7, item.source_item or '', gray_value_format)  # Source Item
 
                 if friendly_date(item.timestamp) < '1970-01-02':
                     w.set_row(row_number, options={'hidden': True})
@@ -1313,7 +1332,7 @@ class AnalysisSession(object):
 
         # Formatting
         w.freeze_panes(2, 0)  # Freeze top row
-        w.autofilter(1, 0, row_number, 27)  # Add autofilter
+        w.autofilter(1, 0, row_number, 28)  # Add autofilter
         w.filter_column('B', 'Timestamp > 1970-01-02')
 
         ##############################
@@ -1758,7 +1777,8 @@ class AnalysisSession(object):
             c = output_db.cursor()
             c.execute(
                 'CREATE TABLE timeline(type TEXT, timestamp TEXT, url TEXT, title TEXT, value TEXT, '
-                'interpretation TEXT, profile TEXT, source TEXT, visit_id INT, from_visit INT, opener_visit INT, '
+                'interpretation TEXT, profile TEXT, source_item TEXT, visit_source TEXT, '
+                'visit_id INT, from_visit INT, opener_visit INT, '
                 'visit_duration TEXT, visit_count INT, typed_count INT, url_hidden INT, transition TEXT, '
                 'interrupt_reason TEXT, danger_type TEXT, opened INT, etag TEXT, last_modified TEXT, http_headers TEXT)')
 
@@ -1800,12 +1820,14 @@ class AnalysisSession(object):
             for item in self.parsed_artifacts:
                 if item.row_type.startswith('url'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source, '
-                        'visit_id, from_visit, opener_visit, visit_duration, visit_count, typed_count, url_hidden, transition) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, interpretation, profile, source_item, '
+                        'visit_source, visit_id, from_visit, opener_visit, visit_duration, visit_count, typed_count, '
+                        'url_hidden, transition) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.interpretation,
-                         item.profile, item.visit_source, item.visit_id, item.from_visit, item.opener_visit,
-                         item.visit_duration, item.visit_count, item.typed_count, item.hidden, item.transition_friendly))
+                         item.profile, item.source_item, item.visit_source, item.visit_id, item.from_visit,
+                         item.opener_visit, item.visit_duration, item.visit_count, item.typed_count, item.hidden,
+                         item.transition_friendly))
 
                 elif item.row_type.startswith('media'):
                     if item.source_title:
@@ -1816,77 +1838,77 @@ class AnalysisSession(object):
                         media_message = f'Watched{item.watch_time} '\
                                         f'[has_video: {item.has_video}; has_audio: {item.has_audio}]'
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.title,
-                         media_message, item.interpretation, item.profile))
+                         media_message, item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('autofill'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.name, item.value, item.interpretation,
-                         item.profile))
+                         item.profile, item.source_item))
 
                 elif item.row_type.startswith('download'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, '
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item, '
                         'interrupt_reason, danger_type, opened, etag, last_modified) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.status_friendly, item.value,
-                         item.interpretation, item.profile, item.interrupt_reason_friendly, item.danger_type_friendly,
-                         item.opened, item.etag, item.last_modified))
+                         item.interpretation, item.profile, item.source_item, item.interrupt_reason_friendly,
+                         item.danger_type_friendly, item.opened, item.etag, item.last_modified))
 
                 elif item.row_type.startswith('bookmark folder'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('bookmark'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('cookie'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('local storage'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith('cache'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, '
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item, '
                         'etag, last_modified, http_headers)'
-                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.data_summary,
-                         item.locations, item.interpretation, item.profile, item.etag, item.last_modified,
-                         item.http_headers_str))
+                         item.locations, item.interpretation, item.profile, item.source_item,
+                         item.etag, item.last_modified, item.http_headers_str))
 
                 elif item.row_type.startswith('login'):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
                 elif item.row_type.startswith(('preference', 'site setting', 'notification', 'session', 'permission action', 'profile creation')):
                     c.execute(
-                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile) '
-                        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                        'INSERT INTO timeline (type, timestamp, url, title, value, interpretation, profile, source_item) '
+                        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                         (item.row_type, friendly_date(item.timestamp), item.url, item.name, item.value,
-                         item.interpretation, item.profile))
+                         item.interpretation, item.profile, item.source_item))
 
             for item in self.parsed_storage:
                 if item.row_type.startswith('local'):

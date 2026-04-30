@@ -339,41 +339,46 @@ class Chrome(WebBrowser):
         log.info(f'History items from {history_file}')
 
         # Queries for different versions
-        query = {107: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
-                            urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time, 
-                            visits.from_visit, visits.opener_visit, visits.visit_duration, visits.transition, 
+        _cluster_subquery = (
+            "(SELECT cav.visit_id, "
+            "GROUP_CONCAT(CASE WHEN c.label IS NOT NULL AND c.label != '' "
+            "THEN c.label || ' (' || cav.cluster_id || ')' "
+            "ELSE CAST(cav.cluster_id AS TEXT) END, ', ') AS cluster_str "
+            "FROM clusters_and_visits cav LEFT JOIN clusters c ON c.cluster_id = cav.cluster_id "
+            "GROUP BY cav.visit_id) cav ON cav.visit_id = visits.id"
+        )
+        query = {107: f'''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                            urls.hidden, visits.is_known_to_sync, visits.originator_cache_guid, visits.visit_time,
+                            visits.from_visit, visits.opener_visit, visits.visit_duration, visits.transition,
                             visit_source.source, visits.id as visit_id, content_annotations.categories,
                             content_annotations.entities, context_annotations.response_code, context_annotations.tab_id,
-                            context_annotations.window_id, clusters_and_visits.cluster_id, clusters.label AS cluster_label
-                        FROM urls 
-                                 JOIN visits ON urls.id = visits.url 
+                            context_annotations.window_id, cav.cluster_str
+                        FROM urls
+                                 JOIN visits ON urls.id = visits.url
                                  LEFT JOIN visit_source ON visits.id = visit_source.id
                                  LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
                                  LEFT JOIN context_annotations ON context_annotations.visit_id = visits.id
-                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
-                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                                 LEFT JOIN {_cluster_subquery}
                       ''',
-                 95: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                 95: f'''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.opener_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.id as visit_id, content_annotations.categories,
-                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
-                        FROM urls 
-                                 JOIN visits ON urls.id = visits.url 
+                            content_annotations.entities, cav.cluster_str
+                        FROM urls
+                                 JOIN visits ON urls.id = visits.url
                                  LEFT JOIN visit_source ON visits.id = visit_source.id
                                  LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
-                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
-                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                                 LEFT JOIN {_cluster_subquery}
                      ''',
-                 94: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
+                 94: f'''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.opener_visit, visits.visit_duration,
                             visits.transition, visit_source.source, visits.id as visit_id, content_annotations.categories,
-                            content_annotations.entities, clusters_and_visits.cluster_id, clusters.label AS cluster_label
-                        FROM urls 
-                                 JOIN visits ON urls.id = visits.url 
+                            content_annotations.entities, cav.cluster_str
+                        FROM urls
+                                 JOIN visits ON urls.id = visits.url
                                  LEFT JOIN visit_source ON visits.id = visit_source.id
                                  LEFT JOIN content_annotations ON content_annotations.visit_id = visits.id
-                                 LEFT JOIN clusters_and_visits ON clusters_and_visits.visit_id = visits.id
-                                 LEFT JOIN clusters on clusters.cluster_id = clusters_and_visits.cluster_id
+                                 LEFT JOIN {_cluster_subquery}
                      ''',
                  59: '''SELECT urls.id, urls.url, urls.title, urls.visit_count, urls.typed_count, urls.last_visit_time,
                             urls.hidden, visits.visit_time, visits.from_visit, visits.visit_duration,
@@ -405,6 +410,7 @@ class Chrome(WebBrowser):
                             visits.id as visit_id
                         FROM urls, visits WHERE urls.id = visits.url'''}
 
+        source_item = os.path.relpath(os.path.join(path, history_file), self.profile_path)
         with self._execute_compatible_query(path, history_file, query, version, 'History items') as cursor:
             if cursor is None:
                 return
@@ -433,8 +439,6 @@ class Chrome(WebBrowser):
                     is_known_to_sync=row.get('is_known_to_sync'),
                     originator_cache_guid=row.get('originator_cache_guid'),
                     opener_visit=row.get('opener_visit'),
-                    cluster_id=row.get('cluster_id'),
-                    cluster_label=row.get('cluster_label'),
                     response_code=row.get('response_code'),
                     tab_id=row.get('tab_id'),
                     window_id=row.get('window_id'),
@@ -460,12 +464,15 @@ class Chrome(WebBrowser):
                         kg_id = eid.rsplit(':', 1)[0] if ':' in eid else eid
                         self.kg_entities.setdefault(kg_id, None)
 
+                new_row.cluster_str = row.get('cluster_str')
+
                 # Translate the transition value to human-readable
                 new_row.decode_transition()
 
                 # Translate the numeric visit_source.source code to human-readable
                 new_row.decode_source()
 
+                new_row.source_item = source_item
                 results.append(new_row)
 
         self.artifacts_counts[history_file] = len(results)
@@ -484,6 +491,7 @@ class Chrome(WebBrowser):
                         FROM playback LEFT JOIN playbackSession 
                             ON playback.last_updated_time_s = playbackSession.last_updated_time_s'''}
 
+        source_item = os.path.relpath(os.path.join(path, history_file), self.profile_path)
         with self._execute_compatible_query(path, history_file, query, version, 'Media History items') as cursor:
             if cursor is None:
                 return
@@ -513,6 +521,7 @@ class Chrome(WebBrowser):
                     duration, row.get('source_title'), watch_time, row.get('has_video'), row.get('has_audio'))
 
                 new_row.row_type = row_type
+                new_row.source_item = source_item
                 results.append(new_row)
 
         self.artifacts_counts[history_file] = len(results)
@@ -544,6 +553,7 @@ class Chrome(WebBrowser):
                             downloads.state, downloads.full_path, downloads.start_time
                         FROM downloads'''}
 
+        source_item = os.path.relpath(os.path.join(path, database), self.profile_path)
         with self._execute_compatible_query(
                 path, database, query, version, 'Download items',
                 count_key=database + '_downloads') as cursor:
@@ -582,6 +592,7 @@ class Chrome(WebBrowser):
                     log.error(f' - Error retrieving download location for download "{new_row.url}"')
 
                 new_row.row_type = row_type
+                new_row.source_item = source_item
                 results.append(new_row)
 
         self.artifacts_counts[database + '_downloads'] = len(results)
@@ -689,6 +700,7 @@ class Chrome(WebBrowser):
                             cookies.last_access_utc, cookies.expires_utc, cookies.secure, cookies.httponly
                         FROM cookies'''}
 
+        source_item = os.path.relpath(os.path.join(path, database), self.profile_path)
         with self._execute_compatible_query(path, database, query, version, 'Cookie items') as cursor:
             if cursor is None:
                 return
@@ -715,6 +727,7 @@ class Chrome(WebBrowser):
                 if base_cookie.top_frame_site_key:
                     base_cookie.url += f' ({base_cookie.top_frame_site_key})'
 
+                base_cookie.source_item = source_item
                 base_cookie.last_update_utc = utils.to_datetime(row.get('last_update_utc'), self.timezone)
                 zero_timestamp = utils.to_datetime(0, self.timezone)
 
@@ -759,6 +772,7 @@ class Chrome(WebBrowser):
                  6:  '''SELECT origin_url, action_url, username_element, username_value, password_element,
                             password_value, date_created, blacklisted_by_user FROM logins'''}
 
+        source_item = os.path.relpath(os.path.join(path, database), self.profile_path)
         with self._execute_compatible_query(path, database, query, version, 'Login items') as cursor:
             if cursor is None:
                 return
@@ -771,6 +785,7 @@ class Chrome(WebBrowser):
                         value='', count=row.get('times_used'),
                         interpretation='User chose to "Never save password" for this site')
                     never_save_row.row_type = 'login (never save)'
+                    never_save_row.source_item = source_item
                     results.append(never_save_row)
 
                 elif row.get('username_value'):
@@ -784,6 +799,7 @@ class Chrome(WebBrowser):
                         value=row.get('username_value'), count=row.get('times_used'),
                         interpretation=interpretation_str)
                     username_row.row_type = 'login (saved credentials)'
+                    username_row.source_item = source_item
                     results.append(username_row)
 
                     # 'date_last_used' was added in v78; some older records may have small, invalid values; skip them.
@@ -798,6 +814,7 @@ class Chrome(WebBrowser):
                             value=row.get('username_value'), count=row.get('times_used'),
                             interpretation=interpretation_str)
                         username_row.row_type = 'login (username)'
+                        username_row.source_item = source_item
                         results.append(username_row)
 
                 if row.get('password_value') is not None and self.available_decrypts['windows'] == 1:
@@ -814,6 +831,7 @@ class Chrome(WebBrowser):
                         value=password, count=row.get('times_used'),
                         interpretation='User chose to save the credentials entered')
                     password_row.row_type = 'login (password)'
+                    password_row.source_item = source_item
                     results.append(password_row)
 
         # Queries for "stats" table for different versions
@@ -829,6 +847,7 @@ class Chrome(WebBrowser):
                         interpretation=f'User declined to save the password for this site '
                                        f'(dismissal count: {row.get("dismissal_count")})')
                     stats_row.row_type = 'login (declined save)'
+                    stats_row.source_item = source_item
                     results.append(stats_row)
 
         self.artifacts_counts['Login Data'] = len(results)
@@ -847,6 +866,7 @@ class Chrome(WebBrowser):
                  2: '''SELECT autofill_dates.date_created, autofill.name, autofill.value, autofill.count
                         FROM autofill, autofill_dates WHERE autofill.pair_id = autofill_dates.pair_id'''}
 
+        source_item = os.path.relpath(os.path.join(path, database), self.profile_path)
         with self._execute_compatible_query(
                 path, database, query, version, 'Autofill items', count_key='Autofill') as cursor:
             if cursor is None:
@@ -857,14 +877,18 @@ class Chrome(WebBrowser):
                 if isinstance(autofill_value, bytes):
                     autofill_value = '<encrypted>'
 
-                results.append(Chrome.AutofillItem(
+                created_item = Chrome.AutofillItem(
                     self.profile_path, utils.to_datetime(row.get('date_created'), self.timezone),
-                    row.get('name'), autofill_value, row.get('count')))
+                    row.get('name'), autofill_value, row.get('count'))
+                created_item.source_item = source_item
+                results.append(created_item)
 
                 if row.get('date_last_used') and row.get('count') > 1:
-                    results.append(Chrome.AutofillItem(
+                    last_used_item = Chrome.AutofillItem(
                         self.profile_path, utils.to_datetime(row.get('date_last_used'), self.timezone),
-                        row.get('name'), autofill_value, row.get('count')))
+                        row.get('name'), autofill_value, row.get('count'))
+                    last_used_item.source_item = source_item
+                    results.append(last_used_item)
 
         self.artifacts_counts['Autofill'] = len(results)
         log.info(f' - Parsed {len(results)} items')
@@ -902,6 +926,7 @@ class Chrome(WebBrowser):
                    'last_user_interaction_time', 'first_web_authn_assertion_time',
                    'last_web_authn_assertion_time']
 
+        source_item = os.path.relpath(os.path.join(path, database), self.profile_path)
         with self._execute_compatible_query(
                 path, database, query, version, 'DIPS items', count_key='DIPS') as cursor:
             if cursor is None:
@@ -916,6 +941,7 @@ class Chrome(WebBrowser):
                         self.profile_path, row['site'], utils.to_datetime(row.get(column), self.timezone),
                         column, '', '')
                     dips_record.row_type = 'site setting (dips)'
+                    dips_record.source_item = source_item
                     results.append(dips_record)
 
         self.artifacts_counts['DIPS'] = len(results)
@@ -931,6 +957,8 @@ class Chrome(WebBrowser):
         # Queries for different versions
         query = {117: '''SELECT opener_site, popup_site, last_popup_time FROM popups''',
                  133: '''SELECT opener_site, popup_site, last_popup_time, is_authentication_interaction FROM popups'''}
+
+        source_item = os.path.relpath(os.path.join(path, database), self.profile_path)
 
         with self._execute_compatible_query(
                 path, database, query, version, 'DIPS Popup items', count_key='DIPS Popups') as cursor:
@@ -948,6 +976,7 @@ class Chrome(WebBrowser):
                     utils.to_datetime(row.get('last_popup_time'), self.timezone),
                     name, row['popup_site'], '')
                 dips_popup_record.row_type = 'site setting (dips)'
+                dips_popup_record.source_item = source_item
                 results.append(dips_popup_record)
 
         self.artifacts_counts['DIPS Popups'] = len(results)
@@ -957,6 +986,7 @@ class Chrome(WebBrowser):
     def get_bookmarks(self, path, file, version):
         # Set up empty return array
         results = []
+        source_item = os.path.relpath(os.path.join(path, file), self.profile_path)
 
         log.info(f'Bookmark items from {file}:')
 
@@ -973,15 +1003,19 @@ class Chrome(WebBrowser):
             def process_bookmark_children(parent, children):
                 for child in children:
                     if child['type'] == 'url':
-                        results.append(Chrome.BookmarkItem(
+                        bm = Chrome.BookmarkItem(
                             self.profile_path, utils.to_datetime(child['date_added'], self.timezone),
-                            child['name'], child['url'], parent))
-                        
+                            child['name'], child['url'], parent)
+                        bm.source_item = source_item
+                        results.append(bm)
+
                     elif child['type'] == 'folder':
                         new_parent = parent + ' > ' + child['name']
-                        results.append(Chrome.BookmarkFolderItem(
+                        bm = Chrome.BookmarkFolderItem(
                             self.profile_path, utils.to_datetime(child['date_added'], self.timezone),
-                            child['date_modified'], child['name'], parent))
+                            child['date_modified'], child['name'], parent)
+                        bm.source_item = source_item
+                        results.append(bm)
                         process_bookmark_children(new_parent, child['children'])
 
             for top_level_folder in list(decoded_json['roots'].keys()):
@@ -1271,6 +1305,7 @@ class Chrome(WebBrowser):
                 continue
 
             file_path = os.path.join(sessions_path, filename)
+            source_item = os.path.relpath(file_path, self.profile_path)
 
             # Pass 1: Use CCL to parse NavigationEntry commands
             try:
@@ -1369,6 +1404,7 @@ class Chrome(WebBrowser):
                         item.row_type = nav_row_type
                         item.value = ' | '.join(value_parts)
                         item.decode_transition()
+                        item.source_item = source_item
 
                         dedup_key = (
                             command.url,
@@ -1419,6 +1455,7 @@ class Chrome(WebBrowser):
                                     timestamp=webkit_ts(close_time), session_id=tab_id,
                                     source_path=file_path)
                                 item.row_type = 'session (tab closed)'
+                                item.source_item = source_item
                                 results.append(item)
 
                             # WindowClosed (17): uint32 window_id + pad(4) + int64 close_time
@@ -1433,6 +1470,7 @@ class Chrome(WebBrowser):
                                 item.row_type = 'session (window closed)'
                                 # For window events, session_id holds the window_id
                                 item.session_id = window_id
+                                item.source_item = source_item
                                 results.append(item)
 
                             # LastActiveTime (21): uint32 tab_id + pad(4) + int64 last_active_time
@@ -1446,6 +1484,7 @@ class Chrome(WebBrowser):
                                     timestamp=webkit_ts(active_time), session_id=tab_id,
                                     source_path=file_path)
                                 item.row_type = 'session (tab last active)'
+                                item.source_item = source_item
                                 results.append(item)
 
                         elif file_type == SnssFileType.Tab:
@@ -1462,6 +1501,7 @@ class Chrome(WebBrowser):
                                     nav_index=nav_index, source_path=file_path)
                                 item.row_type = 'session (closed tab)'
                                 item.value = f'Navigation Index: {nav_index}'
+                                item.source_item = source_item
                                 results.append(item)
 
                             # Window (9): Pickle with window metadata + close timestamp
@@ -1501,6 +1541,7 @@ class Chrome(WebBrowser):
                                     item.session_id = window_id
                                     item.row_type = 'session (closed window)'
                                     item.value = ' | '.join(value_parts)
+                                    item.source_item = source_item
                                     results.append(item)
                                 except Exception as e:
                                     log.debug(f' - Error parsing Window command in {filename}: {e}')
@@ -2036,6 +2077,7 @@ class Chrome(WebBrowser):
 
         # Open 'Preferences' file
         pref_path = os.path.join(path, preferences_file)
+        source_item = os.path.relpath(pref_path, self.profile_path)
         try:
             log.info(f' - Reading from {pref_path}')
             with open(pref_path, encoding='utf-8', errors='replace') as f:
@@ -2161,6 +2203,7 @@ class Chrome(WebBrowser):
                                     value=f'Changed zoom level to {zoom_level_to_zoom_factor(config.get("zoom_level"))}',
                                     interpretation='')
                                 timestamped_preference_item.row_type += ' (zoom level)'
+                                timestamped_preference_item.source_item = source_item
                                 timestamped_preference_items.append(timestamped_preference_item)
                 except Exception as e:
                     log.exception(f' - Exception parsing Preference item: {e})')
@@ -2174,6 +2217,7 @@ class Chrome(WebBrowser):
                     key=f'profile_store_date_last_used_for_filling [in {preferences_file}.password_manager]',
                     value=prefs['password_manager']['profile_store_date_last_used_for_filling'], interpretation='')
                 timestamped_preference_item.row_type += ' (password fill)'
+                timestamped_preference_item.source_item = source_item
                 timestamped_preference_items.append(timestamped_preference_item)
 
         if prefs.get('profile'):
@@ -2218,6 +2262,7 @@ class Chrome(WebBrowser):
                                             f'[in {preferences_file}.profile.content_settings.exceptions]',
                                         value=str(pref_data), interpretation=interpretation)
                                     pref_item.row_type += row_type_suffix
+                                    pref_item.source_item = source_item
                                     timestamped_preference_items.append(pref_item)
 
                                 if exception_type.endswith('_engagement'):
@@ -2233,6 +2278,7 @@ class Chrome(WebBrowser):
                                                 f'content_settings.exceptions.media_engagement]',
                                             value=str(pref_data), interpretation='')
                                         engagement_item.row_type += row_type_suffix
+                                        engagement_item.source_item = source_item
                                         timestamped_preference_items.append(engagement_item)
 
                                     elif engagement_time:
@@ -2243,6 +2289,7 @@ class Chrome(WebBrowser):
                                                 f'content_settings.exceptions.site_engagement]',
                                             value=str(pref_data), interpretation='')
                                         engagement_item.row_type += row_type_suffix
+                                        engagement_item.source_item = source_item
                                         timestamped_preference_items.append(engagement_item)
 
                         except Exception as e:
@@ -2291,6 +2338,7 @@ class Chrome(WebBrowser):
                                     f'[in {preferences_file}.profile.content_settings.permission_actions]',
                                 value=str(permission_data), interpretation=interpretation)
                             perm_item.row_type = 'permission action'
+                            perm_item.source_item = source_item
                             timestamped_preference_items.append(perm_item)
 
         if prefs.get('extensions'):
@@ -2309,6 +2357,7 @@ class Chrome(WebBrowser):
                             timestamp=utils.to_datetime(prefs['extensions']['autoupdate']['last_check'], self.timezone),
                             key=f'autoupdate.last_check [in {preferences_file}.extensions]',
                             value=prefs['extensions']['autoupdate']['last_check'], interpretation='')
+                        pref_item.source_item = source_item
                         timestamped_preference_items.append(pref_item)
                 except Exception as e:
                     log.exception(f' - Exception parsing Preference item: {e})')
@@ -2335,6 +2384,7 @@ class Chrome(WebBrowser):
                         interpretation=f'{session_event["type"]} - '
                                        f'{session_types.get(session_event["type"], "Unknown type")}')
                     pref_item.row_type = 'session'
+                    pref_item.source_item = source_item
                     timestamped_preference_items.append(pref_item)
 
         if prefs.get('signin'):
@@ -2349,6 +2399,7 @@ class Chrome(WebBrowser):
                         timestamp=utils.to_datetime(prefs['signin']['signedin_time'], self.timezone),
                         key=f'signedin_time [in {preferences_file}.signin]',
                         value=prefs['signin']['signedin_time'], interpretation='')
+                    pref_item.source_item = source_item
                     timestamped_preference_items.append(pref_item)
                 except Exception as e:
                     log.exception(f' - Exception parsing Preference item: {e})')
@@ -2390,6 +2441,7 @@ class Chrome(WebBrowser):
                         key=f'translate_last_denied_time_for_language [in {preferences_file}]',
                         value=f'{lang_code}: {timestamp}',
                         interpretation=f'Declined to translate page from {expand_language_code(lang_code)}')
+                    pref_item.source_item = source_item
                     timestamped_preference_items.append(pref_item)
             except Exception as e:
                 log.exception(f' - Exception parsing Preference item: {e})')
@@ -2403,6 +2455,7 @@ class Chrome(WebBrowser):
                         key=f'creation_time [in {preferences_file}.profile]',
                         value=prefs['profile']['creation_time'], interpretation='')
                     pref_item.row_type = 'profile creation'
+                    pref_item.source_item = source_item
                     timestamped_preference_items.append(pref_item)
                 except Exception as e:
                     log.exception(f' - Exception parsing Preference item: {e})')
@@ -2428,6 +2481,7 @@ class Chrome(WebBrowser):
                 self.profile_path, url='', timestamp=parsed_timestamp,
                 key=f'{key_label} [in {preferences_file}]',
                 value=f'{raw_value}', interpretation='')
+            pref_item.source_item = source_item
             timestamped_preference_items.append(pref_item)
 
         for top_level_key, value in prefs.items():
@@ -2478,6 +2532,7 @@ class Chrome(WebBrowser):
         log.info('Platform Notifications:')
         pn_root_path = os.path.join(path, dir_name)
         log.info(f' - Reading from {pn_root_path}')
+        source_item = os.path.relpath(pn_root_path, self.profile_path)
 
         try:
             with NotificationReader(pathlib.Path(pn_root_path)) as reader:
@@ -2524,6 +2579,7 @@ class Chrome(WebBrowser):
                             key=notification.title or '',
                             value=value, interpretation='')
                         pn_record.row_type = 'notification (shown)'
+                        pn_record.source_item = source_item
                         result_list.append(pn_record)
 
                         # Create click event records from first/last click offsets
@@ -2543,6 +2599,7 @@ class Chrome(WebBrowser):
                                 key=notification.title or '',
                                 value=value, interpretation='')
                             click_record.row_type = 'notification (clicked)'
+                            click_record.source_item = source_item
                             result_list.append(click_record)
 
                     except Exception as e:
@@ -2577,6 +2634,7 @@ class Chrome(WebBrowser):
             return
 
         cache_items = profile.iterate_cache(url=None, omit_cached_data=False)
+        source_item = os.path.relpath(os.path.join(path, dir_name), self.profile_path)
 
         try:
             for cache_item in cache_items:
@@ -2584,7 +2642,7 @@ class Chrome(WebBrowser):
                     continue
 
                 parsed_item = WebBrowser.CacheItem(
-                    profile=str(profile.path), url=cache_item.key.url,
+                    profile=self.profile_path, url=cache_item.key.url,
                     request_time=utils.to_datetime(cache_item.metadata.request_time.replace(tzinfo=datetime.timezone.utc), self.timezone),
                     locations=str({'data': cache_item.data_location, 'metadata': cache_item.metadata_location}),
                     key=cache_item.key, metadata=cache_item.metadata, data=cache_item.data, title=None)
@@ -2594,6 +2652,7 @@ class Chrome(WebBrowser):
                 parsed_item.stringify_http_headers()
                 parsed_item.etag = (cache_item.metadata.get_attribute("etag") or [""])[0]
                 parsed_item.last_modified = (cache_item.metadata.get_attribute("last-modified") or [""])[0]
+                parsed_item.source_item = source_item
 
                 results.append(parsed_item)
 
@@ -3051,6 +3110,8 @@ class Chrome(WebBrowser):
         sc_root_listing = os.listdir(sc_root_path)
         log.debug(f' - {len(sc_root_listing)} files in Site Characteristics directory: {str(sc_root_listing)}')
 
+        source_item = os.path.relpath(sc_root_path, self.profile_path)
+
         items = utils.get_ldb_records(sc_root_path)
         for item in items:
             try:
@@ -3078,6 +3139,7 @@ class Chrome(WebBrowser):
                     self.profile_path, url=matched_url, timestamp=utils.to_datetime(last_loaded, self.timezone),
                     key=f'Status: {item["state"]}', value=str(parsed_proto), interpretation='')
                 sc_record.row_type += ' (characteristic)'
+                sc_record.source_item = source_item
                 result_list.append(sc_record)
 
             except Exception as e:
@@ -3283,6 +3345,8 @@ class Chrome(WebBrowser):
         #    trivially reveal a user's browsing history to an attacker reading the
         #    serialized state on disk.
 
+        source_item = os.path.relpath(ts_file_path, self.profile_path)
+
         with open(ts_file_path, encoding='utf-8', errors='replace') as f:
             ts_json = json.loads(f.read())
 
@@ -3306,6 +3370,7 @@ class Chrome(WebBrowser):
                         timestamp=utils.to_datetime(item['sts_observed'], self.timezone),
                         key='HSTS observed', value=str(item), interpretation='')
                     hsts_record.row_type += ' (hsts)'
+                    hsts_record.source_item = source_item
                     result_list.append(hsts_record)
 
             # Version 1
@@ -3322,6 +3387,7 @@ class Chrome(WebBrowser):
                             timestamp=utils.to_datetime(domain_settings['sts_observed'], self.timezone),
                             key='HSTS observed', value=f'{hashed_domain}: {domain_settings}', interpretation='')
                         hsts_record.row_type += ' (hsts)'
+                        hsts_record.source_item = source_item
                         result_list.append(hsts_record)
 
             else:
@@ -3747,10 +3813,6 @@ class Chrome(WebBrowser):
                     artifact.categories_str = _resolve_ids(artifact.category_ids)
                 if artifact.entity_ids:
                     artifact.entities_str = _resolve_ids(artifact.entity_ids)
-                if artifact.cluster_label and artifact.cluster_id:
-                    artifact.cluster_str = f'{artifact.cluster_label} ({artifact.cluster_id})'
-                elif artifact.cluster_id:
-                    artifact.cluster_str = str(artifact.cluster_id)
 
         self.parsed_artifacts.sort()
         self.parsed_storage.sort()
