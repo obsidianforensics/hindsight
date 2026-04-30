@@ -986,7 +986,7 @@ class AnalysisSession(object):
         ################################
 
         # Title bar
-        w.merge_range('A1:I1', 'Hindsight Internet History Forensics (v%s)' % __version__, title_header_format)
+        w.merge_range('A1:I1', f'Hindsight Internet History Forensics (v{__version__}) - Timeline', title_header_format)
         w.merge_range('J1:W1', 'URL Visit Specific', center_header_format)
         w.merge_range('X1:Z1', 'Download Specific', center_header_format)
         w.merge_range('AA1:AC1', 'Cache Specific', center_header_format)
@@ -1341,7 +1341,7 @@ class AnalysisSession(object):
         s = workbook.add_worksheet('Storage')
         used_sheet_names.add('storage')
         # Title bar
-        s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        s.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__}) - Storage', title_header_format)
         s.merge_range('H1:K1', 'Backing Database Specific', center_header_format)
         s.merge_range('L1:N1', 'FileSystem Specific', center_header_format)
 
@@ -1447,7 +1447,7 @@ class AnalysisSession(object):
         ext = workbook.add_worksheet('Extension Data')
         used_sheet_names.add('extension data')
         # Title bar
-        ext.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        ext.merge_range('A1:G1', f'Hindsight Internet History Forensics (v{__version__}) - Extension Data', title_header_format)
         ext.merge_range('H1:L1', 'Backing LevelDB Specific', center_header_format)
 
         # Write column headers
@@ -1512,7 +1512,7 @@ class AnalysisSession(object):
         sync_ws = workbook.add_worksheet('Sync Data')
         used_sheet_names.add('sync data')
         # Title bar
-        sync_ws.merge_range('A1:E1', f'Hindsight Internet History Forensics (v{__version__})', title_header_format)
+        sync_ws.merge_range('A1:E1', f'Hindsight Internet History Forensics (v{__version__}) - Sync Data', title_header_format)
         sync_ws.merge_range('F1:J1', 'Backing LevelDB Specific', center_header_format)
 
         # Write column headers
@@ -1573,7 +1573,9 @@ class AnalysisSession(object):
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += f" (v{d['presentation']['version']})"
-                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1,
+                                  f"Hindsight Internet History Forensics (v{__version__}) - {title}",
+                                  title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
                         # print column
                         p.write(1, counter, column['display_name'], header_format)
@@ -1605,7 +1607,9 @@ class AnalysisSession(object):
                     title = d['presentation']['title']
                     if 'version' in d['presentation']:
                         title += f" (v{d['presentation']['version']})"
-                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1, f"{title}", title_header_format)
+                    p.merge_range(0, 0, 0, len(d['presentation']['columns']) - 1,
+                                  f"Hindsight Internet History Forensics (v{__version__}) - {title}",
+                                  title_header_format)
                     for counter, column in enumerate(d['presentation']['columns']):
                         p.write(1, counter, column['display_name'], header_format)
                         if 'display_width' in column:
@@ -1638,7 +1642,7 @@ class AnalysisSession(object):
 
                 # Title bar
                 sess_ws.merge_range('A1:I1', f'Hindsight Internet History Forensics (v{__version__})'
-                                    ' - Session Reconstruction', title_header_format)
+                                    ' - Sessions', title_header_format)
 
                 # Column headers
                 sess_ws.write(1, 0, 'Window', header_format)
@@ -1652,7 +1656,7 @@ class AnalysisSession(object):
                 sess_ws.write(1, 8, 'Profile', header_format)
 
                 # Column widths
-                sess_ws.set_column('A:A', 35)  # Window
+                sess_ws.set_column('A:A', 4)   # Window (merged headers; data column is empty)
                 sess_ws.set_column('B:B', 10)  # Tab Index
                 sess_ws.set_column('C:C', 12)  # Tab ID
                 sess_ws.set_column('D:D', 10)  # Nav Index
@@ -1663,15 +1667,24 @@ class AnalysisSession(object):
                 sess_ws.set_column('I:I', 30)  # Profile
 
                 window_header_format = workbook.add_format({
-                    'font_color': 'white', 'bg_color': '#4472C4', 'bold': True})
+                    'font_color': 'white', 'bg_color': '#595959', 'bold': True})
                 selected_tab_format = workbook.add_format({
-                    'font_color': 'black', 'bg_color': '#D9E2F3', 'bold': True})
+                    'font_color': 'black', 'bg_color': '#E7E6E6', 'bold': True})
+                selected_tab_num_format = workbook.add_format({
+                    'font_color': 'black', 'bg_color': '#E7E6E6', 'bold': True, 'align': 'right'})
                 pinned_format = workbook.add_format({
-                    'font_color': '#4472C4', 'italic': True})
+                    'font_color': '#595959', 'italic': True})
+                pinned_num_format = workbook.add_format({
+                    'font_color': '#595959', 'italic': True, 'align': 'right'})
+                tab_num_format = workbook.add_format({'align': 'right'})
                 nav_history_format = workbook.add_format({
                     'font_color': 'gray', 'indent': 2})
+                nav_history_num_format = workbook.add_format({
+                    'font_color': 'gray', 'align': 'right'})
                 nav_current_format = workbook.add_format({
                     'font_color': 'black', 'indent': 2, 'bold': True})
+                nav_current_num_format = workbook.add_format({
+                    'font_color': 'black', 'bold': True, 'align': 'right'})
 
                 row_number = 2
                 for session in self.session_structures:
@@ -1709,6 +1722,8 @@ class AnalysisSession(object):
                             is_selected = tab_index == selected_tab_index
                             is_pinned = tab.get('pinned', False)
                             fmt = selected_tab_format if is_selected else (pinned_format if is_pinned else black_type_format)
+                            num_fmt = (selected_tab_num_format if is_selected
+                                       else (pinned_num_format if is_pinned else tab_num_format))
 
                             # Get the current URL for this tab
                             url, title = tab_current_urls.get(tab_id, ('', ''))
@@ -1734,9 +1749,9 @@ class AnalysisSession(object):
 
                             # Write the tab's current page row
                             sess_ws.write(row_number, 0, '', fmt)
-                            sess_ws.write(row_number, 1, tab_index, fmt)
-                            sess_ws.write(row_number, 2, tab_id, fmt)
-                            sess_ws.write(row_number, 3, sel_nav, fmt)
+                            sess_ws.write(row_number, 1, tab_index, num_fmt)
+                            sess_ws.write(row_number, 2, tab_id, num_fmt)
+                            sess_ws.write(row_number, 3, sel_nav, num_fmt)
                             sess_ws.write_string(row_number, 4, url[:500] if url else '', fmt)
                             sess_ws.write_string(row_number, 5, title[:200] if title else '', fmt)
                             sess_ws.write_string(row_number, 6, props_str, fmt)
@@ -1751,8 +1766,9 @@ class AnalysisSession(object):
                                     nav_url, nav_title, _ = nav_stack[nav_idx]
                                     is_current = (nav_idx == sel_nav)
                                     nav_fmt = nav_current_format if is_current else nav_history_format
+                                    nav_num_fmt = nav_current_num_format if is_current else nav_history_num_format
                                     current_marker = '<< current' if is_current else ''
-                                    sess_ws.write(row_number, 3, nav_idx, nav_fmt)
+                                    sess_ws.write(row_number, 3, nav_idx, nav_num_fmt)
                                     sess_ws.write_string(row_number, 4, nav_url[:500] if nav_url else '', nav_fmt)
                                     sess_ws.write_string(row_number, 5, nav_title[:200] if nav_title else '', nav_fmt)
                                     sess_ws.write_string(row_number, 6, current_marker, nav_fmt)
