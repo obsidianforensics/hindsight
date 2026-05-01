@@ -104,7 +104,7 @@ class Chrome(WebBrowser):
         Based on research I did to create "Chrome Evolution" tool - dfir.blog/chrome-evolution
         """
 
-        possible_versions = list(range(1, 146))
+        possible_versions = list(range(1, 148))
         previous_possible_versions = possible_versions[:]
 
         def update_and_rollback_if_empty(version_list, prev_version_list):

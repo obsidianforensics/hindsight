@@ -5,7 +5,7 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   scripts=['hindsight.py', 'hindsight_gui.py'],
-  version='20260130',
+  version='20260430',
   description='Browser forensics for Google Chrome/Chromium',
   url='https://github.com/obsidianforensics/hindsight',
   author='Ryan Benson',
