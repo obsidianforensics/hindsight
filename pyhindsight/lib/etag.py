@@ -17,6 +17,7 @@ big it was:
     IIS                 "<FILETIME>:<change number>"  each byte of the little-endian
                                                       FILETIME as unpadded hex
     ASP.NET Core        "<FILETIME XOR size>"         hex
+    .NET (other)        "<FILETIME>"                  upper-case hex
     Azure Blob Storage  "0x<ticks>"                   hex .NET ticks; GitHub release
                                                       downloads are served from here
     Amazon S3, Swift    "<md5>" / "<md5>-<parts>"     MD5 of the object; an S3 multipart
@@ -93,6 +94,19 @@ class _Context:
     latest: datetime.datetime
     body: bytes | None
     timezone: datetime.tzinfo
+    encoded_size: int | None = None
+    content_encoding: str | None = None
+
+    def size_matches(self, value):
+        return value is not None and value in (self.size, self.encoded_size)
+
+    def body_mismatch(self, what):
+        # Most servers hash the uncompressed object and let a CDN compress it, so a
+        # compressed response is only a possible explanation for a mismatch.
+        if self.content_encoding:
+            return (f'does not match {what} (decoded from {self.content_encoding}; the ETag '
+                    f'may describe the compressed bytes)')
+        return f'does not match {what}'
 
     def plausible_time(self, value):
         return value is not None and EARLIEST_PLAUSIBLE_TIME <= value <= self.latest
@@ -169,7 +183,7 @@ def _decode_md5(value, ctx):
         if hashlib.md5(ctx.body, usedforsecurity=False).hexdigest() == value.lower():
             notes.append('matches the MD5 of the cached body')
         else:
-            notes.append('does not match the MD5 of the cached body')
+            notes.append(ctx.body_mismatch('the MD5 of the cached body'))
     return [_Candidate('MD5 hash', notes=notes)]
 
 
@@ -240,7 +254,7 @@ def _decode_express_body(value, ctx):
     if ctx.body:
         digest = base64.b64encode(hashlib.sha1(ctx.body, usedforsecurity=False).digest()).decode()
         notes.append('matches the cached body' if digest[:27] == match.group(2)
-                     else 'does not match the cached body')
+                     else ctx.body_mismatch('the cached body'))
     return [_Candidate('Express (Node.js)', size=int(match.group(1), 16), notes=notes)]
 
 
@@ -287,13 +301,24 @@ def _decode_size_and_mtime(value, ctx):
     return candidates
 
 
-def _decode_aspnet_core(value, ctx):
-    if not re.fullmatch(r'[0-9a-f]{15,16}', value):
+def _decode_filetime_hex(value, ctx):
+    """A FILETIME in hex, as .NET servers write it.
+
+    ASP.NET Core's static files write the FILETIME XORed with the file's length, in
+    lower case. Upper case is the FILETIME as it is (seen from an Optimizely CMS site,
+    always matching Last-Modified). The length only touches the low-order digits, so
+    an XORed value still lands near the right time when the length is unknown.
+    """
+    if not re.fullmatch(r'[0-9a-fA-F]{15,16}', value):
         return []
-    modified = _from_epoch(_FILETIME_EPOCH, int(value, 16) ^ (ctx.size or 0), 10_000_000)
+    if value == value.lower():
+        name, filetime = 'ASP.NET Core', int(value, 16) ^ (ctx.size or 0)
+    else:
+        name, filetime = '.NET (FILETIME)', int(value, 16)
+    modified = _from_epoch(_FILETIME_EPOCH, filetime, 10_000_000)
     if not ctx.plausible_time(modified):
         return []
-    return [_Candidate('ASP.NET Core', modified=modified, needs_confirmation=True)]
+    return [_Candidate(name, modified=modified, needs_confirmation=True)]
 
 
 def _decode_unix_seconds(value, ctx):
@@ -313,13 +338,14 @@ _DECODERS = (
     _decode_tomcat,
     _decode_express_body,
     _decode_size_and_mtime,
-    _decode_aspnet_core,
+    _decode_filetime_hex,
     _decode_unix_seconds,
 )
 
 
 def analyze(etag, last_modified=None, size=None, reference_time=None,
-            reference_label='the download', size_label='total bytes', body=None, timezone=UTC):
+            reference_label='the download', size_label='total bytes', body=None, timezone=UTC,
+            content_encoding=None, encoded_size=None):
     """Identify the server format behind an ETag and decode what it carries.
 
     :param etag: The ETag header value as the browser stored it, quotes and W/ included.
@@ -333,6 +359,11 @@ def analyze(etag, last_modified=None, size=None, reference_time=None,
     :param size_label: How the notes refer to `size` ("total bytes").
     :param body: The response body, where it is held, to check a content hash against.
     :param timezone: Timezone for the times written into the notes.
+    :param content_encoding: The response's Content-Encoding, when `size` and `body`
+        describe it after decoding. A server serving a precompressed file builds the
+        ETag from the compressed one.
+    :param encoded_size: The response's Content-Length before decoding, which is what
+        a decoded size matches in that case.
     :return: An ETagAnalysis, or None when there is no ETag.
     """
     if not isinstance(etag, str) or not etag.strip():
@@ -349,10 +380,13 @@ def analyze(etag, last_modified=None, size=None, reference_time=None,
         reference_time = reference_time.replace(tzinfo=UTC)
     if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
         size = None
+    if not content_encoding or not isinstance(encoded_size, int) or encoded_size <= 0:
+        encoded_size = None
     ctx = _Context(
         header_time=_parse_http_date(last_modified), size=size,
         latest=(reference_time or datetime.datetime.now(UTC)) + CLOCK_SKEW_ALLOWANCE,
-        body=bytes(body) if body else None, timezone=timezone or UTC)
+        body=bytes(body) if body else None, timezone=timezone or UTC,
+        encoded_size=encoded_size, content_encoding=content_encoding or None)
 
     weak_note = ['weak ETag: equivalent content, not necessarily the same bytes'] if weak else []
 
@@ -362,8 +396,8 @@ def analyze(etag, last_modified=None, size=None, reference_time=None,
             time_ok = size_ok = None
             if candidate.modified is not None and ctx.header_time is not None:
                 time_ok = _same_second(candidate.modified, ctx.header_time)
-            if candidate.size is not None and ctx.size is not None:
-                size_ok = candidate.size == ctx.size
+            if candidate.size is not None and (ctx.size or ctx.encoded_size) is not None:
+                size_ok = ctx.size_matches(candidate.size)
             checks = [check for check in (time_ok, size_ok) if check is not None]
             if checks and not any(checks):
                 continue  # everything that could be checked disagrees
@@ -387,11 +421,16 @@ def analyze(etag, last_modified=None, size=None, reference_time=None,
             direction = 'before' if best.modified < ctx.header_time else 'after'
             result.notes.append(f'time is {_describe_duration(best.modified - ctx.header_time)} '
                                 f'{direction} Last-Modified')
-    if best.size is not None and ctx.size is not None:
+    if best.size is not None and (ctx.size or ctx.encoded_size) is not None:
+        compressed = f'the {ctx.content_encoding}-compressed Content-Length'
         if best.size == ctx.size:
             result.notes.append(f'size matches {size_label}')
+        elif best.size == ctx.encoded_size:
+            result.notes.append(f'size matches {compressed}')
         else:
-            result.notes.append(f'size differs from {size_label} ({ctx.size:,})')
+            recorded = [f'{label} ({count:,})' for label, count in
+                        ((size_label, ctx.size), (compressed, ctx.encoded_size)) if count]
+            result.notes.append(f'size differs from {" and ".join(recorded)}')
     if best.modified is not None and reference_time is not None:
         gap = reference_time - best.modified
         if gap >= datetime.timedelta(0):

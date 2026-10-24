@@ -1,5 +1,6 @@
 import base64
 import datetime
+import email.utils
 import hashlib
 import io
 import json
@@ -97,6 +98,43 @@ class TestRealWorldETags(unittest.TestCase):
         self.assertEqual('MD5 hash', result.format)
         self.assertIsNone(result.modified)
         self.assertIsNone(result.size)
+
+
+class TestCorpusFindings(unittest.TestCase):
+    """Cases found by running the decoder over the bf4sa_2025_bob-1 corpus root."""
+
+    def test_a_precompressed_file_matches_the_compressed_length(self):
+        # An Express origin serving .js.gz files: the ETag's size is the gzip file's
+        # (501, the Content-Length), while the cache holds the decoded 963 bytes.
+        mtime = datetime.datetime.fromtimestamp(0x1967e7e9c04 / 1000, UTC)
+        result = etag.analyze('W/"1f5-1967e7e9c04"', email.utils.format_datetime(mtime, usegmt=True),
+                              size=963, size_label='the cached body size',
+                              content_encoding='gzip', encoded_size=501)
+        self.assertEqual('Express (Node.js)', result.format)
+        self.assertIn('size matches the gzip-compressed Content-Length', result.notes)
+
+    def test_a_size_matching_neither_length_names_both(self):
+        # The same origin behind a CDN that recompressed it as brotli.
+        mtime = datetime.datetime.fromtimestamp(0x1967e7e9c04 / 1000, UTC)
+        result = etag.analyze('W/"219-1967e7e9c04"', email.utils.format_datetime(mtime, usegmt=True),
+                              size=799, size_label='the cached body size',
+                              content_encoding='br', encoded_size=486)
+        self.assertEqual('Express (Node.js)', result.format)
+        self.assertIn('size differs from the cached body size (799) and the br-compressed '
+                      'Content-Length (486)', result.notes)
+
+    def test_a_hash_mismatch_on_a_compressed_response_says_why_it_might_be(self):
+        value = hashlib.md5(b'hello').hexdigest()
+        result = etag.analyze(value, body=b'jello', content_encoding='gzip', encoded_size=25)
+        self.assertIn('does not match the MD5 of the cached body (decoded from gzip; the ETag '
+                      'may describe the compressed bytes)', result.notes)
+
+    def test_upper_case_filetime(self):
+        # www.montereybayaquarium.org (Optimizely CMS); every one matched Last-Modified.
+        result = etag.analyze('"1DA771657FC7680"', 'Fri, 15 Mar 2024 20:21:21 GMT')
+        self.assertEqual('.NET (FILETIME)', result.format)
+        self.assertEqual(utc(2024, 3, 15, 20, 21, 21), result.modified.replace(microsecond=0))
+        self.assertEqual('Unrecognized', etag.analyze('"1DA771657FC7680"').format)
 
 
 class TestDecoding(unittest.TestCase):
