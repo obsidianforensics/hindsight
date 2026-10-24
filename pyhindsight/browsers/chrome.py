@@ -69,6 +69,23 @@ SITE_CHARACTERISTICS_SCHEMA_VERSION = b'1'
 INDEXEDDB_MAX_RECORDS_PER_STORE = 500_000
 
 
+def iterate_leveldb_records(ldb_records, unparsed):
+    """Yield the raw records of a RawLevelDb, one file at a time.
+
+    ccl_leveldb raises ValueError when a file holds a block it does not expect, such as
+    the zero-filled tail of a .log file left by an abrupt shutdown, which LevelDB itself
+    skips. Raised from RawLevelDb.iterate_records_raw(), that would end the whole run.
+    Instead, the records read before the damaged block are kept, the file is reported
+    as an unparsed source, and the remaining files are still read.
+    """
+    # Same order as RawLevelDb.iterate_records_raw(), which offers no per-file hook.
+    for ldb_file in sorted(ldb_records._files, key=lambda f: f.file_no):
+        try:
+            yield from ldb_file
+        except ValueError as e:
+            unparsed.source(ldb_file.path, f'damaged LevelDB data ({e or "unexpected block"})')
+
+
 def chrome_versions_for_schema(database, schema_version, schema_versions=None):
     """The Chrome versions that leave 'database' with 'schema_version' in its meta table.
 
@@ -857,7 +874,7 @@ class Chrome(WebBrowser):
         # rewrites a download's entry as it progresses, so earlier records are partial
         # snapshots (empty target path, no end time, etc.).
         latest_by_guid = {}
-        for record in ldb_records.iterate_records_raw():
+        for record in iterate_leveldb_records(ldb_records, unparsed):
             if record.state.name != 'Live':
                 continue
             if not record.user_key.startswith(b'21_'):
@@ -3355,7 +3372,7 @@ class Chrome(WebBrowser):
         # fetched from and to verify on-disk bytes against the LDB-recorded hash.
         resource_to_record = {}
 
-        for record in ldb_records.iterate_records_raw():
+        for record in iterate_leveldb_records(ldb_records, unparsed):
             key = record.user_key
             if key.startswith(b'REG:'):
                 nul_pos = key.rfind(b'\x00')
@@ -3412,7 +3429,7 @@ class Chrome(WebBrowser):
         user_data_count = 0
 
         try:
-            for record in ldb_records.iterate_records_raw():
+            for record in iterate_leveldb_records(ldb_records, unparsed):
                 key = record.user_key
 
                 if key.startswith(b'REG:'):
@@ -4003,6 +4020,7 @@ class Chrome(WebBrowser):
 
     def get_unified_extension_data(self, path, dir_name):
         results = []
+        unparsed = ParseFailures(dir_name)
 
         # Grab file list of input directory
         ldb_path = os.path.join(path, dir_name)
@@ -4035,7 +4053,7 @@ class Chrome(WebBrowser):
         dynamic_scripts_all = []    # [(ext_id, seq, state, value)] -- every recoverable record
 
         if ldb_records:
-            for record in ldb_records.iterate_records_raw():
+            for record in iterate_leveldb_records(ldb_records, unparsed):
                 user_key = record.user_key.decode()
                 ext_id = None
                 ext_name = ""
@@ -4070,7 +4088,7 @@ class Chrome(WebBrowser):
             self._carve_dynamic_scripts(dynamic_scripts_all)
 
         self.parsed_extension_data.extend(results)
-        return len(results)
+        return unparsed.result(len(results))
 
     def get_dnr_extension_rules(self, path, dir_name):
         """Parse declarativeNetRequest DYNAMIC rules from
@@ -4343,7 +4361,7 @@ class Chrome(WebBrowser):
                 unparsed.source(ldb_path, f'possible LevelDB corruption ({e})')
 
             if ldb_records:
-                for record in ldb_records.iterate_records_raw():
+                for record in iterate_leveldb_records(ldb_records, unparsed):
                     user_key = record.user_key.decode()
                     parsed = Chrome.ExtensionStorageItem(
                         profile=self.profile_path, extension_id=ext_id, extension_name=self.get_extension_name_from_id(ext_id), key=user_key, value=record.value.decode(),
