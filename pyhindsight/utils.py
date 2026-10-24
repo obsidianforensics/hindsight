@@ -3,10 +3,12 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import struct
 import sys
+import zoneinfo
 from pyhindsight import __version__
 
 log = logging.getLogger(__name__)
@@ -338,6 +340,35 @@ def decode_page_transition(raw):
             result += qualifiers_friendly[qualifier] + '; '
 
     return result
+
+
+def parse_timezone(value):
+    """Return the tzinfo a timezone setting names, or None if it names none.
+
+    Accepts an IANA name ("Asia/Kolkata", "America/New_York", "UTC") or a fixed offset
+    from UTC ("UTC+5:30", "UTC+05:30", "+0530", "GMT-3"). IANA has fixed-offset zones
+    only for whole hours (Etc/GMT-5, and nothing for +5:30), so without the second form
+    the only way to ask for a half- or quarter-hour offset was to know a city in it.
+    """
+    if isinstance(value, datetime.tzinfo):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    match = re.fullmatch(r'(?:UTC|GMT)?([+-])(\d{1,2})(?::?(\d{2}))?',
+                         value.replace(' ', ''), re.IGNORECASE)
+    if match:
+        sign, hours, minutes = match.groups()
+        offset = datetime.timedelta(hours=int(hours), minutes=int(minutes or 0))
+        # Offsets in use run from -12:00 to +14:00; anything past that is a typo.
+        if int(minutes or 0) > 59 or offset > datetime.timedelta(hours=14):
+            return None
+        return datetime.timezone(-offset if sign == '-' else offset)
+
+    try:
+        return zoneinfo.ZoneInfo(value.strip())
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        return None
 
 
 def friendly_date(timestamp):
