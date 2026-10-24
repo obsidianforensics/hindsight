@@ -22,7 +22,7 @@ import pyhindsight.plugins
 from pyhindsight.analysis import AnalysisSession
 from pyhindsight.artifact_filter import ArtifactFilter, UnknownArtifactError, format_catalog
 from pyhindsight.logging_setup import DEFAULT_LOG_LEVEL, LOG_LEVELS, configure_logging
-from pyhindsight.utils import get_rich_banner, make_stdout_resilient
+from pyhindsight.utils import get_rich_banner, make_stdout_resilient, parse_timezone
 
 import rich.align
 import rich.console
@@ -30,8 +30,6 @@ import rich.live
 import rich.spinner
 import rich.table
 import rich.text
-
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 def get_base_dir():
@@ -93,7 +91,9 @@ The Chrome Profile folder default locations are:
                              'per-record detail those totals are made of and the per-directory file '
                              "listings. Only Hindsight's own loggers are set; dependencies stay at "
                              "warning either way.")
-    parser.add_argument('-t', '--timezone', help='Display timezone for the timestamps in XLSX output', default='UTC')
+    parser.add_argument('-t', '--timezone', default='UTC',
+                        help='Display timezone for the timestamps in XLSX output: an IANA name such as '
+                             '"Asia/Kolkata" or "America/New_York", or an offset from UTC such as "UTC+05:30"')
     parser.add_argument('-d', '--decrypt', choices=['mac', 'linux'], default=None,
                         help='Try to decrypt Chrome data from a Linux or Mac system; support for both is currently '
                              'buggy and enabling this may cause problems. Only use "--decrypt linux" on data from a '
@@ -141,11 +141,11 @@ The Chrome Profile folder default locations are:
         args.temp_dir = os.path.join(base_dir, args.temp_dir)
 
     if args.timezone:
-        try:
-            args.timezone = ZoneInfo(args.timezone)
-        except ZoneInfoNotFoundError:
+        timezone = parse_timezone(args.timezone)
+        if timezone is None:
             print("Couldn't understand timezone; using UTC.")
-            args.timezone = datetime.timezone.utc
+            timezone = datetime.timezone.utc
+        args.timezone = timezone
 
     # Disable decryption on Linux unless explicitly enabled and supported
     if args.decrypt == 'linux' and analysis_session.available_decrypts['linux'] == 1:
