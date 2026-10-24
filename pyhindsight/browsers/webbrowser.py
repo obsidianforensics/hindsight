@@ -459,7 +459,7 @@ class ProcessingDisplay:
         # Use a table with min_width so panel can expand for long paths
         content = rich.table.Table(show_header=False, box=None, expand=False)
         content.add_column(min_width=self.table_width, overflow="fold")
-        content.add_row(f"Path: {self.browser.profile_path}")
+        content.add_row(f"Path: {self.browser.display_profile_path}")
         content.add_row(f"Detected Browser: {self.browser.browser_name} v{self.browser.display_version}")
         return rich.align.Align.center(
             rich.panel.Panel(content, title="Profile", border_style="green", padding=(0, 2)))
@@ -502,9 +502,14 @@ class WebBrowser(object):
         # A permissive filter by default, so a browser constructed directly (tests,
         # library use) parses everything without the caller having to supply one.
         self.artifact_filter = artifact_filter or ArtifactFilter()
-        self.profile_path = profile_path
+        # Every file is read through profile_path and cache_path, which on Windows are the
+        # extended-length form so that nothing past MAX_PATH is lost (see utils.long_path).
+        # The report names paths as they were given; process() puts that form back.
+        self.display_profile_path = profile_path
+        self.display_cache_path = cache_path
+        self.profile_path = utils.long_path(profile_path)
         self.browser_name = browser_name
-        self.cache_path = cache_path
+        self.cache_path = utils.long_path(cache_path)
         self.version = version
         self.display_version = display_version
         self.timezone = timezone
@@ -541,9 +546,43 @@ class WebBrowser(object):
         analysis session), and runs even when parsing raises.
         """
         try:
-            return self.parse_profile(*args, **kwargs)
+            result = self.parse_profile(*args, **kwargs)
+            self.restore_display_paths()
+            return result
         finally:
             self.remove_temp_dir()
+
+    def restore_display_paths(self):
+        """Report every path in the form it was given, not the form it was read through.
+
+        Parsers build paths from profile_path and cache_path, the extended-length form on
+        Windows, and records carry them: the profile, and the absolute source path of
+        many a record. That form is how the files were opened, not what the examiner
+        pointed Hindsight at, so it is swapped back here, once, rather than at each of the
+        hundred-odd places a record is built. A path under neither (Firefox's cache,
+        which lives beside the profile) just loses the \\\\?\\ prefix.
+        """
+        prefixes = [(long, given) for long, given in (
+            (self.profile_path, self.display_profile_path),
+            (self.cache_path, self.display_cache_path)) if long and long != given]
+        if not prefixes:
+            return
+
+        def restored(path):
+            for long, given in prefixes:
+                if path.startswith(long) and path[len(long):len(long) + 1] in ('', '\\', '/'):
+                    return given + path[len(long):]
+            return utils.short_path(path)
+
+        for name in RESULT_COLLECTIONS:
+            collection = getattr(self, name, None)
+            if isinstance(collection, dict):
+                collection = collection.get('data')
+            for record in collection or []:
+                fields = record if isinstance(record, dict) else getattr(record, '__dict__', None)
+                for key, value in (fields or {}).items():
+                    if isinstance(value, str) and value.startswith('\\\\?\\'):
+                        fields[key] = restored(value)
 
     def parse_profile(self, *args, **kwargs):
         raise NotImplementedError
