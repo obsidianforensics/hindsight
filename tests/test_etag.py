@@ -372,14 +372,25 @@ class TestOutputs(unittest.TestCase):
         row = {header.value: value.value for header, value in zip(sheet[2], sheet[3])}
 
         self.assertEqual('"6ac46e19-13e7f8"', row['ETag'])
-        self.assertEqual('nginx', row['ETag Format'])
-        self.assertEqual('2026-10-06 09:12:17.000', row['ETag Modified (Asia/Kolkata)'])
-        self.assertEqual(1304568, row['ETag Size'])
-        self.assertTrue(row['ETag Notes'].startswith('time matches Last-Modified'))
-        # The columns after the inserted ones moved right and still hold their own data.
+        # One readable cell; the parts are separate fields in SQLite and JSONL.
+        self.assertEqual('nginx | modified 2026-10-06 09:12:17.000 | 1,304,568 bytes | '
+                         'time matches Last-Modified; size matches total bytes; '
+                         'modified 1 day, 0:00:00 before the download',
+                         row['ETag Decoded (Asia/Kolkata)'])
+        # The columns after the inserted one moved right and still hold their own data.
         self.assertIn('All HTTP Headers', row)
         self.assertIn('Body SHA256', row)
-        self.assertEqual('AK', sheet.auto_filter.ref.split(':')[1].rstrip('0123456789'))
+        self.assertEqual('AH', sheet.auto_filter.ref.split(':')[1].rstrip('0123456789'))
+
+    def test_xlsx_leaves_the_cell_empty_without_an_etag(self):
+        self.session.parsed_artifacts = [_download(etag=None)]
+        self.session.apply_etag_analysis()
+        buffer = io.BytesIO()
+        self.session.generate_excel(buffer)
+        buffer.seek(0)
+        sheet = openpyxl.load_workbook(buffer)['Timeline']
+        row = {header.value: value.value for header, value in zip(sheet[2], sheet[3])}
+        self.assertIsNone(row['ETag Decoded (Asia/Kolkata)'])
 
     def test_sqlite(self):
         path = os.path.join(self.directory, 'out.sqlite')

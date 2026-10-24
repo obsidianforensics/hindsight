@@ -1783,8 +1783,8 @@ class AnalysisSession(object):
         w.merge_range('A1:I1', f'Hindsight Internet History Forensics (v{__version__}) - Timeline', title_header_format)
         w.merge_range('J1:W1', 'URL Visit Specific', center_header_format)
         w.merge_range('X1:AC1', 'Download Specific', center_header_format)
-        w.merge_range('AD1:AI1', 'Download & Cache Specific', center_header_format)
-        w.merge_range('AJ1:AK1', 'Cache Specific', center_header_format)
+        w.merge_range('AD1:AF1', 'Download & Cache Specific', center_header_format)
+        w.merge_range('AG1:AH1', 'Cache Specific', center_header_format)
 
         # Write column headers
         w.write(1, 0, 'Type', header_format)
@@ -1818,12 +1818,9 @@ class AnalysisSession(object):
         w.write(1, 28, 'Tab URL', header_format)
         w.write(1, 29, 'ETag', header_format)
         w.write(1, 30, 'Last Modified', header_format)
-        w.write(1, 31, 'ETag Format', header_format)
-        w.write(1, 32, f'ETag Modified ({self.timezone})', header_format)
-        w.write(1, 33, 'ETag Size', header_format)
-        w.write(1, 34, 'ETag Notes', header_format)
-        w.write(1, 35, 'All HTTP Headers', header_format)
-        w.write(1, 36, 'Body SHA256', header_format)
+        w.write(1, 31, f'ETag Decoded ({self.timezone})', header_format)
+        w.write(1, 32, 'All HTTP Headers', header_format)
+        w.write(1, 33, 'Body SHA256', header_format)
 
         # Set column widths
         w.set_column('A:A', 16)  # Type
@@ -1858,21 +1855,27 @@ class AnalysisSession(object):
         # Common between Downloads and Cache
         w.set_column('AD:AD', 12)  # ETag
         w.set_column('AE:AE', 27)  # Last Modified
-        w.set_column('AF:AF', 18)  # ETag Format
-        w.set_column('AG:AG', 21)  # ETag Modified
-        w.set_column('AH:AH', 12)  # ETag Size
-        w.set_column('AI:AI', 50)  # ETag Notes
+        w.set_column('AF:AF', 70)  # ETag Decoded
 
         # Cache Specific
-        w.set_column('AJ:AJ', 30)  # HTTP Headers
-        w.set_column('AK:AK', 66)  # Body SHA256 (64 hex characters)
+        w.set_column('AG:AG', 30)  # HTTP Headers
+        w.set_column('AH:AH', 66)  # Body SHA256 (64 hex characters)
 
-        def write_etag_analysis(row, item, value_format, date_format):
-            # Set by apply_etag_analysis; absent on items that never went through a run.
-            w.write(row, 31, getattr(item, 'etag_format', None), value_format)
-            w.write(row, 32, friendly_date(getattr(item, 'etag_modified', None)), date_format)
-            w.write(row, 33, getattr(item, 'etag_size', None), value_format)
-            w.write(row, 34, getattr(item, 'etag_notes', None), value_format)
+        def write_etag_analysis(row, item, value_format):
+            # One readable cell here; SQLite and JSONL keep the parts as separate fields
+            # for querying. Set by apply_etag_analysis, so absent on items that never
+            # went through a run.
+            etag_format = getattr(item, 'etag_format', None)
+            if not etag_format:
+                return
+            parts = [etag_format]
+            if getattr(item, 'etag_modified', None) is not None:
+                parts.append(f'modified {friendly_date(item.etag_modified)}')
+            if getattr(item, 'etag_size', None) is not None:
+                parts.append(f'{item.etag_size:,} bytes')
+            if getattr(item, 'etag_notes', None):
+                parts.append(item.etag_notes)
+            w.write(row, 31, ' | '.join(parts), value_format)
 
         # Start at the row after the headers and begin writing out the items in parsed_artifacts
         row_number = 2
@@ -1954,10 +1957,10 @@ class AnalysisSession(object):
                     w.write_string(row_number, 25, open_friendly, green_value_format)  # opened
                     w.write(row_number, 29, item.etag, green_value_format)  # ETag
                     w.write(row_number, 30, item.last_modified, green_value_format)  # Last Modified
-                    write_etag_analysis(row_number, item, green_value_format, green_date_format)
+                    write_etag_analysis(row_number, item, green_value_format)
                     request_headers = getattr(item, 'request_headers', None)
                     if request_headers:
-                        w.write(row_number, 35, str(request_headers), green_value_format)  # headers
+                        w.write(row_number, 32, str(request_headers), green_value_format)  # headers
 
                 elif item.row_type.startswith("bookmark folder"):
                     w.write_string(row_number, 0, item.row_type, red_type_format)  # record_type
@@ -2000,9 +2003,9 @@ class AnalysisSession(object):
                     w.write(row_number, 7, item.source_item or '', gray_value_format)  # Source Item
                     w.write(row_number, 29, item.etag, gray_value_format)  # ETag
                     w.write(row_number, 30, item.last_modified, gray_value_format)  # Last Modified
-                    write_etag_analysis(row_number, item, gray_value_format, gray_date_format)
-                    w.write(row_number, 35, item.http_headers_str, gray_value_format)  # headers
-                    w.write(row_number, 36, item.body_sha256, gray_value_format)  # Body SHA256
+                    write_etag_analysis(row_number, item, gray_value_format)
+                    w.write(row_number, 32, item.http_headers_str, gray_value_format)  # headers
+                    w.write(row_number, 33, item.body_sha256, gray_value_format)  # Body SHA256
 
                 elif item.row_type.startswith("local storage"):
                     w.write_string(row_number, 0, item.row_type, gray_type_format)  # record_type
@@ -2168,7 +2171,7 @@ class AnalysisSession(object):
         w.freeze_panes(2, 0)  # Freeze top row
         # Items with no usable timestamp are sorted to the end (see timeline_sort_key)
         # rather than dated to the epoch and hidden, so no row filter is applied here.
-        w.autofilter(1, 0, row_number, 36)  # Add autofilter
+        w.autofilter(1, 0, row_number, 33)  # Add autofilter
 
         ##############################
         # Storage worksheet

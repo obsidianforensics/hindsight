@@ -89,10 +89,9 @@ not change the detected browser version.
 
 Download and cache records keep the ETag the server sent. Most web servers and object
 stores build it from the file's modification time and size, so Hindsight reads it back
-into when the file was last changed on the server and how big it was. The results are in
-the `ETag Format`, `ETag Modified`, `ETag Size` and `ETag Notes` columns of the XLSX
-Timeline, and the `etag_format`, `etag_modified`, `etag_size` and `etag_notes` fields of
-the SQLite and JSONL output.
+into when the file was last changed on the server and how big it was. The result is in
+the `ETag Decoded` column of the XLSX Timeline, and in the separate `etag_format`,
+`etag_modified`, `etag_size` and `etag_notes` fields of the SQLite and JSONL output.
 
 Recognized formats are nginx, Apache httpd, IIS, ASP.NET Core, Azure Blob Storage (which
 also serves GitHub release downloads), Express, Tomcat, and the MD5 and multipart ETags
